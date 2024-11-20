@@ -1,0 +1,21 @@
+# AI System Settings
+ai_enabled: false
+
+# Resource Limits
+resource_settings:
+  max_memory_usage: 2048  # MB
+  max_cpu_usage: 50      # Percentage
+  batch_size: 32
+  num_workers: 2
+
+# Model Settings
+model_settings:
+  use_lightweight_model: true
+  enable_gpu: false
+  model_precision: "float32"
+
+# Feature Toggles
+feature_toggles:
+  anomaly_detection: true
+  threat_detection: true
+  adaptive_learning: false
