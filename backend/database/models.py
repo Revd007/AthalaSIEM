@@ -1,55 +1,141 @@
-from sqlalchemy import Column, Integer, String, DateTime, JSON, ForeignKey, Float, Boolean
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Text, JSON, Enum, Table, ForeignKey
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.dialects.mssql import UNIQUEIDENTIFIER
+import uuid
+import enum
 from datetime import datetime
+from .connection import Base
 
-Base = declarative_base()
+# Enum for user roles
+class UserRole(enum.Enum):
+    ADMIN = "admin"
+    ANALYST = "analyst"
+    OPERATOR = "operator"
+    VIEWER = "viewer"
 
-class Event(Base):
-    __tablename__ = 'events'
-    
-    id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    source = Column(String)
-    event_type = Column(String)
-    severity = Column(Integer)
-    message = Column(String)
-    raw_data = Column(JSON)
-    host = Column(String)
-    ip_address = Column(String)
-    status = Column(String)
-    alert_id = Column(Integer, ForeignKey('alerts.id'), nullable=True)
+# Association tables for many-to-many relationships
+user_groups = Table(
+    'user_groups',
+    Base.metadata,
+    Column('user_id', UNIQUEIDENTIFIER, ForeignKey('users.id')),
+    Column('group_id', UNIQUEIDENTIFIER, ForeignKey('groups.id'))
+)
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
+    username = Column(String(50), unique=True, nullable=False)
+    email = Column(String(100), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)
+    full_name = Column(String(100))
+    role = Column(Enum(UserRole), nullable=False, default=UserRole.VIEWER)
+    is_active = Column(Boolean, default=True)
+    last_login = Column(DateTime)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    groups = relationship("Group", secondary=user_groups, back_populates="users")
+    audit_logs = relationship("AuditLog", back_populates="user")
+    alerts = relationship("Alert", back_populates="assigned_to")
+
+class Group(Base):
+    __tablename__ = "groups"
+
+    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
+    name = Column(String(50), unique=True, nullable=False)
+    description = Column(String(255))
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    users = relationship("User", secondary=user_groups, back_populates="groups")
 
 class Alert(Base):
-    __tablename__ = 'alerts'
-    
-    id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    title = Column(String)
-    description = Column(String)
+    __tablename__ = "alerts"
+
+    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    severity = Column(Integer, nullable=False)  # 1-5 scale
+    status = Column(String(50), nullable=False)
+    source = Column(String(100))
+    assigned_to_id = Column(UNIQUEIDENTIFIER, ForeignKey('users.id'))
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    resolved_at = Column(DateTime)
+    alert_metadata = Column(JSON)
+
+    # Relationships
+    assigned_to = relationship("User", back_populates="alerts")
+    events = relationship("Event", back_populates="alert")
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
+    alert_id = Column(UNIQUEIDENTIFIER, ForeignKey('alerts.id'))
+    event_type = Column(String(50), nullable=False)
+    source = Column(String(100))
+    timestamp = Column(DateTime, nullable=False)
     severity = Column(Integer)
-    status = Column(String)
-    source = Column(String)
-    events = relationship('Event', backref='alert')
-    playbook_runs = relationship('PlaybookRun', backref='alert')
+    message = Column(Text)
+    raw_data = Column(JSON)
+    processed_data = Column(JSON)
+    created_at = Column(DateTime, default=func.now())
+
+    # Relationships
+    alert = relationship("Alert", back_populates="events")
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
+    user_id = Column(UNIQUEIDENTIFIER, ForeignKey('users.id'))
+    action = Column(String(50), nullable=False)
+    resource_type = Column(String(50))
+    resource_id = Column(String(255))
+    details = Column(JSON)
+    ip_address = Column(String(45))
+    timestamp = Column(DateTime, default=func.now())
+
+    # Relationships
+    user = relationship("User", back_populates="audit_logs")
+
+class SystemConfig(Base):
+    __tablename__ = "system_configs"
+
+    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
+    key = Column(String(100), unique=True, nullable=False)
+    value = Column(JSON)
+    description = Column(String(255))
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+class APIKey(Base):
+    __tablename__ = "api_keys"
+
+    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
+    key = Column(String(255), unique=True, nullable=False)
+    name = Column(String(100))
+    user_id = Column(UNIQUEIDENTIFIER, ForeignKey('users.id'))
+    is_active = Column(Boolean, default=True)
+    expires_at = Column(DateTime)
+    created_at = Column(DateTime, default=func.now())
+    last_used_at = Column(DateTime)
 
 class PlaybookRun(Base):
-    __tablename__ = 'playbook_runs'
-    
-    id = Column(Integer, primary_key=True)
-    alert_id = Column(Integer, ForeignKey('alerts.id'))
-    playbook_id = Column(String)
-    status = Column(String)
-    start_time = Column(DateTime, default=datetime.utcnow)
-    end_time = Column(DateTime, nullable=True)
-    result = Column(JSON)
+    __tablename__ = "playbook_runs"
 
-class AnomalyScore(Base):
-    __tablename__ = 'anomaly_scores'
-    
-    id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    source = Column(String)
-    score = Column(Float)
-    threshold = Column(Float)
-    is_anomaly = Column(Boolean)
+    id = Column(Integer, primary_key=True, index=True)
+    alert_id = Column(Integer, ForeignKey("alerts.id"))
+    playbook_id = Column(String)
+    status = Column(String)  # running, completed, failed, cancelled
+    start_time = Column(DateTime)
+    end_time = Column(DateTime, nullable=True)
+    result = Column(JSON, nullable=True)
+
+# Add more models as needed for your specific use case

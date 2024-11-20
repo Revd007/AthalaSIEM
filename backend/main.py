@@ -1,6 +1,9 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from requests import Session
+from pytest import Session
 from api.routes import events, alerts, dashboard
+from auth.routes.auth import router as auth_router
 from database.connection import engine, get_db
 from database.models import Base, Event, Alert
 import uvicorn
@@ -34,6 +37,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(events.router, prefix="/api/v1", tags=["events"])
 app.include_router(alerts.router, prefix="/api/v1", tags=["alerts"])
 app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])

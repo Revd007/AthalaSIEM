@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, timedelta
 from ..schemas import AlertCreate, AlertResponse, AlertUpdate
-from ...database.connection import get_db
-from ...database.models import Alert
-from ...automation.playbook_engine import PlaybookEngine
+from database.connection import get_db
+from database.models import Alert
+from automation.playbook_engine import PlaybookEngine
 
 router = APIRouter()
 playbook_engine = PlaybookEngine()

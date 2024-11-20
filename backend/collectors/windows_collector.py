@@ -5,10 +5,10 @@ import win32security
 import wmi
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Generator
+from typing import Dict, Any, List, AsyncGenerator
 import logging
-from ..database.models import Event
-from ..database.connection import get_db
+from database.models import Event
+from database.connection import get_db
 
 class WindowsEventCollector:
     def __init__(self, config: Dict[str, Any]):
@@ -29,7 +29,7 @@ class WindowsEventCollector:
             except Exception as e:
                 logging.error(f"Failed to initialize handler for {log_type}: {e}")
 
-    async def collect_logs(self) -> Generator[Dict[str, Any], None, None]:
+    async def collect_logs(self) -> AsyncGenerator[Dict[str, Any], None]:
         """Collect logs from all configured sources"""
         while True:
             try:
@@ -52,7 +52,7 @@ class WindowsEventCollector:
             
             await asyncio.sleep(self.config.get('collection_interval', 10))
 
-    async def format_event(self, event: win32evtlog.PyEventLogRecord, log_type: str) -> Dict[str, Any]:
+    async def format_event(self, event, log_type: str) -> Dict[str, Any]:
         """Format a Windows event into a standardized dictionary"""
         try:
             # Get event message

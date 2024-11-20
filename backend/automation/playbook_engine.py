@@ -4,9 +4,9 @@ from typing import Dict, Any, List
 import logging
 from datetime import datetime
 from pathlib import Path
-from .actions import SecurityActions
-from ..database.models import PlaybookRun, Alert
-from ..database.connection import get_db
+from automation.actions import SecurityActions
+from database.models import PlaybookRun, Alert
+from database.connection import get_db
 
 class PlaybookEngine:
     def __init__(self):

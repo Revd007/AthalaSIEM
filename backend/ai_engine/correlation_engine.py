@@ -4,8 +4,8 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-from .models.anomaly_detector import AnomalyDetector
-from .. import ThreatDetector
+from ai_engine.models.anomaly_detector import AnomalyDetector
+from ai_engine.models.threat_detections import ThreatDetector
 
 class CorrelationEngine:
     def __init__(self, 

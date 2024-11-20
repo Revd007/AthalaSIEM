@@ -1,6 +1,11 @@
 # AI System Settings
 ai_enabled: false
 
+model_settings:
+  use_lightweight_model: true
+  enable_gpu: true  # Aktifkan GPU jika tersedia
+  model_precision: "float32"
+
 # Resource Limits
 resource_settings:
   max_memory_usage: 2048  # MB

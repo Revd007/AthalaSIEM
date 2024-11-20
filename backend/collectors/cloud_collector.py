@@ -1,5 +1,6 @@
+import datetime
 import boto3
-import azure.monitor
+from azure.mgmt.monitor import MonitorManagementClient
 from google.cloud import monitoring_v3
 import asyncio
 from typing import Dict, List

@@ -1,6 +1,6 @@
 from typing import Dict, List, Any
 import numpy as np
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, roc_auc_score, confusion_matrix
 import torch
 
 class AccuracyMetrics:

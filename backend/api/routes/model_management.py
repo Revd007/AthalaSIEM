@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any
 from core.services import ModelService
-from core.database.models import ModelVersion
+from database.models import ModelVersion
 
 router = APIRouter()
 

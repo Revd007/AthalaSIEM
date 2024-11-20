@@ -1,0 +1,24 @@
+2024-11-20 23:19:52,981 - root - ERROR - Failed to initialize handler for Security: (1314, 'OpenEventLogW', 'A required privilege is not held by the client.')
+2024-11-20 23:19:53,076 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:20:03,081 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:20:13,087 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:20:23,089 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:20:33,076 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:20:43,085 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:27:46,459 - root - ERROR - Failed to initialize handler for Security: (1314, 'OpenEventLogW', 'A required privilege is not held by the client.')
+2024-11-20 23:27:46,461 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:27:56,463 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:28:06,481 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:55:37,202 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:55:47,203 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:55:57,213 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:56:07,213 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:56:17,200 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:56:27,211 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:56:37,206 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:56:47,200 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:57:03,344 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:57:13,342 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:57:34,826 - root - ERROR - Failed to initialize handler for Security: (1314, 'OpenEventLogW', 'A required privilege is not held by the client.')
+2024-11-20 23:57:34,834 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-20 23:57:44,840 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer

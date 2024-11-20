@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
+import uuid
 
 class EventBase(BaseModel):
     source: str
@@ -38,3 +39,16 @@ class AlertResponse(AlertBase):
 
     class Config:
         orm_mode = True
+
+class AlertUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    severity: Optional[int] = None
+    status: Optional[str] = None
+    source: Optional[str] = None
+    assigned_to_id: Optional[uuid.UUID] = None
+    resolved_at: Optional[datetime] = None
+    alert_metadata: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True

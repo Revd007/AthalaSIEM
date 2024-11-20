@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import Dict, List
 from datetime import datetime, timedelta
-from ...database.connection import get_db
-from ...database.models import Event, Alert
+from database.connection import get_db
+from database.models import Event, Alert
 from sqlalchemy import func
 
 router = APIRouter()
