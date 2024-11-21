@@ -61,8 +61,13 @@ export function IntegrationSettings() {
                 </div>
                 <Button
                   variant={integration.isConnected ? 'outline' : 'primary'}
-                  onPress={() => {
-                    // Handle connection/disconnection
+                  onClick={() => {
+                    setIntegrations(integrations.map(item => {
+                      if (item.id === integration.id) {
+                        return { ...item, isConnected: !item.isConnected }
+                      }
+                      return item
+                    }))
                   }}
                   type="button"
                 >

@@ -5,7 +5,7 @@ import './globals.css'
 import Sidebar from '../components/layout/sidebar'
 import Navbar from '../components/layout/navbar'
 import Footer from '../components/layout/footer'
-import { Providers } from '../components/providers'
+import { Providers } from '../components/ui/providers'
 import React from 'react'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -22,7 +22,7 @@ interface RootLayoutProps {
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
+      <body className={inter.className}>  
         <Providers>
           <div className="min-h-screen bg-gray-100">
             <div className="flex h-screen overflow-hidden">

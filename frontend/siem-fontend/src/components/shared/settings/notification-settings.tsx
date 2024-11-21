@@ -5,7 +5,6 @@ import { Card } from '../../ui/card'
 import { Tabs } from '../../ui/tabs'
 import { GeneralSettings } from './general-settings'
 import { SecuritySettings } from './security-settings'
-import { NotificationSettings } from './notification-settings'
 import { IntegrationSettings } from './integration-settings'
 
 const tabs = [
@@ -15,7 +14,7 @@ const tabs = [
   { id: 'integrations', label: 'Integrations' }
 ]
 
-export default function Settings() {
+export default function NotificationSettings() {
   const [activeTab, setActiveTab] = useState('general')
 
   return (

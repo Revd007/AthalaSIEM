@@ -1,10 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Card } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { AlertTable } from '@/components/shared/tables/alert-table'
-import { AlertFilter } from '@/components/shared/filters/alert-filter'
+import { Card } from '../../../components/ui/card'
+import { Button } from '../../../components/ui/button'
+import { AlertTable } from '../../../components/shared/tables/alert-table'
+import { AlertFilter } from '../../../components/shared/filters/alert-filter'
 import React from 'react'
 
 export default function Alerts() {
