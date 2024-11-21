@@ -1,5 +1,5 @@
 # AI System Settings
-ai_enabled: false
+ai_enabled: true
 
 model_settings:
   use_lightweight_model: true

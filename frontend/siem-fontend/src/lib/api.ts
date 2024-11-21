@@ -1,4 +1,6 @@
+// src/lib/api.ts
 import axios from 'axios'
+import { useAuth } from '@/hooks/use-auth'
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL,
@@ -7,22 +9,19 @@ const api = axios.create({
   },
 })
 
-// Add request interceptor
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
+  const token = useAuth.getState().token
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
   return config
 })
 
-// Add response interceptor
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
-      // Handle unauthorized access
-      window.location.href = '/login'
+      useAuth.getState().logout()
     }
     return Promise.reject(error)
   }
@@ -31,23 +30,24 @@ api.interceptors.response.use(
 export const endpoints = {
   auth: {
     login: '/auth/login',
-    logout: '/auth/logout',
     register: '/auth/register',
-  },
-  logs: {
-    getAll: '/logs',
-    getById: (id: string) => `/logs/${id}`,
-    search: '/logs/search',
+    logout: '/auth/logout',
+    refresh: '/auth/refresh-token',
   },
   alerts: {
-    getAll: '/alerts',
-    getById: (id: string) => `/alerts/${id}`,
+    list: '/alerts',
     create: '/alerts',
     update: (id: string) => `/alerts/${id}`,
+    delete: (id: string) => `/alerts/${id}`,
+  },
+  logs: {
+    list: '/logs',
+    search: '/logs/search',
   },
   reports: {
     generate: '/reports/generate',
-    getAll: '/reports',
+    list: '/reports',
+    download: (id: string) => `/reports/${id}/download`,
   },
 }
 

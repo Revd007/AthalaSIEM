@@ -220,7 +220,7 @@ class DataNormalizer:
         return event
     
     # Helper methods for specific normalizations
-    def _normalize_timestamp(self, timestamp: Union[str, datetime]) -> datetime:
+    def _normalize_timestamp(self, timestamp: Union[str, datetime, Any]) -> datetime:
         """Normalize timestamp to UTC datetime"""
         if isinstance(timestamp, str):
             try:
@@ -229,6 +229,11 @@ class DataNormalizer:
                 return datetime.utcnow()
         elif isinstance(timestamp, datetime):
             return timestamp
+        elif hasattr(timestamp, 'timestamp'):  # Handle pywintypes.datetime
+            try:
+                return datetime.fromtimestamp(timestamp.timestamp())
+            except:
+                return datetime.utcnow()
         else:
             return datetime.utcnow()
     

@@ -16,13 +16,23 @@ class DefaultForensicAnalyzer:
 
     def analyze_event_sequence(self, events: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Analyze sequence of events for patterns and anomalies"""
-        analysis = {
-            'timeline': self._create_timeline(events),
-            'key_entities': self._extract_key_entities(events),
-            'suspicious_patterns': self._identify_suspicious_patterns(events),
-            'impact_assessment': self._assess_impact(events)
-        }
-        return analysis
+        try:
+            analysis = {
+                'timeline': self._create_timeline(events),
+                'key_entities': self._extract_key_entities(events),
+                'suspicious_patterns': self._identify_suspicious_patterns(events),
+                'impact_assessment': self._assess_impact(events)
+            }
+            return analysis
+        except Exception as e:
+            self.logger.error(f"Error analyzing events: {e}")
+            return {
+                'error': str(e),
+                'timeline': [],
+                'key_entities': {},
+                'suspicious_patterns': [],
+                'impact_assessment': {}
+            }
 
     def _create_timeline(self, events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Create chronological timeline of events"""
