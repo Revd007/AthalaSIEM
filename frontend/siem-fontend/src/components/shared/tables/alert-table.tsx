@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Table } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
+import { Table } from '../../ui/table'
+import { Button } from '../../ui/button'
+import React from 'react'
 
 interface Alert {
   id: string
@@ -14,26 +15,10 @@ interface Alert {
 }
 
 interface AlertTableProps {
-  filters: {
-    status: string
-    priority: string
-    timeRange: string
-  }
+  alerts: any[]
 }
 
-export function AlertTable({ filters }: AlertTableProps) {
-  const [alerts] = useState<Alert[]>([
-    {
-      id: '1',
-      name: 'Brute Force Attack',
-      priority: 'High',
-      status: 'Active',
-      timestamp: '2024-03-20 10:30:00',
-      description: 'Multiple failed login attempts detected',
-    },
-    // Add more sample alerts
-  ])
-
+export const AlertTable: React.FC<AlertTableProps> = ({ alerts }) => {
   return (
     <div className="overflow-x-auto">
       <Table>
@@ -84,10 +69,10 @@ export function AlertTable({ filters }: AlertTableProps) {
                 {alert.timestamp}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                <Button variant="outline" size="sm" className="mr-2">
+                <Button variant="outline" className="mr-2">
                   View Details
                 </Button>
-                <Button variant="danger" size="sm">
+                <Button variant="primary">
                   Resolve
                 </Button>
               </td>

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import React from 'react'
 
 export default function Register() {
   const router = useRouter()

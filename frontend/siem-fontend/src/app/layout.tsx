@@ -2,10 +2,11 @@
 import { Inter } from 'next/font/google'
 import { Metadata } from 'next'
 import './globals.css'
-import Sidebar from '@/components/layout/sidebar'
-import Navbar from '@/components/layout/navbar'
-import Footer from '@/components/layout/footer'
-import { Providers } from '@/components/providers'
+import Sidebar from '../components/layout/sidebar'
+import Navbar from '../components/layout/navbar'
+import Footer from '../components/layout/footer'
+import { Providers } from '../components/providers'
+import React from 'react'
 
 const inter = Inter({ subsets: ['latin'] })
 

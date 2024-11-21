@@ -1,3 +1,5 @@
+import React from "react"
+
 interface LogFilterProps {
     filters: {
       severity: string

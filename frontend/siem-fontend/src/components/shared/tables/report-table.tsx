@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Table } from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
-import { DownloadIcon, EyeIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { Table } from '../../ui/table'
+import { Button } from '../../ui/button'
+import { ArrowDownTrayIcon, EyeIcon, TrashIcon } from '@heroicons/react/24/outline'
+import React from 'react'
 
 interface Report {
   id: string
@@ -86,15 +87,15 @@ export function ReportTable({ filters }: ReportTableProps) {
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 <div className="flex space-x-2">
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" className="h-8 px-2 text-sm">
                     <EyeIcon className="h-4 w-4 mr-1" />
                     View
                   </Button>
-                  <Button variant="outline" size="sm">
-                    <DownloadIcon className="h-4 w-4 mr-1" />
+                  <Button variant="outline" className="h-8 px-2 text-sm">
+                    <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
                     Download
                   </Button>
-                  <Button variant="danger" size="sm">
+                  <Button variant="outline" className="h-8 px-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50">
                     <TrashIcon className="h-4 w-4" />
                   </Button>
                 </div>

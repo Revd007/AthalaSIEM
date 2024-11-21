@@ -1,3 +1,4 @@
+import React from 'react'
 import { forwardRef } from 'react'
 
 interface TableProps extends React.HTMLAttributes<HTMLTableElement> {}

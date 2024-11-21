@@ -3,9 +3,10 @@
 import { useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ReportTable } from '@/components/shared/tables/report-table'
-import { ReportFilter } from '@/components/shared/filters/report-filter'
-import { CreateReportModal } from '@/components/shared/modals/create-report-modal'
+import { ReportTable } from '../../components/shared/tables/report-table'
+import { ReportFilter } from '../../components/shared/filters/report-filter'
+import { CreateReportModal } from '../../components/shared/modals/create-report-modal'
+import React from 'react'
 
 export default function Reports() {
   const [isModalOpen, setIsModalOpen] = useState(false)

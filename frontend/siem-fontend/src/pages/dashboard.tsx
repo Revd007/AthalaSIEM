@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar } from '@/components/ui/calendar';
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Input } from "@/components/ui/input";
-import { LineChart, Line, BarChart, Bar, PieChart, Pie, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Calendar } from '../components/ui/calendar';
+import { Button } from '../components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '../components/ui/popover';
+import { Input } from '../components/ui/input';
+import { LineChart, Line, BarChart, Bar, PieChart, Pie, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, Cell } from 'recharts';
 import { Search, Calendar as CalendarIcon, Filter, Download, Settings, RefreshCcw } from 'lucide-react';
 
 const Dashboard = () => {
@@ -51,15 +51,15 @@ const Dashboard = () => {
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-800">EventLog Analyzer</h1>
           <div className="flex gap-4">
-            <Button variant="outline" size="sm">
+            <Button variant="outline">
               <RefreshCcw className="w-4 h-4 mr-2" />
               Refresh
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline">
               <Download className="w-4 h-4 mr-2" />
               Export
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline">
               <Settings className="w-4 h-4 mr-2" />
               Settings
             </Button>
@@ -72,9 +72,8 @@ const Dashboard = () => {
             <Input
               placeholder="Search logs..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
               className="w-full"
-              icon={<Search className="w-4 h-4" />}
             />
           </div>
           
@@ -95,7 +94,8 @@ const Dashboard = () => {
               <Calendar
                 mode="range"
                 selected={{ from: dateRange.from, to: dateRange.to }}
-                onSelect={(range) => setDateRange(range || { from: new Date(), to: new Date() })}
+                onSelect={(range: { from: Date; to: Date } | undefined) => 
+                  setDateRange(range || { from: new Date(), to: new Date() })}
                 initialFocus
               />
             </PopoverContent>

@@ -1,3 +1,5 @@
+import React from "react"
+
 interface ReportFilterProps {
     filters: {
       type: string

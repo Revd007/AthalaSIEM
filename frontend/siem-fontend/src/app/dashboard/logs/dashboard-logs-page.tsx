@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
-import { LogTable } from '@/components/shared/tables/log-table'
-import { LogFilter } from '@/components/shared/filters/log-filter'
-import { Card } from '@/components/ui/card'
+import React, { useState } from 'react'
+import { LogTable } from '../../components/shared/tables/log-table'
+import { LogFilter } from '../../components/shared/filters/log-filter'
+import { Card } from '../../ui/card'
 
 export default function Logs() {
   const [filters, setFilters] = useState({

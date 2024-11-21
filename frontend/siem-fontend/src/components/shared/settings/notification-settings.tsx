@@ -1,8 +1,8 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Card } from '@/components/ui/card'
-import { Tabs } from '@/components/ui/tabs'
+import { Card } from '../../ui/card'
+import { Tabs } from '../../ui/tabs'
 import { GeneralSettings } from './general-settings'
 import { SecuritySettings } from './security-settings'
 import { NotificationSettings } from './notification-settings'

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { Dashboard } from '../components/Dashboard'
-import { AlertsList } from '../components/AlertsList'
+import React, { useEffect, useState } from 'react'
+import Dashboard from './dashboard'
+import { AlertTable } from '../components/shared/tables/alert-table'
 
 export default function Home() {
   const [alerts, setAlerts] = useState([])
@@ -13,16 +13,20 @@ export default function Home() {
       setAlerts(data)
     }
     
+    // Initial fetch of alerts
     fetchAlerts()
-    // Set up polling
-    const interval = setInterval(fetchAlerts, 30000)
-    return () => clearInterval(interval)
+    
+    // Poll every 15 seconds to maintain real-time security awareness
+    const pollingInterval = setInterval(fetchAlerts, 15000)
+    
+    // Cleanup polling on unmount
+    return () => clearInterval(pollingInterval)
   }, [])
 
   return (
     <div>
       <Dashboard />
-      <AlertsList alerts={alerts} />
+      <AlertTable alerts={alerts} />
     </div>
   )
 }

@@ -1,6 +1,7 @@
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Switch } from '@/components/ui/switch'
+import { Input } from '../../ui/input'
+import { Button } from '../../ui/button'
+import { Switch } from '../../ui/switch'
+import React from 'react'
 
 export function SecuritySettings() {
   return (
@@ -29,20 +30,24 @@ export function SecuritySettings() {
       <div>
         <h3 className="text-lg font-medium leading-6 text-gray-900">Password Policy</h3>
         <div className="mt-4 grid grid-cols-1 gap-y-6 sm:grid-cols-2 sm:gap-x-4">
-          <Input
-            label="Minimum Password Length"
-            type="number"
-            defaultValue="8"
-            min="8"
-            max="32"
-          />
-          <Input
-            label="Password Expiry (days)"
-            type="number"
-            defaultValue="90"
-            min="1"
-            max="365"
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Minimum Password Length</label>
+            <Input
+              type="number"
+              defaultValue="8"
+              min="8"
+              max="32"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Password Expiry (days)</label>
+            <Input
+              type="number"
+              defaultValue="90"
+              min="1"
+              max="365"
+            />
+          </div>
         </div>
         <div className="mt-4 space-y-4">
           <div className="flex items-center">

@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import React from 'react'
 
 export default function Login() {
   const router = useRouter()
@@ -11,7 +12,7 @@ export default function Login() {
     password: '',
   })
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     // Add your login logic here
     router.push('/overview')

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Table } from '@/components/ui/table'
+import { Table } from '../../ui/table'
+import React from 'react'
 
 interface Log {
   id: string
@@ -28,7 +29,34 @@ export function LogTable({ filters }: LogTableProps) {
       severity: 'High',
       message: 'Unauthorized access attempt detected',
     },
-    // Add more sample logs
+    {
+      id: '2',
+      timestamp: '2024-03-20 10:15:23',
+      source: 'IDS',
+      severity: 'Medium', 
+      message: 'Suspicious network traffic pattern detected',
+    },
+    {
+      id: '3',
+      timestamp: '2024-03-20 10:00:15',
+      source: 'Server',
+      severity: 'Low',
+      message: 'Failed login attempt',
+    },
+    {
+      id: '4', 
+      timestamp: '2024-03-20 09:45:30',
+      source: 'Antivirus',
+      severity: 'High',
+      message: 'Malware detected in uploaded file',
+    },
+    {
+      id: '5',
+      timestamp: '2024-03-20 09:30:00', 
+      source: 'Firewall',
+      severity: 'Medium',
+      message: 'Port scan detected from external IP',
+    }
   ])
 
   return (

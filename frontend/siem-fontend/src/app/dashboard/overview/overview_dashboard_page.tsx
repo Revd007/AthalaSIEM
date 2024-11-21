@@ -6,6 +6,7 @@ import { SecurityMetrics } from './components/security-metrics'
 import { RecentActivity } from './components/recent-activity'
 import { SystemHealth } from './components/system-health'
 import { LoadingSkeleton } from '@/components/ui/loading-skeleton'
+import React from 'react'
 
 export default function DashboardOverview() {
   return (
