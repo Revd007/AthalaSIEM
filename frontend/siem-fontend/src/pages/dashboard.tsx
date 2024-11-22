@@ -94,8 +94,11 @@ const Dashboard = () => {
               <Calendar
                 mode="range"
                 selected={{ from: dateRange.from, to: dateRange.to }}
-                onSelect={(range: { from: Date; to: Date } | undefined) => 
-                  setDateRange(range || { from: new Date(), to: new Date() })}
+                onSelect={(range) => {
+                  if (range?.from && range?.to) {
+                    setDateRange({ from: range.from, to: range.to });
+                  }
+                }}
                 initialFocus
               />
             </PopoverContent>

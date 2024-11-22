@@ -15,14 +15,10 @@ interface Alert {
 }
 
 interface AlertTableProps {
-  filters: {
-    status: string;
-    priority: string;
-    timeRange: string;
-  };
+  alerts: Alert[];
 }
 
-export const AlertTable: React.FC<AlertTableProps> = ({ filters }) => {
+export const AlertTable: React.FC<AlertTableProps> = ({ alerts }) => {
   return (
     <div className="overflow-x-auto">
       <Table>
@@ -46,7 +42,7 @@ export const AlertTable: React.FC<AlertTableProps> = ({ filters }) => {
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
-          {alerts.map((alert) => (
+          {alerts.map((alert: Alert) => (
             <tr key={alert.id} className="hover:bg-gray-50">
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                 {alert.name}

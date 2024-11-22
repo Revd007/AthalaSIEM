@@ -1,11 +1,11 @@
 // src/app/dashboard/overview/page.tsx
 import { Suspense } from 'react'
-import { Card } from '@/components/ui/card'
-import { AlertSummary } from './components/alert-summary'
-import { SecurityMetrics } from './components/security-metrics'
-import { RecentActivity } from './components/recent-activity'
-import { SystemHealth } from './components/system-health'
-import { LoadingSkeleton } from '@/components/ui/loading-skeleton'
+import { Card } from '../../../components/ui/card'
+import { AlertSummary } from '../../../components/dashboard/alert-summary'
+import { SecurityMetrics } from '../../../components/dashboard/security-metrics'
+import { RecentActivity } from '../../../components/dashboard/recent-activity'
+import { SystemHealth } from '../../../components/dashboard/components/system-health'
+import { LoadingSkeleton } from '../../../components/ui/loading-skeleton'
 import React from 'react'
 
 export default function DashboardOverview() {
