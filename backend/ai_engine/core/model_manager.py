@@ -1,115 +1,99 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import torch
-import logging
+import torch.nn as nn
 from datetime import datetime
-import os
+import logging
+from pathlib import Path
 import json
-from ..models import BaseModel
+import numpy as np
+from ..models.threat_detections import ThreatDetector
+from ..models.anomaly_detector import VariationalAutoencoder
+from ..training.adaptive_learner import AdaptiveLearner
 
 class ModelManager:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
-        self.current_model = None
-        self.model_history = []
+        self.model_name = "Donquixote Athala"
+        self.models = {}
+        self.adaptive_learner = AdaptiveLearner(config)
+        self._initialize_models()
         
-    async def train_model(self,
-                         train_loader: torch.utils.data.DataLoader,
-                         test_loader: torch.utils.data.DataLoader) -> BaseModel:
-        """Train model"""
-        model = self._create_model()
-        optimizer = self._create_optimizer(model)
-        criterion = self._create_criterion()
-        
-        best_loss = float('inf')
-        patience_counter = 0
-        
-        for epoch in range(self.config['epochs']):
-            # Training
-            model.train()
-            train_loss = 0
+    def _initialize_models(self):
+        """Initialize AI models"""
+        try:
+            # Threat Detection Model
+            self.models['threat'] = ThreatDetector(
+                num_classes=self.config.get('num_threat_classes', 5),
+                model_name=self.config.get('bert_model', 'bert-base-uncased')
+            )
             
-            for batch in train_loader:
-                features = batch['features']
-                labels = batch['label']
-                
-                optimizer.zero_grad()
-                outputs = model(features)
-                loss = criterion(outputs, labels)
-                loss.backward()
-                optimizer.step()
-                
-                train_loss += loss.item()
+            # Anomaly Detection Model
+            self.models['anomaly'] = VariationalAutoencoder(
+                input_dim=self.config.get('input_dim', 128),
+                latent_dim=self.config.get('latent_dim', 32),
+                hidden_dims=self.config.get('hidden_dims', [64, 32])
+            )
             
-            # Validation
-            val_loss = self._validate_model(model, test_loader, criterion)
+            # Load pre-trained weights if available
+            self._load_pretrained_weights()
             
-            # Early stopping
-            if val_loss < best_loss:
-                best_loss = val_loss
-                patience_counter = 0
-                self._save_model(model, {'val_loss': val_loss})
-            else:
-                patience_counter += 1
-                
-            if patience_counter >= self.config['patience']:
-                self.logger.info(f"Early stopping at epoch {epoch}")
-                break
+        except Exception as e:
+            self.logger.error(f"Error initializing models: {e}")
+            raise
+
+    async def process_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """Process security event through AI models"""
+        try:
+            # Preprocess event data
+            features = self._extract_features(event)
             
-            self.logger.info(f"Epoch {epoch}: train_loss={train_loss/len(train_loader):.4f}, val_loss={val_loss:.4f}")
-        
-        self.current_model = model
-        return model
-    
-    def _create_model(self) -> BaseModel:
-        """Create model instance"""
-        model_class = self.config['model_class']
-        return model_class(self.config)
-    
-    def _create_optimizer(self, model: BaseModel) -> torch.optim.Optimizer:
-        """Create optimizer"""
-        return torch.optim.Adam(
-            model.parameters(),
-            lr=self.config['learning_rate']
-        )
-    
-    def _create_criterion(self) -> torch.nn.Module:
-        """Create loss criterion"""
-        return torch.nn.CrossEntropyLoss()
-    
-    def _validate_model(self,
-                       model: BaseModel,
-                       test_loader: torch.utils.data.DataLoader,
-                       criterion: torch.nn.Module) -> float:
-        """Validate model"""
-        model.eval()
-        total_loss = 0
-        
+            # Run threat detection
+            threat_result = await self._detect_threats(features)
+            
+            # Run anomaly detection
+            anomaly_result = await self._detect_anomalies(features)
+            
+            # Combine and analyze results
+            analysis = self._combine_analysis(threat_result, anomaly_result)
+            
+            # Update adaptive learning
+            await self.adaptive_learner.learn_from_event(event, analysis)
+            
+            return analysis
+            
+        except Exception as e:
+            self.logger.error(f"Error processing event: {e}")
+            return {
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            }
+
+    async def _detect_threats(self, features: torch.Tensor) -> Dict[str, Any]:
+        """Detect threats using threat detection model"""
         with torch.no_grad():
-            for batch in test_loader:
-                features = batch['features']
-                labels = batch['label']
-                
-                outputs = model(features)
-                loss = criterion(outputs, labels)
-                total_loss += loss.item()
-                
-        return total_loss / len(test_loader)
-    
-    def _save_model(self,
-                   model: BaseModel,
-                   metadata: Optional[Dict[str, Any]] = None):
-        """Save model checkpoint"""
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        save_path = f"{self.config['checkpoint_dir']}/model_{timestamp}.pt"
-        
-        metadata = metadata or {}
-        metadata.update({
-            'timestamp': timestamp,
-            'config': self.config
-        })
-        
-        model.save_model(save_path, metadata)
-        self.model_history.append(save_path)
-        
-        self.logger.info(f"Model saved: {save_path}")
+            threat_model = self.models['threat']
+            outputs = threat_model(features)
+            
+            return {
+                'threat_level': outputs['threat_level'],
+                'confidence': outputs['confidence'],
+                'indicators': outputs['indicators'],
+                'explanation': threat_model.explain_prediction(outputs)
+            }
+
+    async def _detect_anomalies(self, features: torch.Tensor) -> Dict[str, Any]:
+        """Detect anomalies using VAE model"""
+        with torch.no_grad():
+            anomaly_model = self.models['anomaly']
+            reconstruction, mu, logvar = anomaly_model(features)
+            
+            anomaly_score = anomaly_model.compute_anomaly_score(
+                features, reconstruction, mu, logvar
+            )
+            
+            return {
+                'is_anomaly': anomaly_score > anomaly_model.threshold,
+                'anomaly_score': float(anomaly_score),
+                'reconstruction_error': float(torch.mean((features - reconstruction)**2))
+            }

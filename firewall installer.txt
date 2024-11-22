@@ -1,0 +1,8 @@
+# Untuk Cisco device
+python3 firewall_installer.py --type cisco --ip 192.168.1.1 --username admin --password secret --server siem.example.com:514
+
+# Untuk Fortinet device
+python3 firewall_installer.py --type fortinet --ip 192.168.1.2 --username admin --password secret --server siem.example.com:514
+
+# Untuk Palo Alto device
+python3 firewall_installer.py --type paloalto --ip 192.168.1.3 --username admin --password secret --server siem.example.com:514

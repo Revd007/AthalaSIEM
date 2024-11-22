@@ -1,0 +1,5 @@
+# Install agent dengan konfigurasi default
+sudo python3 linux_installer.py --server siem.example.com:8080
+
+# Install dengan log sources kustom
+sudo python3 linux_installer.py --server siem.example.com:8080 --logs /var/log/syslog /var/log/auth.log /var/log/kern.log

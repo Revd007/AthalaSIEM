@@ -6,6 +6,7 @@ load_dotenv()
 class Settings:
     PROJECT_NAME: str = "SIEM Backend"
     PROJECT_VERSION: str = "1.0.0"
+    AI_MODEL_NAME: str = "Donquixote Athala"
     
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-here")
     ALGORITHM: str = "HS256"
@@ -26,5 +27,20 @@ class Settings:
     
     # API settings
     API_PREFIX: str = "/api/v1"
+    
+    # Service settings
+    PORT: int = int(os.getenv("PORT", "8080"))
+    USE_HTTPS: bool = os.getenv("USE_HTTPS", "false").lower() == "true"
+    SSL_KEYFILE: str = os.getenv("SSL_KEYFILE", "certs/key.pem")
+    SSL_CERTFILE: str = os.getenv("SSL_CERTFILE", "certs/cert.pem")
+    
+    # Database settings
+    DB_TYPE: str = os.getenv("DB_TYPE", "MSSQL")  # MSSQL or SQLite
+    DB_AUTO_INSTALL: bool = True
+    
+    # Service management
+    SERVICE_NAME: str = "AthalaSIEM"
+    SERVICE_DISPLAY_NAME: str = "AthalaSIEM Service"
+    SERVICE_DESCRIPTION: str = "AthalaSIEM Security Information and Event Management Service"
     
 settings = Settings()
