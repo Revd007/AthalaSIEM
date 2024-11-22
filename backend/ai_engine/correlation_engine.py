@@ -40,7 +40,9 @@ class CorrelationEngine:
         # 2. Extract features
         features = self.extract_features(cleaned_event)
         
-        # 3. Check for anomalies
+        # 3. Check for anomalies if detector is available
+        # Scale features before anomaly detection
+        scaled_features = self.scaler.fit_transform([features])[0] if features else None
         anomaly_result = None
         if self.anomaly_detector:
             anomaly_result = self.anomaly_detector.predict(features)
@@ -231,8 +233,38 @@ class CorrelationEngine:
             'severity': self.calculate_alert_severity(event, correlations, anomaly_result, threat_result)
         }
         
-        # Add alert to database and notify relevant systems
-        # Implementation depends on your alert handling system
+        # Add alert to database
+        await self.db.alerts.insert_one(alert)
+        
+        # Notify relevant systems
+        if alert['severity'] >= 4:
+            # High severity - notify immediately
+            await self.notification_service.send_urgent_alert(alert)
+        else:
+            # Lower severity - add to notification queue
+            await self.notification_service.queue_alert(alert)
+        
+        # Log alert
+        self.logger.info(
+            f"Alert triggered - Severity: {alert['severity']}, "
+            f"Event ID: {event.get('id', 'unknown')}"
+        )
+        # Update alert metrics
+        await self.metrics_tracker.update_metrics({
+            'alert_severity': alert['severity'],
+            'correlation_count': len(correlations),
+            'has_anomaly': bool(anomaly_result and anomaly_result.get('is_anomaly')),
+            'has_threat': bool(threat_result and threat_result.get('threat_probs', [0])[0] > 0.8)
+        }, step=self.alert_counter)
+        
+        # Store alert metadata for pattern analysis
+        alert_metadata = {
+            'id': str(alert['_id']),
+            'severity': alert['severity'],
+            'timestamp': alert['timestamp'],
+            'correlation_patterns': [c['pattern'] for c in correlations] if correlations else []
+        }
+        self.alert_history.append(alert_metadata)
         pass
     
     def calculate_alert_severity(self, event: Dict, correlations: List[Dict],

@@ -3,10 +3,8 @@ import os
 from datetime import datetime
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import *
 import json
-import sqlite3
-import subprocess
 
 class BackupManager:
     def __init__(self, config: Dict[str, Any]):

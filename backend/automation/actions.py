@@ -33,8 +33,43 @@ class SecurityActions:
 
     async def quarantine_host(self, hostname: str) -> Dict[str, Any]:
         try:
-            # Implement host quarantine logic
-            # This could involve VLAN changes, firewall rules, etc.
+            # Add host to quarantine VLAN
+            response = requests.post(
+                f"{self.firewall_api}/quarantine",
+                json={"hostname": hostname}
+            )
+            
+            # Block all outbound traffic except essential services
+            response = requests.post(
+                f"{self.firewall_api}/restrict",
+                json={
+                    "hostname": hostname,
+                    "allowed_ports": [53, 80, 443]  # DNS and web traffic only
+                }
+            )
+            
+            # Log quarantine action
+            logging.info(f"Host {hostname} placed in quarantine VLAN with restricted access")
+            # Apply VLAN changes
+            response = requests.post(
+                f"{self.firewall_api}/vlan",
+                json={
+                    "hostname": hostname,
+                    "vlan": "quarantine"
+                }
+            )
+            
+            # Apply additional firewall rules
+            response = requests.post(
+                f"{self.firewall_api}/rules",
+                json={
+                    "hostname": hostname,
+                    "rules": [
+                        {"action": "deny", "direction": "inbound", "all": True},
+                        {"action": "allow", "direction": "outbound", "ports": [53, 80, 443]}
+                    ]
+                }
+            )
             return {
                 'status': 'success',
                 'message': f'Host {hostname} quarantined successfully',
@@ -50,7 +85,33 @@ class SecurityActions:
 
     async def send_alert(self, alert_data: Dict[str, Any]) -> Dict[str, Any]:
         try:
-            # Implement alert sending logic (email, SMS, etc.)
+            # Send email alert
+            email_payload = {
+                "to": alert_data.get("recipients", []),
+                "subject": f"Security Alert: {alert_data.get('title')}",
+                "body": alert_data.get("description", "")
+            }
+            email_response = requests.post(
+                f"{self.notification_api}/email",
+                json=email_payload
+            )
+
+            # Send SMS if phone numbers provided
+            if "phone_numbers" in alert_data:
+                sms_payload = {
+                    "to": alert_data["phone_numbers"],
+                    "message": f"ALERT: {alert_data.get('title')} - {alert_data.get('description')}"
+                }
+                sms_response = requests.post(
+                    f"{self.notification_api}/sms",
+                    json=sms_payload
+                )
+
+            # Log alert details
+            logging.info(
+                f"Alert sent - Title: {alert_data.get('title')}, "
+                f"Recipients: {alert_data.get('recipients')}"
+            )
             return {
                 'status': 'success',
                 'message': 'Alert sent successfully',

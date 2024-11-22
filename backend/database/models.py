@@ -138,4 +138,41 @@ class PlaybookRun(Base):
     end_time = Column(DateTime, nullable=True)
     result = Column(JSON, nullable=True)
 
-# Add more models as needed for your specific use case
+class PlaybookTemplate(Base):
+    __tablename__ = "playbook_templates"
+
+    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
+    name = Column(String(100), nullable=False)
+    description = Column(String(500))
+    content = Column(JSON, nullable=False)  # Stores the playbook definition/steps
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    created_by = Column(UNIQUEIDENTIFIER, ForeignKey('users.id'))
+    is_active = Column(Boolean, default=True)
+
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
+    name = Column(String(50), nullable=False, unique=True)
+    color = Column(String(7))  # Hex color code
+    created_at = Column(DateTime, default=func.now())
+
+class AlertTag(Base):
+    __tablename__ = "alert_tags"
+
+    alert_id = Column(Integer, ForeignKey('alerts.id'), primary_key=True)
+    tag_id = Column(UNIQUEIDENTIFIER, ForeignKey('tags.id'), primary_key=True)
+    added_at = Column(DateTime, default=func.now())
+    added_by = Column(UNIQUEIDENTIFIER, ForeignKey('users.id'))
+
+class Comment(Base):
+    __tablename__ = "comments"
+
+    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
+    alert_id = Column(Integer, ForeignKey('alerts.id'))
+    user_id = Column(UNIQUEIDENTIFIER, ForeignKey('users.id'))
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    parent_id = Column(UNIQUEIDENTIFIER, ForeignKey('comments.id'), nullable=True)

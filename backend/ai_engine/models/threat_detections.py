@@ -115,4 +115,30 @@ class ThreatDetector(nn.Module):
         for token, importance in important_tokens:
             explanation += f"- {token}: {importance:.3f}\n"
             
+        # Combine insights from multiple models for more robust detection
+        pattern_insights = ""
+        risk_insights = ""
+        behavior_insights = ""
+        
+        # Get pattern recognition insights if available
+        if hasattr(self, 'pattern_recognizer'):
+            pattern_scores = self.pattern_recognizer(torch.tensor(prediction['attention_weights']))
+            if pattern_scores['pattern_detected'].item() > 0.5:
+                pattern_insights = "\nSuspicious patterns detected in text structure"
+        
+        # Get risk assessment if available 
+        if hasattr(self, 'risk_assessor'):
+            risk_factors = self.risk_assessor(torch.tensor(prediction['attention_weights']))
+            if risk_factors['overall_risk'].item() > 0.7:
+                risk_insights = f"\nHigh risk factors detected (Risk score: {risk_factors['overall_risk'].item():.2f})"
+        
+        # Get behavior analysis if available
+        if hasattr(self, 'behavior_analyzer'):
+            behavior = self.behavior_analyzer(torch.tensor(prediction['attention_weights']))
+            if behavior['risk_score'].item() > 0.6:
+                behavior_insights = f"\nConcerning behavior patterns identified (Score: {behavior['risk_score'].item():.2f})"
+        
+        # Combine all insights
+        explanation += pattern_insights + risk_insights + behavior_insights
+        
         return explanation

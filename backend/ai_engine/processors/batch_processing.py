@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import List, Dict, Any, Generator
 import numpy as np
 import torch
@@ -32,7 +33,11 @@ class BatchProcessor:
         if len(self.event_queue) < self.max_queue_size:
             self.event_queue.append(event)
             
-            # Trigger processing if conditions are met
+            # Check if we have enough events or enough time has passed
+            current_time = time.time()
+            if (len(self.event_queue) >= self.batch_size or 
+                (current_time - self.last_process_time) >= self.processing_interval):
+                await self._check_processing_conditions()
             await self._check_processing_conditions()
         else:
             logging.warning("Event queue is full, dropping event")
@@ -107,7 +112,28 @@ class BatchProcessor:
     
     def _process_single_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """Process a single event"""
-        # Implement your event processing logic here
+        # Normalize event data
+        normalized_event = self.data_normalizer.normalize_event(event)
+        
+        # Extract features
+        features = self.feature_engineer.extract_features(normalized_event)
+        
+        # Get model predictions
+        predictions = self.model_manager.process_event(features)
+        
+        # Analyze patterns and risks
+        pattern_analysis = self.pattern_recognizer(predictions['attention_weights'])
+        risk_assessment = self.risk_assessor(predictions['attention_weights'])
+        
+        # Combine results
+        processed_event = {
+            'event_id': event.get('id'),
+            'normalized_data': normalized_event,
+            'predictions': predictions,
+            'pattern_analysis': pattern_analysis,
+            'risk_assessment': risk_assessment,
+            'timestamp': datetime.now().isoformat()
+        }
         return event
 
 class BatchDataset(Dataset):

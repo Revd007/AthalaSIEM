@@ -157,4 +157,33 @@ class ModelEvaluator:
         plt.savefig(save_path / 'confusion_matrix.png')
         plt.close()
         
-        # Additional visualizations as needed
+        # ROC curve
+        plt.figure(figsize=(10, 8))
+        plt.plot(self.metrics['fpr'], self.metrics['tpr'])
+        plt.plot([0, 1], [0, 1], 'k--')
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate') 
+        plt.title('ROC Curve')
+        plt.savefig(save_path / 'roc_curve.png')
+        plt.close()
+
+        # Precision-Recall curve
+        plt.figure(figsize=(10, 8))
+        plt.plot(self.metrics['recall'], self.metrics['precision'])
+        plt.xlabel('Recall')
+        plt.ylabel('Precision')
+        plt.title('Precision-Recall Curve')
+        plt.savefig(save_path / 'precision_recall.png')
+        plt.close()
+
+        # Feature importance plot
+        if 'feature_importance' in self.metrics:
+            plt.figure(figsize=(12, 6))
+            features = list(self.metrics['feature_importance'].keys())
+            importance = list(self.metrics['feature_importance'].values())
+            plt.barh(features, importance)
+            plt.xlabel('Importance Score')
+            plt.title('Feature Importance')
+            plt.tight_layout()
+            plt.savefig(save_path / 'feature_importance.png')
+            plt.close()

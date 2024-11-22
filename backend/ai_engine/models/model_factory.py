@@ -3,6 +3,10 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 import logging
+
+from ai_engine.models.behavior_analyzer import BehaviorAnalyzer
+from ai_engine.models.pattern_recognizer import PatternRecognizer
+from ai_engine.models.risk_assessor import RiskAssessor
 from .threat_detections import ThreatDetector
 from .anomaly_detector import VariationalAutoencoder
 from .base_model import BaseModel

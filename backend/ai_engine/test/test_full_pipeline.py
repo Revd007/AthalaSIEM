@@ -56,6 +56,18 @@ class TestFullPipeline:
         assert predictions.shape == test_batch['labels'].shape
         
         # Additional assertions for model behavior
+        assert torch.all(predictions >= 0) and torch.all(predictions <= 1), "Predictions should be probabilities between 0 and 1"
+        assert not torch.isnan(predictions).any(), "Predictions should not contain NaN values"
+        assert not torch.isinf(predictions).any(), "Predictions should not contain infinity values"
+        
+        # Test batch processing
+        batch_size = test_batch['input_ids'].size(0)
+        assert predictions.size(0) == batch_size, f"Expected predictions batch size {batch_size}, got {predictions.size(0)}"
+        
+        # Verify prediction classes
+        pred_classes = torch.argmax(predictions, dim=-1)
+        num_classes = predictions.size(-1)
+        assert torch.all(pred_classes < num_classes), "Predicted classes should be valid indices"
         self._test_model_behavior(model)
         
     def _test_model_behavior(self, model):

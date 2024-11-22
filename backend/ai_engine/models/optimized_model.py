@@ -47,5 +47,17 @@ class OptimizedAIModel(nn.Module):
         return result
     
     def _get_cache_key(self, input_data: Dict[str, torch.Tensor]) -> str:
-        # Create unique key for input data
+        # Create unique key by combining tensor shapes and first few values
+        key_parts = []
+        for name, tensor in input_data.items():
+            # Get tensor shape and type
+            shape_str = 'x'.join(str(dim) for dim in tensor.shape)
+            dtype_str = str(tensor.dtype)
+            
+            # Get first few values as string (up to 5)
+            values = tensor.flatten()[:5].tolist()
+            values_str = ','.join(f'{v:.4f}' for v in values)
+            
+            # Combine into key part
+            key_parts.append(f'{name}:{shape_str}:{dtype_str}:{values_str}')
         return str(hash(tuple(sorted(input_data.items()))))
