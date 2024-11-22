@@ -1,11 +1,12 @@
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Union, Optional
+from typing import Dict, List, Union, Optional, Any
 from datetime import datetime
 import ipaddress
 import re
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.feature_extraction.text import TfidfVectorizer
+import logging
 
 class FeatureEngineer:
     def __init__(self):
@@ -13,6 +14,10 @@ class FeatureEngineer:
         self.encoders = {}
         self.tfidf = TfidfVectorizer(max_features=100)
         self.ip_patterns = self._compile_ip_patterns()
+        self.feature_columns = [
+            'severity', 'source_type', 'event_type', 'time_of_day',
+            'is_weekend', 'user_risk_score'
+        ]
         
     def _compile_ip_patterns(self) -> Dict[str, re.Pattern]:
         return {
@@ -212,3 +217,57 @@ class FeatureEngineer:
         ])
         
         return feature_names
+    
+    def process_features(self, event: Dict[str, Any]) -> np.ndarray:
+        """Convert raw event data into feature vector"""
+        try:
+            features = []
+            
+            # Severity (normalized)
+            severity = float(event.get('severity', 0)) / 5.0
+            features.append(severity)
+            
+            # Source type (one-hot encoded)
+            source_type = self._encode_source(event.get('source', ''))
+            features.extend(source_type)
+            
+            # Event type (one-hot encoded)
+            event_type = self._encode_event_type(event.get('event_type', ''))
+            features.extend(event_type)
+            
+            # Time features
+            timestamp = event.get('timestamp')
+            if timestamp:
+                time_features = self._extract_time_features(timestamp)
+                features.extend(time_features)
+            else:
+                features.extend([0, 0])  # Default time features
+            
+            # User risk score (if available)
+            user_risk = float(event.get('user_risk_score', 0))
+            features.append(user_risk)
+            
+            return np.array(features, dtype=np.float32)
+            
+        except Exception as e:
+            logging.error(f"Feature engineering error: {e}")
+            # Return zero vector if processing fails
+            return np.zeros(len(self.feature_columns), dtype=np.float32)
+
+    def _encode_source(self, source: str) -> list:
+        """Simple one-hot encoding for source types"""
+        source_types = ['System', 'Security', 'Application', 'Other']
+        encoding = [1 if source in s else 0 for s in source_types]
+        return encoding
+
+    def _encode_event_type(self, event_type: str) -> list:
+        """Simple one-hot encoding for event types"""
+        event_types = ['login', 'logout', 'error', 'warning', 'info']
+        encoding = [1 if event_type in e else 0 for e in event_types]
+        return encoding
+
+    def _extract_time_features(self, timestamp) -> list:
+        """Extract time-based features"""
+        hour = timestamp.hour / 24.0  # Normalize hour
+        is_weekend = 1.0 if timestamp.weekday() >= 5 else 0.0
+        return [hour, is_weekend]

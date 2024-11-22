@@ -1,12 +1,12 @@
 import datetime
 import torch
-import numpy as nn
+import torch.nn as nn
 from typing import Dict, List, Any, Optional
 from sklearn.cluster import DBSCAN
 from collections import defaultdict
 
-from backend.ai_engine.core.knowledge_graph import KnowledgeGraph
-from backend.ai_engine.training.difficulty_estimator import DifficultyEstimator
+from .difficulty_estimator import DifficultyEstimator
+from ..core.knowledge_graph import KnowledgeGraph
 
 class AdaptiveLearner:
     def __init__(self, model: nn.Module, config: Dict[str, Any]):

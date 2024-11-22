@@ -1,11 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from requests import Session
-from pytest import Session
 from api.routes import events, alerts, dashboard
 from auth.routes.auth import router as auth_router
-from database.connection import engine, get_db
-from database.models import Base, Event, Alert
+from collectors import windows_collector
+from database.connection import AsyncSessionLocal, engine, get_db
+from database.models import Base, Event, Alert, User as UserModel
 import uvicorn
 import asyncio
 import logging
@@ -14,20 +14,66 @@ from datetime import datetime, timedelta
 from collectors.windows_collector import WindowsEventCollector
 from collectors.network_collector import NetworkCollector
 from ai_engine.correlation_engine import CorrelationEngine
+from contextlib import asynccontextmanager
+import sys
+import ctypes
+from sqlalchemy.future import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from schemas.event import Event as EventSchema
+from schemas.user import User as UserSchema
 
-# Setup logging
+# Check if running as admin
+def is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/siem.log'),
-        logging.StreamHandler()
-    ]
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-app = FastAPI(title="SIEM Solution API")
+# Verify admin privileges
+if not is_admin():
+    logging.warning("Application should be run as Administrator for full functionality")
 
-# CORS configuration
+# Create collector instance with configuration
+collector_config = {
+    'log_types': ['System', 'Security', 'Application'],
+    'collection_interval': 10,  # seconds
+    'enable_wmi': False  # Set to True only when running as Administrator
+}
+
+# Create collector instance
+windows_collector = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    global windows_collector
+    try:
+        if is_admin():  # Only start collector if running as admin
+            windows_collector = WindowsEventCollector(collector_config)
+            # Start the event collection task
+            asyncio.create_task(collect_events())
+            # Start monitoring
+            asyncio.create_task(windows_collector.monitor_system_changes())
+        else:
+            logging.error("Administrator privileges required for system monitoring")
+    except Exception as e:
+        logging.error(f"Error starting collector tasks: {e}")
+    
+    yield
+    
+    # Shutdown
+    if windows_collector:
+        windows_collector.cleanup()
+
+app = FastAPI(lifespan=lifespan)
+
+# CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -170,44 +216,59 @@ async def test_correlation_engine():
         logging.error(f"Error testing correlation engine: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.on_event("startup")
-async def startup_event():
-    # Create database tables
-    Base.metadata.create_all(bind=engine)
-    
-    # Initialize collectors
-    windows_collector = WindowsEventCollector({
-        'log_types': ['System', 'Security'],
-        'collection_interval': 10
-    })
-    network_collector = NetworkCollector()
-    
-    # Initialize correlation engine
-    correlation_engine = CorrelationEngine()
-    
-    # Start collection tasks
-    asyncio.create_task(start_collectors(
-        windows_collector,
-        network_collector,
-        correlation_engine
-    ))
+async def collect_events():
+    """Background task to collect events"""
+    if not windows_collector:
+        return
+        
+    try:
+        async for event in windows_collector.collect_logs():
+            if event:
+                logging.info(f"Collected event: {event.get('event_id')} from {event.get('source')}")
+                try:
+                    # Process with AI
+                    ai_result = await windows_collector.correlation_engine.process_event(event)
+                    
+                    # Use async database session
+                    async with AsyncSessionLocal() as session:
+                        try:
+                            # Create new event
+                            new_event = Event(
+                                timestamp=event['timestamp'],
+                                source=event['source'],
+                                event_type=event['event_type'],
+                                severity=event['severity'],
+                                message=event['message'],
+                                ai_analysis=ai_result
+                            )
+                            
+                            # Add and commit asynchronously
+                            session.add(new_event)
+                            await session.commit()
+                            
+                        except Exception as db_error:
+                            await session.rollback()
+                            logging.error(f"Database error: {db_error}")
+                            
+                except Exception as e:
+                    logging.error(f"Error processing event: {e}")
+                    
+    except Exception as e:
+        logging.error(f"Error in collect_events: {e}")
 
-async def start_collectors(windows_collector, network_collector, correlation_engine):
-    while True:
-        try:
-            # Collect and process events
-            windows_events = windows_collector.collect_logs()
-            network_events = network_collector.start_collection()
-            
-            async for event in windows_events:
-                await correlation_engine.process_event(event)
-            
-            async for event in network_events:
-                await correlation_engine.process_event(event)
-                
-        except Exception as e:
-            logging.error(f"Error in collectors: {e}")
-            await asyncio.sleep(5)
+@app.get("/events/", response_model=List[EventSchema])
+async def read_events(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db)):
+    """Get list of events"""
+    try:
+        async with db as session:
+            result = await session.execute(
+                select(Event).offset(skip).limit(limit)
+            )
+            events = result.scalars().all()
+            return events
+    except Exception as e:
+        logging.error(f"Error reading events: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)

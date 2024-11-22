@@ -17,22 +17,17 @@ class ReleasePackager:
     def package_release(self):
         """Create release package"""
         try:
-            # Buat direktori release
+            # Build installer terlebih dahulu
+            from build_installer import InstallerBuilder
+            builder = InstallerBuilder()
+            builder.build()
+            
+            # Lanjutkan dengan packaging
             self._create_release_dirs()
-            
-            # Copy installer
             self._copy_installer()
-            
-            # Copy dokumentasi
             self._copy_docs()
-            
-            # Generate checksums
             checksums = self._generate_checksums()
-            
-            # Create release info
             release_info = self._create_release_info(checksums)
-            
-            # Package everything
             self._create_release_archive()
             
             self.logger.info("Release package created successfully")

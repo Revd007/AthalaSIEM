@@ -19,17 +19,19 @@ class UserRole(enum.Enum):
 user_groups = Table(
     'user_groups',
     Base.metadata,
-    Column('user_id', UNIQUEIDENTIFIER, ForeignKey('users.id')),
-    Column('group_id', UNIQUEIDENTIFIER, ForeignKey('groups.id'))
+    Column('user_id', Integer, ForeignKey('siem.users.id'), primary_key=True),
+    Column('group_id', Integer, ForeignKey('siem.groups.id'), primary_key=True),
+    schema='siem'
 )
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = {'schema': 'siem'}
 
-    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
+    id = Column(Integer, primary_key=True)
     username = Column(String(50), unique=True, nullable=False)
-    email = Column(String(100), unique=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
+    email = Column(String(100), unique=True)
+    password_hash = Column(String(200))
     full_name = Column(String(100))
     role = Column(Enum(UserRole), nullable=False, default=UserRole.VIEWER)
     is_active = Column(Boolean, default=True)
@@ -38,21 +40,30 @@ class User(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     # Relationships
-    groups = relationship("Group", secondary=user_groups, back_populates="users")
+    groups = relationship(
+        "Group",
+        secondary=user_groups,
+        back_populates="users"
+    )
     audit_logs = relationship("AuditLog", back_populates="user")
     alerts = relationship("Alert", back_populates="assigned_to")
 
 class Group(Base):
     __tablename__ = "groups"
+    __table_args__ = {'schema': 'siem'}
 
-    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
+    id = Column(Integer, primary_key=True)
     name = Column(String(50), unique=True, nullable=False)
     description = Column(String(255))
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
     # Relationships
-    users = relationship("User", secondary=user_groups, back_populates="groups")
+    users = relationship(
+        "User",
+        secondary=user_groups,
+        back_populates="groups"
+    )
 
 class Alert(Base):
     __tablename__ = "alerts"
@@ -68,6 +79,8 @@ class Alert(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     resolved_at = Column(DateTime)
     alert_metadata = Column(JSON)
+    ai_insights = Column(JSON, nullable=True)
+    related_events = Column(JSON, nullable=True)
 
     # Relationships
     assigned_to = relationship("User", back_populates="alerts")
@@ -75,17 +88,19 @@ class Alert(Base):
 
 class Event(Base):
     __tablename__ = "events"
+    __table_args__ = {'schema': 'siem'}
 
-    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
+    id = Column(Integer, primary_key=True)
     alert_id = Column(UNIQUEIDENTIFIER, ForeignKey('alerts.id'))
     event_type = Column(String(50), nullable=False)
-    source = Column(String(100))
+    source = Column(String(100), nullable=False)
     timestamp = Column(DateTime, nullable=False)
     severity = Column(Integer)
     message = Column(Text)
     raw_data = Column(JSON)
     processed_data = Column(JSON)
     created_at = Column(DateTime, default=func.now())
+    ai_analysis = Column(JSON)
 
     # Relationships
     alert = relationship("Alert", back_populates="events")

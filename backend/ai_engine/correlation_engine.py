@@ -6,17 +6,21 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from ai_engine.models.anomaly_detector import AnomalyDetector
 from ai_engine.models.threat_detections import ThreatDetector
+import logging
 
 class CorrelationEngine:
     def __init__(self, 
-                 time_window: int = 300,
-                 anomaly_detector: Optional[AnomalyDetector] = None,
-                 threat_detector: Optional[ThreatDetector] = None):
+                 model_manager,
+                 time_window: int = 300):
         self.time_window = time_window
         self.event_buffer = defaultdict(list)
         self.correlation_rules = self.load_correlation_rules()
-        self.anomaly_detector = anomaly_detector
-        self.threat_detector = threat_detector
+        self.model_manager = model_manager
+        
+        # Get models from model manager
+        self.anomaly_detector = model_manager.models.get('anomaly_detector')
+        self.threat_detector = model_manager.models.get('threat_detector')
+        
         self.scaler = StandardScaler()
         
         # Feature extraction settings
@@ -27,58 +31,45 @@ class CorrelationEngine:
         self.known_patterns = defaultdict(list)
         self.pattern_weights = defaultdict(float)
         
+        # Initialize logger
+        self.logger = logging.getLogger(__name__)
+        
     def load_correlation_rules(self) -> List[Dict]:
         """Load correlation rules from configuration"""
         # Implementation for loading rules
         pass
         
     async def process_event(self, event: Dict) -> Dict:
-        """Process a single event through the correlation pipeline"""
-        # 1. Clean and normalize event data
-        cleaned_event = self.clean_event(event)
-        
-        # 2. Extract features
-        features = self.extract_features(cleaned_event)
-        
-        # 3. Check for anomalies if detector is available
-        # Scale features before anomaly detection
-        scaled_features = self.scaler.fit_transform([features])[0] if features else None
-        anomaly_result = None
-        if self.anomaly_detector:
-            anomaly_result = self.anomaly_detector.predict(features)
-        
-        # 4. Check for threats
-        threat_result = None
-        if self.threat_detector:
-            threat_result = self.threat_detector.predict(str(cleaned_event))
-        
-        # 5. Add to event buffer
-        self.event_buffer[cleaned_event['source']].append({
-            **cleaned_event,
-            'features': features,
-            'anomaly_result': anomaly_result,
-            'threat_result': threat_result
-        })
-        
-        # 6. Clean old events
-        self.clean_old_events()
-        
-        # 7. Find correlations
-        correlations = await self.find_correlations(cleaned_event)
-        
-        # 8. Update patterns
-        self.update_patterns(cleaned_event, correlations)
-        
-        # 9. Generate alerts if necessary
-        if correlations or (anomaly_result and anomaly_result['is_anomaly']):
-            await self.trigger_alert(cleaned_event, correlations, anomaly_result, threat_result)
-        
-        return {
-            'event': cleaned_event,
-            'correlations': correlations,
-            'anomaly_result': anomaly_result,
-            'threat_result': threat_result
-        }
+        try:
+            # Extract features
+            features = self.extract_features(event)
+            
+            # Get AI analysis results using model manager
+            anomaly_result = await self.model_manager.detect_anomalies(features)
+            threat_result = await self.model_manager.analyze_threats(features)
+            
+            # Convert numpy/tensor values to Python primitives
+            return {
+                'is_anomaly': bool(anomaly_result.get('is_anomaly', False)),
+                'anomaly_score': float(anomaly_result.get('anomaly_score', 0.0)),
+                'is_threat': bool(threat_result.get('is_threat', False)),
+                'threat_score': float(threat_result.get('threat_score', 0.0)),
+                'confidence': float(min(
+                    anomaly_result.get('confidence', 0.0),
+                    threat_result.get('confidence', 0.0)
+                ))
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Correlation engine error: {e}")
+            return {
+                'is_anomaly': False,
+                'anomaly_score': 0.0,
+                'is_threat': False,
+                'threat_score': 0.0,
+                'confidence': 0.0,
+                'error': str(e)
+            }
     
     def clean_event(self, event: Dict) -> Dict:
         """Clean and normalize event data"""

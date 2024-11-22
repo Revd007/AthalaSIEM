@@ -1,7 +1,7 @@
 // src/app/dashboard/overview/page.tsx
 import { Suspense } from 'react'
 import { Card } from '../../../components/ui/card'
-import { AlertSummary } from '../../../components/dashboard/alert-summary'
+import AlertSummary from '../../../components/dashboard/alert-summary'
 import { SecurityMetrics } from '../../../components/dashboard/SecurityMetrics'
 import { RecentActivity } from '../../../components/dashboard/recent-activity'
 import { SystemHealth } from '../../../components/dashboard/components/system-health'

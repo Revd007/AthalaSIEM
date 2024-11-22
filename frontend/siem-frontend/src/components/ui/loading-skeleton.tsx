@@ -1,14 +1,26 @@
 import React from 'react';
 
-export const LoadingSkeleton = () => {
+interface LoadingSkeletonProps {
+  rows?: number
+  height?: string
+  className?: string
+}
+
+export function LoadingSkeleton({ 
+  rows = 3, 
+  height = "h-4",
+  className = "" 
+}: LoadingSkeletonProps) {
   return (
-    <div className="animate-pulse">
-      <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
-      <div className="space-y-3">
-        <div className="h-3 bg-gray-200 rounded"></div>
-        <div className="h-3 bg-gray-200 rounded w-5/6"></div>
-        <div className="h-3 bg-gray-200 rounded w-4/6"></div>
-      </div>
+    <div className={`animate-pulse space-y-4 ${className}`}>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className={`${height} bg-gray-200 rounded ${
+            i === 0 ? 'w-3/4' : i === rows - 1 ? 'w-5/6' : 'w-full'
+          }`}
+        />
+      ))}
     </div>
-  );
-};
+  )
+}

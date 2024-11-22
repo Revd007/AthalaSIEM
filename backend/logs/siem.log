@@ -22,3 +22,11 @@
 2024-11-20 23:57:34,826 - root - ERROR - Failed to initialize handler for Security: (1314, 'OpenEventLogW', 'A required privilege is not held by the client.')
 2024-11-20 23:57:34,834 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
 2024-11-20 23:57:44,840 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-22 22:14:11,929 - root - ERROR - Failed to initialize handler for Security: (1314, 'OpenEventLogW', 'A required privilege is not held by the client.')
+2024-11-22 22:14:11,929 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-22 22:14:21,932 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-22 22:14:31,926 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-22 22:14:41,926 - root - ERROR - Error collecting Windows events: 'pywintypes.datetime' object cannot be interpreted as an integer
+2024-11-22 22:17:26,913 - root - ERROR - Failed to initialize handler for Security: (1314, 'OpenEventLogW', 'A required privilege is not held by the client.')
+2024-11-22 22:17:26,919 - root - ERROR - Error storing event in database: '_GeneratorContextManager' object does not support the asynchronous context manager protocol
+2024-11-22 22:17:26,920 - root - ERROR - Error in collectors: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()

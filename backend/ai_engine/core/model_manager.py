@@ -14,33 +14,37 @@ class ModelManager:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
-        self.model_name = "Donquixote Athala"
         self.models = {}
-        self.adaptive_learner = AdaptiveLearner(config)
-        self._initialize_models()
         
-    def _initialize_models(self):
-        """Initialize AI models"""
+        # Initialize models based on config
+        if config.get('feature_toggles', {}).get('anomaly_detection'):
+            self.init_anomaly_detector()
+            
+        if config.get('feature_toggles', {}).get('threat_detection'):
+            self.init_threat_detector()
+    
+    def init_anomaly_detector(self):
+        """Initialize anomaly detection model"""
         try:
-            # Threat Detection Model
-            self.models['threat'] = ThreatDetector(
-                num_classes=self.config.get('num_threat_classes', 5),
-                model_name=self.config.get('bert_model', 'bert-base-uncased')
-            )
-            
-            # Anomaly Detection Model
-            self.models['anomaly'] = VariationalAutoencoder(
-                input_dim=self.config.get('input_dim', 128),
-                latent_dim=self.config.get('latent_dim', 32),
-                hidden_dims=self.config.get('hidden_dims', [64, 32])
-            )
-            
-            # Load pre-trained weights if available
-            self._load_pretrained_weights()
-            
+            model_config = {
+                'input_dim': 256,
+                'latent_dim': 32,
+                'anomaly_threshold': 0.8
+            }
+            self.models['anomaly_detector'] = VariationalAutoencoder(model_config)
         except Exception as e:
-            self.logger.error(f"Error initializing models: {e}")
-            raise
+            self.logger.error(f"Error initializing anomaly detector: {e}")
+    
+    def init_threat_detector(self):
+        """Initialize threat detection model"""
+        try:
+            model_config = {
+                'num_classes': 5,
+                'threat_threshold': 0.7
+            }
+            self.models['threat_detector'] = ThreatDetector(model_config)
+        except Exception as e:
+            self.logger.error(f"Error initializing threat detector: {e}")
 
     async def process_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """Process security event through AI models"""
@@ -97,3 +101,44 @@ class ModelManager:
                 'anomaly_score': float(anomaly_score),
                 'reconstruction_error': float(torch.mean((features - reconstruction)**2))
             }
+
+    async def detect_anomalies(self, features: torch.Tensor) -> Dict[str, Any]:
+        """Detect anomalies using anomaly detection model"""
+        try:
+            if 'anomaly_detector' not in self.models:
+                return {'is_anomaly': False, 'anomaly_score': 0.0, 'confidence': 0.0}
+                
+            with torch.no_grad():
+                model = self.models['anomaly_detector']
+                outputs = model(features)
+                reconstruction_error = torch.mean((features - outputs['reconstruction'])**2)
+                
+                return {
+                    'is_anomaly': reconstruction_error > model.threshold,
+                    'anomaly_score': float(reconstruction_error),
+                    'confidence': float(outputs.get('confidence', 0.8))
+                }
+        except Exception as e:
+            self.logger.error(f"Error in anomaly detection: {e}")
+            return {'is_anomaly': False, 'anomaly_score': 0.0, 'confidence': 0.0}
+
+    async def analyze_threats(self, features: torch.Tensor) -> Dict[str, Any]:
+        """Analyze threats using threat detection model"""
+        try:
+            if 'threat_detector' not in self.models:
+                return {'is_threat': False, 'threat_score': 0.0, 'confidence': 0.0}
+                
+            with torch.no_grad():
+                model = self.models['threat_detector']
+                outputs = model(features)
+                threat_score = outputs.get('threat_score', 0.0)
+                
+                return {
+                    'is_threat': threat_score > model.threshold,
+                    'threat_score': float(threat_score),
+                    'indicators': outputs.get('indicators', []),
+                    'confidence': float(outputs.get('confidence', 0.8))
+                }
+        except Exception as e:
+            self.logger.error(f"Error in threat analysis: {e}")
+            return {'is_threat': False, 'threat_score': 0.0, 'confidence': 0.0}

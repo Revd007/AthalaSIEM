@@ -4,11 +4,12 @@ from sqlalchemy.orm import Session
 from datetime import timedelta
 
 from auth.dependencies.auth_handler import AuthHandler
-from auth.schemas.user import UserCreate, UserLogin, UserResponse
+from auth.schemas.user import UserLogin
 from auth.schemas.token import Token
 from database.connection import get_db
 from auth.utils.password import hash_password
-from auth.models.user import User, UserRole
+from database.models import User as UserModel
+from schemas.user import UserCreate, UserResponse, UserRole
 
 router = APIRouter()
 auth_handler = AuthHandler()
@@ -16,13 +17,13 @@ auth_handler = AuthHandler()
 @router.post("/register", response_model=UserResponse)
 async def register(user: UserCreate, db: Session = Depends(get_db)):
     # Check if user exists
-    if db.query(User).filter(User.email == user.email).first():
+    if db.query(UserModel).filter(UserModel.email == user.email).first():
         raise HTTPException(
             status_code=400,
             detail="Email already registered"
         )
     
-    if db.query(User).filter(User.username == user.username).first():
+    if db.query(UserModel).filter(UserModel.username == user.username).first():
         raise HTTPException(
             status_code=400,
             detail="Username already taken"
@@ -30,12 +31,12 @@ async def register(user: UserCreate, db: Session = Depends(get_db)):
     
     # Create new user
     hashed_password = hash_password(user.password)
-    db_user = User(
+    db_user = UserModel(
         email=user.email,
         username=user.username,
         password_hash=hashed_password,
         full_name=user.full_name,
-        role=UserRole.VIEWER  # Default role for new users
+        role=UserRole.VIEWER  # Use the enum directly
     )
     
     try:
@@ -67,7 +68,7 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
     
     # Update last login
     user.last_login = func.now()
-    db.commit()
+    await db.commit()
     
     access_token = auth_handler.create_access_token(
         user, expires_delta=timedelta(minutes=30)
@@ -76,19 +77,17 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user(
-    current_user: User = Depends(auth_handler.get_current_user)
+    current_user: UserModel = Depends(auth_handler.get_current_user)
 ):
     return current_user
 
 @router.post("/logout")
-async def logout(current_user: User = Depends(auth_handler.get_current_user)):
-    # In a real application, you might want to invalidate the token
-    # or add it to a blacklist
+async def logout(current_user: UserModel = Depends(auth_handler.get_current_user)):
     return {"message": "Successfully logged out"}
 
 @router.post("/refresh-token", response_model=Token)
 async def refresh_token(
-    current_user: User = Depends(auth_handler.get_current_user),
+    current_user: UserModel = Depends(auth_handler.get_current_user),
 ):
     access_token = auth_handler.create_access_token(
         current_user,

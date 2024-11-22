@@ -1,0 +1,33 @@
+# AthalaSIEM Configuration File
+
+# Server Configuration
+server:
+  host: "localhost"
+  port: 8080
+  debug: false
+
+# Database Configuration
+database:
+  host: "localhost"
+  port: 5432
+  name: "athala_siem"
+  user: "admin"
+  password: "your_password_here"
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  file: "logs/athala_siem.log"
+  max_size: 10485760  # 10MB
+  backup_count: 5
+
+# Security Configuration
+security:
+  secret_key: "your_secret_key_here"
+  token_expiration: 3600  # seconds
+
+# Features Configuration
+features:
+  enable_alerts: true
+  enable_reporting: true
+  enable_dashboard: true

@@ -1,19 +1,42 @@
-import React from 'react';
+import { useQuery } from '@tanstack/react-query'
+import { Card, CardHeader, CardTitle } from '../ui/card'
+import { Alert } from '../../types/alert'
 
-export const AlertSummary = () => {
+async function fetchAlertSummary(): Promise<Alert[]> {
+  const response = await fetch('/api/alerts/summary')
+  if (!response.ok) throw new Error('Failed to fetch alerts')
+  return response.json()
+}
+
+export default function AlertSummary() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['alertSummary'],
+    queryFn: fetchAlertSummary
+  })
+
+  if (isLoading) return <div>Loading...</div>
+  if (error) return <div>Error loading alerts</div>
+
   return (
-    <div>
-      <h2 className="text-xl font-semibold mb-4">Alert Summary</h2>
-      <div className="space-y-2">
-        <div className="flex justify-between">
-          <span>Critical Alerts</span>
-          <span className="font-bold text-red-600">5</span>
-        </div>
-        <div className="flex justify-between">
-          <span>Warning Alerts</span>
-          <span className="font-bold text-yellow-600">12</span>
-        </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>Alert Summary</CardTitle>
+      </CardHeader>
+      <div className="p-6">
+        {data?.map((alert) => (
+          <div key={alert.id} className="flex items-center justify-between py-2 border-b last:border-0">
+            <div className="flex items-center gap-2">
+              <span className={`h-2 w-2 rounded-full ${
+                alert.severity === 'high' ? 'bg-red-500' :
+                alert.severity === 'medium' ? 'bg-yellow-500' :
+                'bg-blue-500'
+              }`} />
+              <span className="font-medium">{alert.title}</span>
+            </div>
+            <span className="text-sm text-gray-500">{alert.timestamp}</span>
+          </div>
+        ))}
       </div>
-    </div>
-  );
-};
+    </Card>
+  )
+}

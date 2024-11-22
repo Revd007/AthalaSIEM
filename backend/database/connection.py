@@ -1,52 +1,40 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
-import urllib.parse
-import logging
-from typing import Generator
-from contextlib import contextmanager
-import os
-from dotenv import load_dotenv
+import asyncio
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from contextlib import asynccontextmanager
+from .models.base import Base
 
-# Load environment variables
-load_dotenv()
+# Use async SQL Server driver
+SQLALCHEMY_DATABASE_URL = "mssql+aioodbc://revian_dbsiem:Wokolcoy@20@server:1433/siem_db?driver=ODBC+Driver+17+for+SQL+Server"
 
-# Configuration from environment variables
-DB_USER = os.getenv("DB_USER", "revian_dbsiem")
-DB_PASSWORD = urllib.parse.quote_plus(os.getenv("DB_PASSWORD", "wokolcoy20"))
-DB_HOST = os.getenv("DB_HOST", ".\SQLEXPRESS")
-DB_NAME = os.getenv("DB_NAME", "siem_db")
-DB_PORT = os.getenv("DB_PORT", "1433")
-
-# Create connection string
-SQLALCHEMY_DATABASE_URL = f"mssql+pyodbc://{DB_HOST}/{DB_NAME}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
-
-# Create engine with connection pooling
-engine = create_engine(
+engine = create_async_engine(
     SQLALCHEMY_DATABASE_URL,
-    pool_pre_ping=True,  # Enable connection health checks
-    pool_size=10,        # Maximum number of connections in the pool
-    max_overflow=20,     # Maximum number of connections that can be created beyond pool_size
-    pool_timeout=30,     # Seconds to wait before giving up on getting a connection
-    pool_recycle=1800,   # Recycle connections after 30 minutes
-    echo=False           # Set to True to log all SQL queries (development only)
+    echo=True,
+    future=True,
+    pool_pre_ping=True,
+    pool_recycle=3600
 )
 
-# Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+AsyncSessionLocal = sessionmaker(
+    engine,
+    class_=AsyncSession,
+    expire_on_commit=False
+)
 
-# Create base class for models
-Base = declarative_base()
+@asynccontextmanager
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            raise e
 
-@contextmanager
-def get_db() -> Generator:
-    """Database session context manager"""
-    db = SessionLocal()
-    try:
-        yield db
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        logging.error(f"Database error: {str(e)}")
-        raise
-    finally:
-        db.close()
+# Create all tables in the database
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+# Export Base and async session
+__all__ = ['Base', 'engine', 'AsyncSessionLocal', 'get_db', 'init_db']

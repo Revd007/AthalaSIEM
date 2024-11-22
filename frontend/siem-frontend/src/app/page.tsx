@@ -14,7 +14,27 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Add your login logic here
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      })
+
+      if (!response.ok) {
+        throw new Error('Login failed')
+      }
+
+      const data = await response.json()
+      // Store auth token or user data if needed
+      localStorage.setItem('token', data.token)
+    } catch (error) {
+      console.error('Login error:', error)
+      // Handle login error (e.g., show error message to user)
+      return
+    }
     router.push('/overview')
   }
 

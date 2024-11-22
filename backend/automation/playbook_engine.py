@@ -6,7 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from automation.actions import SecurityActions
 from database.models import PlaybookRun, Alert
-from database.connection import get_db
+from database.connection import get_db, AsyncSessionLocal
+from sqlalchemy.future import select
 
 class PlaybookEngine:
     def __init__(self):
@@ -36,47 +37,48 @@ class PlaybookEngine:
         if not playbook:
             raise ValueError(f"Playbook {playbook_id} not found")
 
-        # Create playbook run record
-        run_record = PlaybookRun(
-            alert_id=context.get('alert_id'),
-            playbook_id=playbook_id,
-            status='running',
-            start_time=datetime.utcnow()
-        )
+        async with AsyncSessionLocal() as db:
+            # Create playbook run record
+            run_record = PlaybookRun(
+                alert_id=context.get('alert_id'),
+                playbook_id=playbook_id,
+                status='running',
+                start_time=datetime.utcnow()
+            )
 
-        try:
-            db = await anext(get_db())
-            db.add(run_record)
-            await db.commit()
-            await db.refresh(run_record)
+            try:
+                db.add(run_record)
+                await db.commit()
+                await db.refresh(run_record)
 
-            # Execute playbook steps
-            for step in playbook['steps']:
-                result = await self.execute_step(step, context)
-                context.update(result)
+                # Execute playbook steps
+                for step in playbook['steps']:
+                    result = await self.execute_step(step, context)
+                    context.update(result)
 
-            # Update run record on success
-            run_record.status = 'completed'
-            run_record.result = context
-            run_record.end_time = datetime.utcnow()
+                # Update run record on success
+                run_record.status = 'completed'
+                run_record.result = context
+                run_record.end_time = datetime.utcnow()
 
-            return {
-                'status': 'success',
-                'playbook_id': playbook_id,
-                'results': context
-            }
+                return {
+                    'status': 'success',
+                    'playbook_id': playbook_id,
+                    'results': context
+                }
 
-        except Exception as e:
-            logging.error(f"Error executing playbook {playbook_id}: {e}")
-            run_record.status = 'failed'
-            run_record.result = {'error': str(e)}
-            run_record.end_time = datetime.utcnow()
-            raise
+            except Exception as e:
+                logging.error(f"Error executing playbook {playbook_id}: {e}")
+                run_record.status = 'failed'
+                run_record.result = {'error': str(e)}
+                run_record.end_time = datetime.utcnow()
+                await db.commit()
+                raise
 
-        finally:
-            db = await anext(get_db())
-            db.add(run_record)
-            await db.commit()
+            finally:
+                if not run_record.end_time:
+                    run_record.end_time = datetime.utcnow()
+                    await db.commit()
 
     async def execute_step(self, step: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -115,32 +117,40 @@ class PlaybookEngine:
                 resolved[key] = value
         return resolved
 
-    async def update_alert_status(self, alert_id: int, status: str) -> Dict[str, Any]:
+    async def update_alert_status(self, alert_id: str, status: str) -> Dict[str, Any]:
         """
         Update alert status in database
         """
-        db = await anext(get_db())
-        alert = db.query(Alert).filter(Alert.id == alert_id).first()
-        if alert:
-            alert.status = status
-            await db.commit()
-            return {'status': 'success', 'message': f'Alert status updated to {status}'}
-        return {'status': 'error', 'message': 'Alert not found'}
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(Alert).where(Alert.id == alert_id)
+            )
+            alert = result.scalar_one_or_none()
+            
+            if alert:
+                alert.status = status
+                await db.commit()
+                return {'status': 'success', 'message': f'Alert status updated to {status}'}
+            return {'status': 'error', 'message': 'Alert not found'}
 
     async def get_playbook_status(self, run_id: str) -> Dict[str, Any]:
         """
         Get status of a running playbook
         """
-        db = await anext(get_db())
-        run = db.query(PlaybookRun).filter(PlaybookRun.id == run_id).first()
-        if run:
-            return {
-                'status': run.status,
-                'start_time': run.start_time,
-                'end_time': run.end_time,
-                'result': run.result
-            }
-        return {'status': 'not_found'}
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(
+                select(PlaybookRun).where(PlaybookRun.id == run_id)
+            )
+            run = result.scalar_one_or_none()
+            
+            if run:
+                return {
+                    'status': run.status,
+                    'start_time': run.start_time,
+                    'end_time': run.end_time,
+                    'result': run.result
+                }
+            return {'status': 'not_found'}
 
     async def stop_playbook(self, run_id: str) -> Dict[str, Any]:
         """

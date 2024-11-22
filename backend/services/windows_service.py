@@ -8,7 +8,11 @@ import os
 import uvicorn
 from fastapi import FastAPI
 from database.connection import init_db
-from config.settings import settings
+from database.settings import settings
+from pathlib import Path
+
+# Add project root to Python path
+sys.path.append(str(Path(__file__).parent.parent.parent))
 
 class AthalaSIEMService(win32serviceutil.ServiceFramework):
     _svc_name_ = "AthalaSIEM"

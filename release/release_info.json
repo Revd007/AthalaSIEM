@@ -1,0 +1,14 @@
+{
+  "version": "1.0.0",
+  "release_date": "2024-11-23T00:12:16.825800",
+  "files": {
+    "README.md": "0d0656964a7e156e72c99e33490f6ded850612f53a41d53dd7c7345dc7064e36",
+    "bin\\AthalaSIEM_Installer.exe": "626464866ff5ff95481addac8ccd959f2e981958ad55fb2fd8c169bd9fda2b7a"
+  },
+  "requirements": {
+    "os": "Windows 10/11",
+    "python": ">=3.8",
+    "ram": "8GB minimum",
+    "disk": "10GB minimum"
+  }
+}

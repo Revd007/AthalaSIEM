@@ -17,10 +17,10 @@ class ServiceConfig:
 @dataclass
 class DatabaseConfig:
     type: str = "MSSQL"
-    host: str = ".\SQLEXPRESS"
+    host: str = "localhost"
     name: str = "siem_db"
     user: str = "revian_dbsiem"
-    password: str = "wokolcoy20"
+    password: str = "Wokolcoy@20"
     port: int = 1433
     auto_install: bool = True
 

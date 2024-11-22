@@ -10,6 +10,10 @@ class BaseModel(nn.Module):
         self.config = config
         self.version = config.get('version', '1.0')
         
+        # Add support for anomaly detection and threat intelligence
+        self.anomaly_threshold = config.get('anomaly_threshold', 0.8)
+        self.threat_threshold = config.get('threat_threshold', 0.7)
+        
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass to be implemented by child classes"""
         raise NotImplementedError
