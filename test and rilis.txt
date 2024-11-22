@@ -1,0 +1,13 @@
+# 1. Jalankan tests
+python scripts/run_tests.py
+
+# 2. Jalankan backend untuk testing
+python backend/main.py
+
+# 3. Jalankan frontend untuk testing (di terminal terpisah)
+cd frontend/siem-frontend
+npm install
+npm run dev
+
+# 4. Build installer
+python scripts/build_installer.py

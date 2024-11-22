@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sqlalchemy
+pyodbc
+pytorch
+transformers
+numpy
+pandas
+pywin32
+paramiko
+PyQt5
+bcrypt
+pyyaml
+python-jose[cryptography]

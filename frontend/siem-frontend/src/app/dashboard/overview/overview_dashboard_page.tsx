@@ -2,7 +2,7 @@
 import { Suspense } from 'react'
 import { Card } from '../../../components/ui/card'
 import { AlertSummary } from '../../../components/dashboard/alert-summary'
-import { SecurityMetrics } from '../../../components/dashboard/security-metrics'
+import { SecurityMetrics } from '../../../components/dashboard/SecurityMetrics'
 import { RecentActivity } from '../../../components/dashboard/recent-activity'
 import { SystemHealth } from '../../../components/dashboard/components/system-health'
 import { LoadingSkeleton } from '../../../components/ui/loading-skeleton'
