@@ -1,8 +1,12 @@
+import json
+from typing import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 import sys
 import os
+
+from api.middleware import logging
 from ..core.installer_manager import InstallerManager
 from ..core.progress_tracker import InstallationProgressTracker
 from ..core.sql_detector import SQLServerDetector
@@ -141,7 +145,40 @@ class InstallerWindow(QMainWindow):
     async def finish_installation(self):
         """Handle installation completion"""
         try:
-            # ... other installation completion code ...
+            # Update progress to 100%
+            self.update_progress({
+                'step_name': 'Installation Complete',
+                'progress': 100,
+                'message': 'Installation completed successfully',
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            })
+
+            # Save final configuration
+            config_path = self.install_path / 'config' / 'athala.conf'
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(config_path, 'w') as f:
+                json.dump(self.config, f, indent=4)
+
+            # Create necessary directories
+            log_dir = self.install_path / 'logs'
+            data_dir = self.install_path / 'data'
+            log_dir.mkdir(parents=True, exist_ok=True)
+            data_dir.mkdir(parents=True, exist_ok=True)
+
+            # Set up logging
+            logging.basicConfig(
+                filename=str(log_dir / 'athala.log'),
+                level=logging.INFO,
+                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+
+            # Show success message
+            QMessageBox.information(
+                self,
+                "Installation Complete",
+                "Athala SIEM has been successfully installed.\n\n"
+                "You can now start using the system."
+            )
             
             # Send notification if checkbox is checked
             if self.send_info_checkbox.isChecked():

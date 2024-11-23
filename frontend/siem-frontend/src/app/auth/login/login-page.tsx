@@ -14,7 +14,27 @@ export default function Login() {
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    // Add your login logic here
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      })
+
+      if (!response.ok) {
+        throw new Error('Login failed')
+      }
+
+      const data = await response.json()
+      // Store the token in localStorage or other state management
+      localStorage.setItem('token', data.token)
+    } catch (error) {
+      console.error('Login error:', error)
+      // Handle login error (e.g., show error message to user)
+      return
+    }
     router.push('/overview')
   }
 
@@ -24,7 +44,7 @@ export default function Login() {
         <div>
           <img
             className="mx-auto h-12 w-auto"
-            src="/images/logo.svg"
+            src="/assets/images/logo.svg"
             alt="SIEM Logo"
           />
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">

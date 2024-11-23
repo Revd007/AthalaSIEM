@@ -1,54 +1,31 @@
-import * as React from 'react'
-import { cva, type VariantProps } from 'class-variance-authority'
-import { cn } from '../../lib/utils'
+import React from 'react';
 
-const badgeVariants = cva(
-  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-  {
-    variants: {
-      variant: {
-        default:
-          'border-transparent bg-primary text-primary-foreground hover:bg-primary/80',
-        secondary:
-          'border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        destructive:
-          'border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80',
-        outline: 'text-foreground',
-        success:
-          'border-transparent bg-green-100 text-green-800 hover:bg-green-200',
-        warning:
-          'border-transparent bg-yellow-100 text-yellow-800 hover:bg-yellow-200',
-        info:
-          'border-transparent bg-blue-100 text-blue-800 hover:bg-blue-200',
-      },
-    },
-    defaultVariants: {
-      variant: 'default',
-    },
-  }
-)
-
-export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof badgeVariants> {
-  onClick?: () => void
+export interface BadgeProps {
+  variant?: 'default' | 'secondary' | 'destructive' | 'success' | 'warning' | 'info' | 'outline';
+  children: React.ReactNode;
+  className?: string;
 }
 
-export function Badge({
-  className,
-  variant,
-  onClick,
+export function Badge({ 
+  variant = 'default', 
   children,
-  ...props
+  className = ''
 }: BadgeProps) {
-  const Comp = onClick ? 'button' : 'div'
+  const baseStyles = "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2";
+  
+  const variants = {
+    default: "bg-primary text-primary-foreground",
+    secondary: "bg-secondary text-secondary-foreground",
+    destructive: "bg-destructive text-destructive-foreground",
+    success: "bg-green-100 text-green-800",
+    warning: "bg-yellow-100 text-yellow-800",
+    info: "bg-blue-100 text-blue-800",
+    outline: "text-foreground border border-input",
+  };
+
   return (
-    <Comp
-      className={cn(badgeVariants({ variant }), className)}
-      onClick={onClick}
-      {...props}
-    >
+    <div className={`${baseStyles} ${variants[variant]} ${className}`}>
       {children}
-    </Comp>
-  )
+    </div>
+  );
 }

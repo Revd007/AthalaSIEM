@@ -1,3 +1,8 @@
+from typing import *
+import pyodbc
+from api.middleware import logging
+
+
 class DatabaseValidator:
     def __init__(self):
         self.logger = logging.getLogger(__name__)

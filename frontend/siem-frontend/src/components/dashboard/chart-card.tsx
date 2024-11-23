@@ -6,7 +6,7 @@ import { ResponsiveContainer } from 'recharts'
 interface ChartCardProps {
   title: string
   subtitle?: string
-  chart: React.ReactNode
+  chart: React.ReactElement
   filters?: React.ReactNode
   className?: string
 }

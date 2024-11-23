@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { useAlerts } from './useAlerts';
-import { useEvents } from './useEvents';
+import { useAlerts } from './use-alerts';
+import { useEvents } from './use-events';
 
 export const useWebSocket = (url: string) => {
   const ws = useRef<WebSocket | null>(null);
-  const { addAlert } = useAlerts();
+  const { refreshAlerts } = useAlerts();
   const { addEvent } = useEvents();
 
   useEffect(() => {
@@ -19,20 +19,24 @@ export const useWebSocket = (url: string) => {
       
       switch (data.type) {
         case 'NEW_ALERT':
-          addAlert(data.payload);
+          refreshAlerts();
           break;
         case 'NEW_EVENT':
           addEvent(data.payload);
           break;
-        default:
-          console.log('Unknown message type:', data.type);
+        case 'THREAT_DETECTED':
+          // Handle real-time threat detection
+          break;
+        case 'ANOMALY_DETECTED':
+          // Handle real-time anomaly detection
+          break;
       }
     };
 
     return () => {
       ws.current?.close();
     };
-  }, [url, addAlert, addEvent]);
+  }, [url, refreshAlerts, addEvent]);
 
   return ws.current;
 };

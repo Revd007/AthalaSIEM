@@ -23,7 +23,7 @@ const Sidebar = () => {
         <div className="flex items-center flex-shrink-0 px-4">
           <img
             className="h-8 w-auto"
-            src="/images/logo.svg"
+            src="/assets/images/logo.svg"
             alt="SIEM Logo"
           />
         </div>

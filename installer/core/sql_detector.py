@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import *
 import winreg
 import subprocess
 import logging

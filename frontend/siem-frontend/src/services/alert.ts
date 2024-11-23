@@ -1,5 +1,5 @@
 import { axiosInstance } from '../axios';
-import { Alert, AlertResponse } from '@/types/alert';
+import { Alert, AlertResponse } from '../types/alert';
 
 export const alertsApi = {
   getAlerts: async (): Promise<AlertResponse> => {

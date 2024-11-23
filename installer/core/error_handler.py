@@ -1,3 +1,9 @@
+from datetime import datetime
+from typing import *
+
+from api.middleware import logging
+
+
 class InstallationErrorHandler:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
@@ -44,7 +50,15 @@ class InstallationErrorHandler:
                 return self._handle_login_failure(error_info)
             elif 'Port in use' in error_info['error']:
                 return self._handle_port_conflict(error_info)
-            # Add more recovery handlers
+            elif 'Network error' in error_info['error']:
+                return self._handle_network_error(error_info)
+            elif 'Timeout' in error_info['error']:
+                return self._handle_timeout(error_info)
+            else:
+                return {
+                    'status': 'failed',
+                    'message': 'No recovery handler available for this error'
+                }
             
         except Exception as e:
             return {

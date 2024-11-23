@@ -1,3 +1,5 @@
+import asyncio
+import json
 from PyQt5.QtCore import QThread, pyqtSignal
 import os
 import shutil
@@ -6,6 +8,9 @@ import win32serviceutil
 import win32service
 import winreg
 import logging
+import pyodbc
+
+from installer.core.db_validator import DatabaseValidator
 
 class InstallationThread(QThread):
     progress_updated = pyqtSignal(int)
@@ -59,7 +64,45 @@ class InstallationThread(QThread):
                     
     def _setup_database(self):
         """Setup database based on selected type"""
-        # Implementation depends on database type
+        # Create database validator
+        validator = DatabaseValidator()
+        
+        # Validate SQL Server connection
+        result = asyncio.run(validator.validate_connection(
+            server="localhost\\SQLEXPRESS",
+            user="sa", 
+            password="AthalaSIEM2023!"
+        ))
+        
+        if result['status'] != 'success':
+            raise Exception(f"Database connection failed: {result['message']}")
+            
+        # Create database and tables
+        conn_str = (
+            "Driver={ODBC Driver 17 for SQL Server};"
+            "Server=localhost\\SQLEXPRESS;"
+            "UID=sa;PWD=AthalaSIEM2023!"
+        )
+        
+        with pyodbc.connect(conn_str) as conn:
+            cursor = conn.cursor()
+            
+            # Create database
+            cursor.execute("CREATE DATABASE AthalaSIEM")
+            cursor.execute("USE AthalaSIEM")
+            
+            # Create tables (simplified example)
+            cursor.execute("""
+                CREATE TABLE events (
+                    id INT PRIMARY KEY IDENTITY(1,1),
+                    timestamp DATETIME,
+                    source VARCHAR(255),
+                    event_type VARCHAR(50),
+                    description TEXT
+                )
+            """)
+            
+            cursor.commit()
         pass
         
     def _create_config(self):

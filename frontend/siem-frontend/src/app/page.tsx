@@ -7,35 +7,45 @@ import React from 'react'
 
 export default function Login() {
   const router = useRouter()
+  const [error, setError] = useState('')
   const [formData, setFormData] = useState({
-    email: '',
+    username: '',
     password: '',
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError('')
+    
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch('/api/auth//routeslogin', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          username: formData.username,
+          password: formData.password,
+        }),
       })
 
       if (!response.ok) {
-        throw new Error('Login failed')
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || 'Login failed. Please try again.')
       }
 
       const data = await response.json()
-      // Store auth token or user data if needed
       localStorage.setItem('token', data.token)
+      
+      if (data.user?.role) {
+        localStorage.setItem('userRole', data.user.role)
+      }
+      
+      router.push('/dashboard')
     } catch (error) {
       console.error('Login error:', error)
-      // Handle login error (e.g., show error message to user)
-      return
+      setError(error instanceof Error ? error.message : 'An unexpected error occurred')
     }
-    router.push('/overview')
   }
 
   return (
@@ -44,7 +54,7 @@ export default function Login() {
         <div>
           <img
             className="mx-auto h-12 w-auto"
-            src="/images/logo.svg"
+            src="/assets/images/logo.svg"
             alt="SIEM Logo"
           />
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
@@ -52,20 +62,25 @@ export default function Login() {
           </h2>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {error && (
+            <div className="rounded-md bg-red-50 p-4">
+              <div className="text-sm text-red-700">{error}</div>
+            </div>
+          )}
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
-              <label htmlFor="email" className="sr-only">
-                Email address
+              <label htmlFor="username" className="sr-only">
+                Username
               </label>
               <input
-                id="email"
-                name="email"
-                type="email"
+                id="username"
+                name="username"
+                type="text"
                 required
                 className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Email address"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="Username"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
               />
             </div>
             <div>
@@ -82,26 +97,6 @@ export default function Login() {
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               />
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <input
-                id="remember-me"
-                name="remember-me"
-                type="checkbox"
-                className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-              />
-              <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900">
-                Remember me
-              </label>
-            </div>
-
-            <div className="text-sm">
-              <Link href="/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-500">
-                Forgot your password?
-              </Link>
             </div>
           </div>
 

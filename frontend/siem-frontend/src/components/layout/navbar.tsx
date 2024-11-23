@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from 'react'
 import { BellIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { UserCircleIcon } from '@heroicons/react/24/solid'

@@ -9,12 +9,13 @@ import {
   X,
   ChevronDown,
   LogOut,
-  User,
+  User as UserIcon,
 } from 'lucide-react'
 import { useAuth } from '../../hooks/use-auth'
 import { Button } from '../ui/button'
 import { Avatar } from '../ui/avatar'
 import { Dropdown, DropdownMenu, DropdownItem } from '../ui/dropdown'
+import { User } from '../../types/user'
 
 interface AppShellProps {
   children: React.ReactNode
@@ -73,15 +74,14 @@ export function AppShell({ children }: AppShellProps) {
       {/* Mobile Navigation Toggle */}
       <div className="lg:hidden fixed top-0 left-0 w-full bg-white z-50 px-4 py-3 flex items-center justify-between border-b">
         <Button
-          variant="ghost"
-          size="icon"
+          variant="outline"
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
         >
           {isSidebarOpen ? <X /> : <Menu />}
         </Button>
         <div className="flex items-center space-x-4">
           <Avatar
-            src={user?.avatar}
+            src={user?.name}
             fallback={user?.name?.[0] || 'U'}
           />
         </div>
@@ -142,7 +142,7 @@ export function AppShell({ children }: AppShellProps) {
             <Dropdown>
               <div className="flex items-center space-x-3">
                 <Avatar
-                  src={user?.avatar}
+                  src={user?.name}
                   fallback={user?.name?.[0] || 'U'}
                 />
                 <div className="flex-1 min-w-0">
@@ -156,7 +156,7 @@ export function AppShell({ children }: AppShellProps) {
                 <ChevronDown className="w-4 h-4 text-gray-500" />
               </div>
               <DropdownMenu>
-                <DropdownItem icon={User} onClick={() => router.push('/profile')}>
+                <DropdownItem icon={UserIcon} onClick={() => router.push('/profile')}>
                   Profile
                 </DropdownItem>
                 <DropdownItem icon={Settings} onClick={() => router.push('/settings')}>

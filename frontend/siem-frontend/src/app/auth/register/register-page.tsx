@@ -16,7 +16,35 @@ export default function Register() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Add registration logic here
+    if (formData.password !== formData.confirmPassword) {
+      alert('Passwords do not match')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.message || 'Registration failed')
+      }
+
+      // Registration successful
+      alert('Registration successful! Please log in.')
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Registration failed')
+      return
+    }
     router.push('/login')
   }
 
@@ -26,7 +54,7 @@ export default function Register() {
         <div>
           <img
             className="mx-auto h-12 w-auto"
-            src="/images/logo.svg"
+            src="/assets/images/logo.svg"
             alt="SIEM Logo"
           />
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">

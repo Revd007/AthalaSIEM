@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react'
-import { SecurityAlertService, SecurityAlert } from '../../services/security-alert-service'
+import { axiosInstance } from '../../lib/axios'
 import { DataTable } from '../ui/data-table'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { SearchInput } from '../ui/search-input'
-import { Select } from '../ui/select'
-import { DatePicker } from '../ui/date-picker'
+import { Select, SelectProps } from '../ui/select'
 import { AlertCircle, Bell, Shield } from 'lucide-react'
+import { SecurityAlert } from '../../services/security-alert-service'
+
+type SelectValue = string | string[];
 
 const severityColors = {
   low: 'bg-blue-100 text-blue-800',
@@ -15,12 +17,19 @@ const severityColors = {
   critical: 'bg-red-100 text-red-800',
 }
 
+interface CustomSelectProps extends SelectProps {
+  placeholder: string;
+  options: { label: string; value: string; }[];
+  onChange: (value: SelectValue) => void;
+  isMulti?: boolean;
+}
+
 export function SecurityAlerts() {
   const [alerts, setAlerts] = useState<SecurityAlert[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({
-    severity: [],
-    status: [],
+    severity: [] as string[],
+    status: [] as string[],
     search: '',
     page: 1,
     limit: 10,
@@ -28,21 +37,20 @@ export function SecurityAlerts() {
   const [total, setTotal] = useState(0)
 
   useEffect(() => {
-    fetchAlerts()
-  }, [filters])
-
-  const fetchAlerts = async () => {
-    try {
-      setLoading(true)
-      const response = await SecurityAlertService.getAlerts(filters)
-      setAlerts(response.data)
-      setTotal(response.total)
-    } catch (error) {
-      console.error('Failed to fetch alerts:', error)
-    } finally {
-      setLoading(false)
+    const fetchAlerts = async () => {
+      try {
+        const response = await axiosInstance.get('/alerts')
+        setAlerts(response.data)
+        setTotal(response.total)
+      } catch (error) {
+        console.error('Failed to fetch alerts:', error)
+      } finally {
+        setLoading(false)
+      }
     }
-  }
+
+    fetchAlerts()
+  }, [])
 
   const columns = [
     {
@@ -86,6 +94,8 @@ export function SecurityAlerts() {
     // ... more columns
   ]
 
+  const handleSearch = (value: string) => setFilters({ ...filters, search: value })
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -99,29 +109,33 @@ export function SecurityAlerts() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <SearchInput
           placeholder="Search alerts..."
-          onSearch={(value) => setFilters({ ...filters, search: value })}
+          onSearch={handleSearch}
         />
         <Select
-          placeholder="Filter by severity"
-          options={[
-            { label: 'Critical', value: 'critical' },
-            { label: 'High', value: 'high' },
-            { label: 'Medium', value: 'medium' },
-            { label: 'Low', value: 'low' },
-          ]}
-          onChange={(value) => setFilters({ ...filters, severity: value })}
-          isMulti
+          {...{
+            placeholder: "Filter by severity",
+            options: [
+              { label: 'Critical', value: 'critical' },
+              { label: 'High', value: 'high' },
+              { label: 'Medium', value: 'medium' },
+              { label: 'Low', value: 'low' },
+            ],
+            onChange: (value: SelectValue) => setFilters({ ...filters, severity: value as string[] }),
+            isMulti: true
+          } as CustomSelectProps}
         />
         <Select
-          placeholder="Filter by status"
-          options={[
-            { label: 'New', value: 'new' },
-            { label: 'Investigating', value: 'investigating' },
-            { label: 'Resolved', value: 'resolved' },
-            { label: 'Closed', value: 'closed' },
-          ]}
-          onChange={(value) => setFilters({ ...filters, status: value })}
-          isMulti
+          {...{
+            placeholder: "Filter by status",
+            options: [
+              { label: 'New', value: 'new' },
+              { label: 'Investigating', value: 'investigating' },
+              { label: 'Resolved', value: 'resolved' },
+              { label: 'Closed', value: 'closed' },
+            ],
+            onChange: (value: SelectValue) => setFilters({ ...filters, status: value as string[] }),
+            isMulti: true
+          } as CustomSelectProps}
         />
       </div>
 
@@ -133,7 +147,7 @@ export function SecurityAlerts() {
           currentPage: filters.page,
           pageSize: filters.limit,
           totalItems: total,
-          onPageChange: (page) => setFilters({ ...filters, page }),
+          onPageChange: (page: number) => setFilters({ ...filters, page }),
         }}
       />
     </div>

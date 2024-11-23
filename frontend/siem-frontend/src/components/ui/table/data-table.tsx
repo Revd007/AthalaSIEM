@@ -150,7 +150,6 @@ export function DataTable<T>({
           <div className="flex items-center space-x-2">
             <Button
               variant="outline"
-              size="sm"
               onClick={() => pagination.onPageChange(1)}
               disabled={pagination.currentPage === 1}
             >
@@ -158,7 +157,6 @@ export function DataTable<T>({
             </Button>
             <Button
               variant="outline"
-              size="sm"
               onClick={() => pagination.onPageChange(pagination.currentPage - 1)}
               disabled={pagination.currentPage === 1}
             >
@@ -176,7 +174,6 @@ export function DataTable<T>({
             />
             <Button
               variant="outline"
-              size="sm"
               onClick={() => pagination.onPageChange(pagination.currentPage + 1)}
               disabled={
                 pagination.currentPage ===
@@ -187,7 +184,6 @@ export function DataTable<T>({
             </Button>
             <Button
               variant="outline"
-              size="sm"
               onClick={() =>
                 pagination.onPageChange(
                   Math.ceil(pagination.totalItems / pagination.pageSize)

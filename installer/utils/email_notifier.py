@@ -1,3 +1,12 @@
+from datetime import datetime, timedelta
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import os
+import smtplib
+from typing import *
+from api.middleware import logging
+
+
 class InstallationNotifier:
     def __init__(self):
         self.logger = logging.getLogger(__name__)

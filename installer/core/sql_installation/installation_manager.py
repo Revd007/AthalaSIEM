@@ -6,6 +6,7 @@ from pathlib import Path
 import asyncio
 import os
 import pyodbc
+import requests
 
 class SQLInstallationManager:
     def __init__(self, config: Dict[str, Any]):

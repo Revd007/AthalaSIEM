@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+import sys
 
 class InstallerBuilder:
     def __init__(self):
@@ -12,21 +13,70 @@ class InstallerBuilder:
         self.dist_dir = self.root_dir / "dist"
         self.temp_dir = self.build_dir / "temp"
         
+    def check_npm(self):
+        """Check if npm is installed and accessible"""
+        try:
+            # Cek npm dengan full path jika di Windows
+            if sys.platform == 'win32':
+                npm_cmd = 'where npm'
+            else:
+                npm_cmd = 'which npm'
+                
+            result = subprocess.run(npm_cmd, shell=True, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                print("npm not found. Please install Node.js and npm first.")
+                print("Download from: https://nodejs.org/")
+                sys.exit(1)
+                
+            # Verify npm version
+            npm_version = subprocess.run(['npm', '-v'], capture_output=True, text=True)
+            print(f"Found npm version: {npm_version.stdout.strip()}")
+            
+        except Exception as e:
+            print(f"Error checking npm: {e}")
+            print("Please ensure Node.js and npm are installed and in your PATH")
+            sys.exit(1)
+    
     def build_frontend(self):
         """Build React frontend"""
         print("Building frontend...")
         frontend_dir = self.root_dir / "frontend" / "siem-frontend"
         
-        # Install dependencies
-        subprocess.run(["npm", "install"], cwd=frontend_dir, check=True)
-        
-        # Build frontend
-        subprocess.run(["npm", "run", "build"], cwd=frontend_dir, check=True)
-        
-        # Copy build ke temporary directory
-        frontend_build = frontend_dir / "build"
-        frontend_dest = self.temp_dir / "frontend"
-        shutil.copytree(frontend_build, frontend_dest, dirs_exist_ok=True)
+        if not frontend_dir.exists():
+            print(f"Frontend directory not found at: {frontend_dir}")
+            print("Please ensure the frontend directory exists")
+            sys.exit(1)
+            
+        try:
+            # Check npm first
+            self.check_npm()
+            
+            print(f"Installing frontend dependencies in: {frontend_dir}")
+            # Use npm with shell=True for Windows compatibility
+            subprocess.run("npm install", cwd=frontend_dir, shell=True, check=True)
+            
+            print("Building frontend...")
+            subprocess.run("npm run build", cwd=frontend_dir, shell=True, check=True)
+            
+            # Verify build directory exists
+            frontend_build = frontend_dir / "build"
+            if not frontend_build.exists():
+                print(f"Frontend build directory not found at: {frontend_build}")
+                sys.exit(1)
+                
+            # Copy build ke temporary directory
+            frontend_dest = self.temp_dir / "frontend"
+            print(f"Copying frontend build to: {frontend_dest}")
+            shutil.copytree(frontend_build, frontend_dest, dirs_exist_ok=True)
+            
+        except subprocess.CalledProcessError as e:
+            print(f"Frontend build failed: {e}")
+            print(f"Command output: {e.output if hasattr(e, 'output') else 'No output'}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"Unexpected error building frontend: {e}")
+            sys.exit(1)
 
     def build_backend(self):
         """Build Python backend"""

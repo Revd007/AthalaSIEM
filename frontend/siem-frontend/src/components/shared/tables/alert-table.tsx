@@ -15,10 +15,16 @@ interface Alert {
 }
 
 interface AlertTableProps {
-  alerts: Alert[];
+  filters: {
+    status: string
+    priority: string
+    timeRange: string
+  }
 }
 
-export const AlertTable: React.FC<AlertTableProps> = ({ alerts }) => {
+export const AlertTable: React.FC<AlertTableProps> = ({ filters }) => {
+  const [alerts, setAlerts] = useState<Alert[]>([])
+  
   return (
     <div className="overflow-x-auto">
       <Table>

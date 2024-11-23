@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { MonitoringService, SystemMetrics } from '../../services/monitoring-service'
 import { StatCard } from '../ui/stat-card'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { Cpu, Memory, HardDrive, Activity } from 'lucide-react'
+import { Cpu, Ram, HardDrive, Activity } from 'lucide-react'
 
 export function SystemMonitor() {
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null)
@@ -57,7 +57,7 @@ export function SystemMonitor() {
         <StatCard
           title="Memory Usage"
           value={`${((metrics?.memory.used || 0) / (metrics?.memory.total || 1) * 100).toFixed(1)}%`}
-          icon={<Memory className="h-6 w-6 text-green-500" />}
+          icon={<Ram className="h-6 w-6 text-green-500" />}
           description={`${(metrics?.memory.used || 0).toFixed(2)}GB / ${(metrics?.memory.total || 0).toFixed(2)}GB`}
         />
         <StatCard

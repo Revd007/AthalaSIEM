@@ -2,13 +2,14 @@ import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Bell, X, Check, AlertCircle } from 'lucide-react'
 import { Button } from './button'
+import { cn } from '../../lib/utils'
 
-interface Notification {
-  id: string
+export interface Notification {
+  id: string | number
   title: string
   message: string
-  type: 'info' | 'success' | 'warning' | 'error'
-  timestamp: string
+  type: string
+  timestamp: Date
   read: boolean
 }
 
@@ -42,10 +43,9 @@ export function NotificationCenter({
   return (
     <div className="relative">
       <Button
-        variant="ghost"
-        size="icon"
+        variant="outline"
         onClick={() => setIsOpen(!isOpen)}
-        className="relative"
+        className="relative h-9 w-9 p-0"
       >
         <Bell className="h-5 w-5" />
         {unreadCount > 0 && (
@@ -66,8 +66,7 @@ export function NotificationCenter({
             <div className="flex items-center justify-between border-b p-4">
               <h3 className="font-semibold">Notifications</h3>
               <Button
-                variant="ghost"
-                size="sm"
+                variant="outline"
                 onClick={onClearAll}
               >
                 Clear all
@@ -101,14 +100,13 @@ export function NotificationCenter({
                         {notification.message}
                       </p>
                       <p className="mt-1 text-xs text-gray-400">
-                        {notification.timestamp}
+                        {notification.timestamp.toLocaleString()}
                       </p>
                     </div>
                     {!notification.read && (
                       <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onMarkAsRead(notification.id)}
+                        variant="outline"
+                        onClick={() => onMarkAsRead(notification.id.toString())}
                       >
                         Mark as read
                       </Button>

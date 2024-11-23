@@ -1,0 +1,6 @@
+2024-11-23 14:24:18,976 - root - WARNING - AI config file not found, using default settings
+2024-11-23 14:24:19,017 - root - INFO - Initializing auto-training system
+2024-11-23 14:24:19,017 - root - INFO - Application startup completed
+2024-11-23 14:24:19,017 - root - INFO - Starting automatic training system
+2024-11-23 14:24:19,018 - root - ERROR - Error in auto training: 'Settings' object has no attribute 'TRAINING_INTERVAL'
+2024-11-23 14:24:43,681 - root - INFO - Shutting down application

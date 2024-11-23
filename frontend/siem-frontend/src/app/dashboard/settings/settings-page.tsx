@@ -1,12 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Card } from '../../ui/card'
-import { Tabs } from '../../ui/tabs'
-import { GeneralSettings } from '../../components/shared/settings/general-settings'
-import { SecuritySettings } from '../../components/shared/settings/security-settings'
-import { NotificationSettings } from '../../components/shared/settings/notification-settings'
-import { IntegrationSettings } from '../../components/shared/settings/integration-settings'
+import { Card } from '../../../components/ui/card'
+import { Tabs } from '../../../components/ui/tabs'
+import { GeneralSettings } from '../../../components/shared/settings/general-settings'
+import { SecuritySettings } from '../../../components/shared/settings/security-settings'
+import NotificationSettings from '../../../components/shared/settings/notification-settings'
+import { IntegrationSettings } from '../../../components/shared/settings/integration-settings'
 import React from 'react'
 
 const tabs = [
