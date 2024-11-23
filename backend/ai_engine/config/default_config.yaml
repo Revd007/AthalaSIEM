@@ -1,0 +1,38 @@
+evaluation:
+  metrics:
+  - accuracy
+  - precision
+  - recall
+  - f1
+  threshold: 0.5
+model_settings:
+  anomaly_detector:
+    hidden_dims:
+    - 128
+    - 64
+    input_dim: 256
+    latent_dim: 32
+  batch_size: 32
+  early_stopping_patience: 5
+  epochs: 10
+  learning_rate: 0.001
+  threat_detector:
+    embedding_dim: 768
+    num_behaviors: 5
+    num_heads: 8
+    num_layers: 2
+    num_patterns: 10
+  validation_split: 0.2
+optimization:
+  enable_mixed_precision: true
+  gradient_clipping: true
+  max_gradient_norm: 1.0
+paths:
+  checkpoint_dir: checkpoints/
+  log_dir: logs/
+  model_dir: models/
+training:
+  checkpoint_frequency: 5
+  enable_checkpoints: true
+  enable_early_stopping: true
+  max_epochs_without_improvement: 10

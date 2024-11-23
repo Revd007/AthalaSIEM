@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, Union
 import torch
 import torch.nn as nn
 from datetime import datetime, timedelta
@@ -107,28 +107,35 @@ class AdaptiveLearner:
 
 
 class ModelManager:
-    def __init__(self, device: str = None):
+    def __init__(self, config: Union[str, Dict[str, Any], Path]):
         self.logger = logging.getLogger(__name__)
         
-        # Set device
-        self.device = device if device else ('cuda' if torch.cuda.is_available() else 'cpu')
-        
-        # Load config
-        try:
-            config_path = Path(__file__).parent.parent / "config" / "default_config.yaml"
-            if not config_path.exists():
-                self.logger.warning("Config file not found, creating default config")
-                self._create_default_config(config_path)
-                
-            with open(config_path) as f:
-                self.config = yaml.safe_load(f)
-                
-        except Exception as e:
-            self.logger.error(f"Error loading config: {str(e)}")
-            raise
+        # Load configuration
+        if isinstance(config, (str, Path)):
+            try:
+                with open(config, 'r') as f:
+                    self.config = yaml.safe_load(f)
+            except Exception as e:
+                self.logger.error(f"Error loading config from file: {e}")
+                raise
+        else:
+            # Config is already a dictionary
+            self.config = config
             
+        # Setup device
+        self.device = torch.device('cuda' if torch.cuda.is_available() and 
+                                 self.config.get('model_settings', {}).get('enable_gpu', False) 
+                                 else 'cpu')
+        
+        # Initialize empty model dictionary
+        self.models = {}
+        
         # Initialize models
-        self._initialize_models()
+        try:
+            self._initialize_models()
+        except Exception as e:
+            self.logger.error(f"Error initializing models: {e}")
+            raise
 
     async def process_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """Process security event through AI models"""

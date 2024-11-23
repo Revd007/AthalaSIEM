@@ -53,7 +53,5 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
-        env_nested_delimiter = '__'
-        extra = "allow"
 
 settings = Settings()

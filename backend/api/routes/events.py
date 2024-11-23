@@ -5,9 +5,16 @@ from ..schemas import EventCreate, EventResponse
 from database.connection import get_db
 from database.models import Event
 from ai_engine.donquixote_service import DonquixoteService
+from pathlib import Path
 
 router = APIRouter()
-ai_service = DonquixoteService("ai_engine/services/ai_settings.yaml")
+
+# Use absolute path for config file
+config_path = Path(__file__).parent.parent.parent / "ai_engine" / "services" / "ai_settings.yaml"
+if not config_path.exists():
+    raise FileNotFoundError(f"Config file not found at {config_path}")
+    
+ai_service = DonquixoteService(config_path)
 
 @router.post("/events/", response_model=EventResponse)
 async def create_event(event: EventCreate, db: Session = Depends(get_db)):
