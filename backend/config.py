@@ -1,6 +1,8 @@
+from typing import List
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
-from typing import List, Optional
+from typing import Optional
+import json
 
 class AISettings(BaseModel):
     TRAINING_INTERVAL: int = 3600
@@ -19,14 +21,14 @@ class AISettings(BaseModel):
     ENABLE_GPU: bool = True
 
 class Settings(BaseSettings):
-    # Database
+    # Database Settings
     SIEM_DB_URL: str
     DATABASE_URL: Optional[str] = None
     
     # JWT Settings
     JWT_SECRET_KEY: str
     ALGORITHM: str
-    ACCESS_TOKEN_EXPIRE_MINUTES: int
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     # AI Settings
     ai: AISettings = AISettings()
@@ -36,7 +38,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     
     # Logging
-    LOG_LEVEL: str = "INFO"
+    LOG_LEVEL: str
     
     # Security
     ALLOWED_HOSTS: List[str]
@@ -45,13 +47,17 @@ class Settings(BaseSettings):
     # System
     ENVIRONMENT: str
     DEBUG: bool
-    
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         if not self.DATABASE_URL:
             self.DATABASE_URL = self.SIEM_DB_URL
-    
+
     class Config:
         env_file = ".env"
+        env_file_encoding = "utf-8"
+        case_sensitive = True
+        extra = "allow"  # Allow extra fields
 
+# Create settings instance
 settings = Settings()

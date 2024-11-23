@@ -1,46 +1,43 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from api.routes import alerts, events, users, playbooks, system
-from config import settings
 from database.connection import init_db
+from config import settings
+import logging
+from pathlib import Path
+import yaml
+from ai_engine.donquixote_service import DonquixoteService
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+ai_logger = logging.getLogger('ai_engine')
 
 # Initialize FastAPI app
-app = FastAPI(
-    title="SIEM API",
-    version=settings.API_VERSION,
-    description="SIEM System API"
-)
-
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(title="AthalaSIEM API")
 
 # Initialize database
-@app.on_event("startup")
-async def startup_event():
-    await init_db()
+init_db(settings.DATABASE_URL)
+
+# Initialize AI components with proper error handling
+try:
+    ai_config_path = Path("backend/ai_engine/services/ai_settings.yaml")
+    if not ai_config_path.exists():
+        ai_logger.warning("AI config file not found, using default settings")
+        ai_service = DonquixoteService()  # Will use default config
+    else:
+        with open(ai_config_path) as f:
+            ai_config = yaml.safe_load(f)
+            ai_service = DonquixoteService(config=ai_config['model'])
+except Exception as e:
+    ai_logger.error(f"Failed to initialize AI components: {e}")
+    ai_service = None
 
 # Include routers
-app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
-app.include_router(events.router, prefix="/api/events", tags=["events"])
-app.include_router(users.router, prefix="/api/users", tags=["users"])
-app.include_router(playbooks.router, prefix="/api/playbooks", tags=["playbooks"])
-app.include_router(system.router, prefix="/api/system", tags=["system"])
+app.include_router(events.router, prefix="/api/v1", tags=["events"])
+app.include_router(alerts.router, prefix="/api/v1", tags=["alerts"])
+app.include_router(users.router, prefix="/api/v1", tags=["users"])
+app.include_router(playbooks.router, prefix="/api/v1", tags=["playbooks"])
+app.include_router(system.router, prefix="/api/v1", tags=["system"])
 
-# Root endpoint
 @app.get("/")
 async def root():
-    return {
-        "status": "ok",
-        "version": settings.API_VERSION,
-        "environment": settings.ENVIRONMENT
-    }
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    return {"message": "AthalaSIEM API is running"}

@@ -1,12 +1,7 @@
 from .models import Base, User, Event, Alert
-from .connection import engine, AsyncSessionLocal, get_db
+from .connection import engine, AsyncSessionLocal, get_db, init_db, init_models
 
 __all__ = [
-    'Base',
-    'engine',
-    'AsyncSessionLocal',
-    'get_db',
-    'User',
-    'Event',
-    'Alert'
+    'Base', 'User', 'Event', 'Alert',
+    'engine', 'AsyncSessionLocal', 'get_db', 'init_db', 'init_models'
 ]
