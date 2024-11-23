@@ -6,8 +6,8 @@ import logging
 from pathlib import Path
 import json
 from datetime import datetime
-import wandb  # untuk tracking eksperimen
 from tqdm import tqdm
+import wandb
 
 class TrainingManager:
     def __init__(self, 

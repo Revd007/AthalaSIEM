@@ -1,57 +1,46 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List
 import numpy as np
 
 class VariationalAutoencoder(nn.Module):
-    def __init__(self, input_dim: int, latent_dim: int, hidden_dims: list = None):
+    def __init__(self, input_dim: int, hidden_dims: List[int], latent_dim: int):
         super().__init__()
+        self.input_dim = input_dim
+        self.latent_dim = latent_dim
         
-        if hidden_dims is None:
-            hidden_dims = [256, 128, 64]
-
         # Encoder
         modules = []
-        in_features = input_dim
-        
-        # Build Encoder
         for h_dim in hidden_dims:
             modules.append(
                 nn.Sequential(
-                    nn.Linear(in_features, h_dim),
+                    nn.Linear(input_dim, h_dim),
                     nn.BatchNorm1d(h_dim),
-                    nn.LeakyReLU(),
-                    nn.Dropout(0.2)
+                    nn.ReLU()
                 )
             )
-            in_features = h_dim
+            input_dim = h_dim
         
         self.encoder = nn.Sequential(*modules)
         self.fc_mu = nn.Linear(hidden_dims[-1], latent_dim)
         self.fc_var = nn.Linear(hidden_dims[-1], latent_dim)
         
-        # Build Decoder
+        # Decoder
         modules = []
         hidden_dims.reverse()
-        
-        self.decoder_input = nn.Linear(latent_dim, hidden_dims[0])
         
         for i in range(len(hidden_dims) - 1):
             modules.append(
                 nn.Sequential(
                     nn.Linear(hidden_dims[i], hidden_dims[i + 1]),
                     nn.BatchNorm1d(hidden_dims[i + 1]),
-                    nn.LeakyReLU(),
-                    nn.Dropout(0.2)
+                    nn.ReLU()
                 )
             )
         
         self.decoder = nn.Sequential(*modules)
-        self.final_layer = nn.Sequential(
-            nn.Linear(hidden_dims[-1], input_dim),
-            nn.Tanh()
-        )
+        self.final_layer = nn.Linear(hidden_dims[-1], self.input_dim)
         
         # Initialize weights
         self.apply(self._init_weights)
@@ -62,27 +51,22 @@ class VariationalAutoencoder(nn.Module):
             if module.bias is not None:
                 module.bias.data.zero_()
     
-    def encode(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        x = self.encoder(x)
-        mu = self.fc_mu(x)
-        log_var = self.fc_var(x)
-        return mu, log_var
+    def encode(self, x):
+        h = self.encoder(x)
+        return self.fc_mu(h), self.fc_var(h)
     
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
-        z = self.decoder_input(z)
-        z = self.decoder(z)
-        return self.final_layer(z)
+    def decode(self, z):
+        return self.final_layer(self.decoder(z))
     
-    def reparameterize(self, mu: torch.Tensor, log_var: torch.Tensor) -> torch.Tensor:
+    def forward(self, x):
+        mu, log_var = self.encode(x)
+        z = self.reparameterize(mu, log_var)
+        return self.decode(z), mu, log_var
+    
+    def reparameterize(self, mu, log_var):
         std = torch.exp(0.5 * log_var)
         eps = torch.randn_like(std)
         return mu + eps * std
-        
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        mu, log_var = self.encode(x)
-        z = self.reparameterize(mu, log_var)
-        recon_x = self.decode(z)
-        return recon_x, mu, log_var
     
     def get_anomaly_score(self, x: torch.Tensor) -> torch.Tensor:
         recon_x, mu, log_var = self.forward(x)

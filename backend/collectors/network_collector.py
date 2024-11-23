@@ -35,7 +35,38 @@ class NetworkCollector:
             return None
 
     def determine_severity(self, message: str) -> int:
-        # Implement severity determination logic
+        message = message.lower()
+        
+        # Emergency (0) - System is unusable
+        if any(word in message for word in ['emergency', 'emerg', 'panic']):
+            return 0
+            
+        # Alert (1) - Action must be taken immediately
+        elif any(word in message for word in ['alert', 'critical', 'crit']):
+            return 1
+            
+        # Error (2) - Error conditions
+        elif any(word in message for word in ['error', 'err', 'failed', 'failure']):
+            return 2
+            
+        # Warning (3) - Warning conditions
+        elif any(word in message for word in ['warning', 'warn']):
+            return 3
+            
+        # Notice (4) - Normal but significant condition
+        elif any(word in message for word in ['notice']):
+            return 4
+            
+        # Info (5) - Informational messages
+        elif any(word in message for word in ['info']):
+            return 5
+            
+        # Debug (6) - Debug-level messages
+        elif any(word in message for word in ['debug']):
+            return 6
+            
+        # Default to Info level if no keywords match
+        return 5
         if any(keyword in message.lower() for keyword in ['error', 'fail', 'critical']):
             return 1
         elif any(keyword in message.lower() for keyword in ['warning', 'warn']):

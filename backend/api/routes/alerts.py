@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException, Query
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -11,11 +13,14 @@ router = APIRouter()
 playbook_engine = PlaybookEngine()
 
 @router.post("/alerts/", response_model=AlertResponse)
-async def create_alert(alert: AlertCreate, db: Session = Depends(get_db)):
+async def create_alert(
+    alert: AlertCreate, 
+    db: Session = Depends(get_db)
+):
     db_alert = Alert(**alert.dict())
     db.add(db_alert)
-    db.commit()
-    db.refresh(db_alert)
+    await db.commit()
+    await db.refresh(db_alert)
     
     # Trigger automated response if configured
     if alert.auto_respond:
@@ -25,24 +30,24 @@ async def create_alert(alert: AlertCreate, db: Session = Depends(get_db)):
 
 @router.get("/alerts/", response_model=List[AlertResponse])
 async def get_alerts(
-    skip: int = 0,
-    limit: int = 100,
-    severity: Optional[int] = None,
-    start_date: Optional[datetime] = None,
-    end_date: Optional[datetime] = None,
+    request: Request,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, le=100),
     db: Session = Depends(get_db)
 ):
-    query = db.query(Alert)
-    
-    if severity:
-        query = query.filter(Alert.severity == severity)
-    if start_date:
-        query = query.filter(Alert.timestamp >= start_date)
-    if end_date:
-        query = query.filter(Alert.timestamp <= end_date)
-    
-    alerts = query.offset(skip).limit(limit).all()
-    return alerts
+    alerts = await db.query(Alert).offset(skip).limit(limit).all()
+    return [
+        {
+            "id": str(alert.id),
+            "title": alert.title,
+            "description": alert.description,
+            "severity": alert.severity,
+            "status": alert.status,
+            "created_at": alert.created_at,
+            "updated_at": alert.updated_at
+        } 
+        for alert in alerts
+    ]
 
 @router.put("/alerts/{alert_id}", response_model=AlertResponse)
 async def update_alert(

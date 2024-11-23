@@ -1,7 +1,26 @@
-from pydantic import BaseModel
-from datetime import datetime
-from typing import Optional, Dict, List, Any
 import uuid
+from pydantic import BaseModel, EmailStr, ConfigDict
+from typing import *
+from datetime import datetime
+from uuid import UUID
+
+class UserBase(BaseModel):
+    email: EmailStr
+    username: str
+    full_name: Optional[str] = None
+    is_active: bool = True
+    role: str = "user"
+    model_config = ConfigDict(from_attributes=True)
+
+class UserCreate(UserBase):
+    password: str
+
+class UserResponse(UserBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 class EventBase(BaseModel):
     source: str
@@ -19,8 +38,7 @@ class EventResponse(EventBase):
     timestamp: datetime
     status: Optional[str]
     
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class AlertBase(BaseModel):
     title: str
@@ -32,13 +50,12 @@ class AlertCreate(AlertBase):
     events: List[int] = []
 
 class AlertResponse(AlertBase):
-    id: int
-    timestamp: datetime
-    status: str
+    id: UUID
+    created_at: datetime
+    updated_at: Optional[datetime]
     events: List[EventResponse]
-
-    class Config:
-        orm_mode = True
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class AlertUpdate(BaseModel):
     title: Optional[str] = None
@@ -52,3 +69,63 @@ class AlertUpdate(BaseModel):
 
     class Config:
         from_attributes = True
+
+class PlaybookTemplateBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    content: Dict[str, Any]
+    is_active: bool = True
+
+class PlaybookTemplateCreate(PlaybookTemplateBase):
+    pass
+
+class PlaybookTemplateResponse(PlaybookTemplateBase):
+    id: UUID
+    created_at: datetime
+    updated_at: Optional[datetime]
+    created_by: Optional[UUID]
+
+    class Config:
+        from_attributes = True
+
+class PlaybookRunResponse(BaseModel):
+    status: str
+    start_time: datetime
+    end_time: Optional[datetime]
+    result: Optional[Dict[str, Any]]
+
+    class Config:
+        from_attributes = True
+
+class SystemStatus(BaseModel):
+    status: str
+    timestamp: datetime
+    version: str
+    system_info: Dict[str, str]
+
+class CPUMetrics(BaseModel):
+    usage_percent: float
+    count: int
+
+class MemoryMetrics(BaseModel):
+    total: int
+    available: int
+    used: int
+    usage_percent: float
+
+class DiskMetrics(BaseModel):
+    total: int
+    used: int
+    free: int
+    usage_percent: float
+
+class NetworkMetrics(BaseModel):
+    bytes_sent: int
+    bytes_recv: int
+
+class SystemMetrics(BaseModel):
+    timestamp: datetime
+    cpu: CPUMetrics
+    memory: MemoryMetrics
+    disk: DiskMetrics
+    network: NetworkMetrics
