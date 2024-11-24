@@ -1,26 +1,20 @@
 from sqlalchemy import Column, String, DateTime, Boolean, Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.mssql import UNIQUEIDENTIFIER
 from database.connection import Base
 from sqlalchemy.sql import func
 import uuid
-from enum import Enum
-
-class UserRole(str, Enum):
-    ADMIN = "admin"
-    ANALYST = "analyst"
-    OPERATOR = "operator"
-    VIEWER = "viewer"
+from database.enums import UserRole
 
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = {"schema": "siem"}
+    __table_args__ = {"schema": "dbo"}
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(100), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     full_name = Column(String(100))
-    role = Column(SQLEnum(UserRole), nullable=False, default=UserRole.VIEWER)
+    role = Column(String(50), nullable=False, default=UserRole.VIEWER.value)
     is_active = Column(Boolean, default=True)
     last_login = Column(DateTime)
     created_at = Column(DateTime, default=func.now())
@@ -35,8 +29,8 @@ class User(Base):
 
     @property
     def is_staff(self):
-        return self.role in [UserRole.ADMIN, UserRole.ANALYST, UserRole.OPERATOR]
+        return self.role in [UserRole.ADMIN.value, UserRole.ANALYST.value, UserRole.OPERATOR.value]
 
     @property
     def can_manage_users(self):
-        return self.role == UserRole.ADMIN
+        return self.role == UserRole.ADMIN.value

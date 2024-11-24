@@ -15,11 +15,11 @@ class AuthHandler:
 
     async def authenticate_user(
         self, 
-        email: str, 
+        username: str, 
         password: str, 
         db: AsyncSession = Depends(get_db)
     ) -> Optional[User]:
-        query = select(User).filter(User.email == email)
+        query = select(User).filter(User.username == username)
         result = await db.execute(query)
         user = result.scalar_one_or_none()
         

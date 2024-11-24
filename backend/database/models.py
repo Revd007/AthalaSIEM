@@ -4,31 +4,24 @@ from sqlalchemy.sql import func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.mssql import UNIQUEIDENTIFIER
 import uuid
-import enum
+from .enums import UserRole
 from datetime import datetime
 from .connection import Base
-
-# Enum for user roles
-class UserRole(enum.Enum):
-    ADMIN = "admin"
-    ANALYST = "analyst"
-    OPERATOR = "operator"
-    VIEWER = "viewer"
 
 # Association tables for many-to-many relationships
 user_groups = Table(
     'user_groups',
     Base.metadata,
-    Column('user_id', Integer, ForeignKey('siem.users.id'), primary_key=True),
-    Column('group_id', Integer, ForeignKey('siem.groups.id'), primary_key=True),
-    schema='siem'
+    Column('user_id', Integer, ForeignKey('dbo.users.id'), primary_key=True),
+    Column('group_id', Integer, ForeignKey('dbo.groups.id'), primary_key=True),
+    schema='dbo'
 )
 
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = {'schema': 'siem'}
+    __table_args__ = {'schema': 'dbo'}
 
-    id = Column(Integer, primary_key=True)
+    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(100), unique=True)
     password_hash = Column(String(200))
@@ -50,7 +43,7 @@ class User(Base):
 
 class Group(Base):
     __tablename__ = "groups"
-    __table_args__ = {'schema': 'siem'}
+    __table_args__ = {'schema': 'dbo'}
 
     id = Column(Integer, primary_key=True)
     name = Column(String(50), unique=True, nullable=False)
@@ -74,7 +67,7 @@ class Alert(Base):
     severity = Column(Integer, nullable=False)  # 1-5 scale
     status = Column(String(50), nullable=False)
     source = Column(String(100))
-    assigned_to_id = Column(UNIQUEIDENTIFIER, ForeignKey('users.id'))
+    assigned_to_id = Column(UNIQUEIDENTIFIER, ForeignKey('dbo.users.id'))
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     resolved_at = Column(DateTime)
@@ -88,7 +81,7 @@ class Alert(Base):
 
 class Event(Base):
     __tablename__ = "events"
-    __table_args__ = {'schema': 'siem'}
+    __table_args__ = {'schema': 'dbo'}
 
     id = Column(Integer, primary_key=True)
     alert_id = Column(UNIQUEIDENTIFIER, ForeignKey('alerts.id'))
@@ -109,7 +102,7 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
-    user_id = Column(UNIQUEIDENTIFIER, ForeignKey('users.id'))
+    user_id = Column(UNIQUEIDENTIFIER, ForeignKey('dbo.users.id'))
     action = Column(String(50), nullable=False)
     resource_type = Column(String(50))
     resource_id = Column(String(255))
@@ -136,7 +129,7 @@ class APIKey(Base):
     id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
     key = Column(String(255), unique=True, nullable=False)
     name = Column(String(100))
-    user_id = Column(UNIQUEIDENTIFIER, ForeignKey('users.id'))
+    user_id = Column(UNIQUEIDENTIFIER, ForeignKey('dbo.users.id'))
     is_active = Column(Boolean, default=True)
     expires_at = Column(DateTime)
     created_at = Column(DateTime, default=func.now())
@@ -162,7 +155,7 @@ class PlaybookTemplate(Base):
     content = Column(JSON, nullable=False)  # Stores the playbook definition/steps
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    created_by = Column(UNIQUEIDENTIFIER, ForeignKey('users.id'))
+    created_by = Column(UNIQUEIDENTIFIER, ForeignKey('dbo.users.id'))
     is_active = Column(Boolean, default=True)
 
 class Tag(Base):
@@ -179,14 +172,14 @@ class AlertTag(Base):
     alert_id = Column(Integer, ForeignKey('alerts.id'), primary_key=True)
     tag_id = Column(UNIQUEIDENTIFIER, ForeignKey('tags.id'), primary_key=True)
     added_at = Column(DateTime, default=func.now())
-    added_by = Column(UNIQUEIDENTIFIER, ForeignKey('users.id'))
+    added_by = Column(UNIQUEIDENTIFIER, ForeignKey('dbo.users.id'))
 
 class Comment(Base):
     __tablename__ = "comments"
 
     id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
     alert_id = Column(Integer, ForeignKey('alerts.id'))
-    user_id = Column(UNIQUEIDENTIFIER, ForeignKey('users.id'))
+    user_id = Column(UNIQUEIDENTIFIER, ForeignKey('dbo.users.id'))
     content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

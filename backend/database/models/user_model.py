@@ -5,15 +5,15 @@ import enum
 from ..connection import Base
 
 class UserRole(str, enum.Enum):
-    ADMIN = "admin"
-    ANALYST = "analyst"
-    OPERATOR = "operator"
-    VIEWER = "viewer"
+    ADMIN = "ADMIN"
+    ANALYST = "ANALYST"
+    OPERATOR = "OPERATOR"
+    VIEWER = "VIEWER"
 
 class UserModel(Base):
     """User model with explicit name to avoid conflicts"""
     __tablename__ = "users"
-    __table_args__ = {'schema': 'siem'}
+    __table_args__ = {'schema': 'dbo'}
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, nullable=False)

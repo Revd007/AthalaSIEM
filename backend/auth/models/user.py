@@ -2,14 +2,8 @@ from sqlalchemy import Column, String, DateTime, Boolean, Enum as SQLEnum
 from sqlalchemy.dialects.mssql import UNIQUEIDENTIFIER
 from sqlalchemy.sql import func
 import uuid
-from enum import Enum
+from database.enums import UserRole
 from database.connection import Base
-
-class UserRole(str.Enum):
-    ADMIN = "admin"
-    ANALYST = "analyst"
-    OPERATOR = "operator"
-    VIEWER = "viewer"
 
 class User(Base):
     __tablename__ = "users"
