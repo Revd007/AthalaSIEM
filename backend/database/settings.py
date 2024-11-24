@@ -8,7 +8,7 @@ class Settings:
     PROJECT_VERSION: str = "1.0.0"
     AI_MODEL_NAME: str = "Donquixote Athala"
     
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-here")
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "fae1044cf8b3c10cbe8c50933f090633593372e61db672db0873e27cc96438c3")
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     

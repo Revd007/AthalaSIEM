@@ -2,6 +2,7 @@ from pydantic import BaseSettings, Field
 from typing import Dict, Any, Optional
 from pathlib import Path
 import os
+import secrets
 
 class AISettings(BaseSettings):
     # Training intervals
@@ -61,7 +62,10 @@ class Settings(BaseSettings):
     
     # API settings
     API_VERSION: str = Field(default="1.0.0", description="API version")
-    SECRET_KEY: str = Field(default="your-secret-key", description="JWT secret key")
+    SECRET_KEY: str = Field(
+        default=secrets.token_urlsafe(32),
+        description="JWT secret key"
+    )
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(
         default=30,
         description="Access token expiration time in minutes"

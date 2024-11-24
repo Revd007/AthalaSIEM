@@ -1,66 +1,71 @@
-import React, { useEffect, useState } from 'react';
-import { aiService } from '../../services/ai-service';
-import { Card } from '../ui/card';
-import { Badge } from '../ui/badge';
-import { LineChart } from '../ui/line-chart';
+import React, { useEffect, useState } from 'react'
+import { Card, CardHeader, CardTitle } from '../ui/card'
+import { axiosInstance } from '../../lib/axios'
+
+interface AIInsight {
+  type: string
+  description: string
+  severity: 'low' | 'medium' | 'high' | 'critical'
+  confidence: number
+  timestamp: string
+}
 
 export function AIInsights() {
-  const [insights, setInsights] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [insights, setInsights] = useState<AIInsight[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchInsights = async () => {
       try {
-        const [threatAnalysis, anomalyDetection] = await Promise.all([
-          aiService.getLatestThreats(),
-          aiService.getAnomalyStats()
-        ]);
-
-        setInsights({
-          threats: threatAnalysis,
-          anomalies: anomalyDetection
-        });
+        const response = await axiosInstance.get('/api/v1/ai/insights')
+        setInsights(response.data)
       } catch (error) {
-        console.error('Failed to fetch AI insights:', error);
+        console.error('Failed to fetch AI insights:', error)
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
-    };
+    }
 
-    fetchInsights();
-    const interval = setInterval(fetchInsights, 300000); // 5 minutes
-    return () => clearInterval(interval);
-  }, []);
+    fetchInsights()
+    const interval = setInterval(fetchInsights, 300000) // Update every 5 minutes
+    return () => clearInterval(interval)
+  }, [])
 
-  if (loading) {
-    return <div>Loading AI insights...</div>;
-  }
+  if (loading) return <div>Loading AI insights...</div>
 
   return (
-    <div className="grid grid-cols-2 gap-4">
-      <Card>
-        <h3 className="text-lg font-medium mb-4">Threat Analysis</h3>
-        {insights?.threats.map((threat: any) => (
-          <div key={threat.id} className="mb-2 flex items-center justify-between">
-            <span>{threat.description}</span>
-            <Badge
-              variant={threat.severity === 'high' ? 'destructive' : 'warning'}
-            >
-              {threat.confidence}%
-            </Badge>
+    <Card>
+      <CardHeader>
+        <CardTitle>AI Insights</CardTitle>
+      </CardHeader>
+      <div className="p-6">
+        {insights.map((insight, index) => (
+          <div
+            key={index}
+            className={`mb-4 p-4 rounded-lg border ${
+              insight.severity === 'critical' ? 'border-red-500 bg-red-50' :
+              insight.severity === 'high' ? 'border-orange-500 bg-orange-50' :
+              insight.severity === 'medium' ? 'border-yellow-500 bg-yellow-50' :
+              'border-blue-500 bg-blue-50'
+            }`}
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <h4 className="font-medium">{insight.type}</h4>
+                <p className="text-sm text-gray-600 mt-1">{insight.description}</p>
+              </div>
+              <span className="text-sm text-gray-500">
+                {new Date(insight.timestamp).toLocaleString()}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              <span className="text-sm text-gray-500">
+                Confidence: {insight.confidence}%
+              </span>
+            </div>
           </div>
         ))}
-      </Card>
-
-      <Card>
-        <h3 className="text-lg font-medium mb-4">Anomaly Detection</h3>
-        <LineChart
-          data={insights?.anomalies.timeline || []}
-          lines={[
-            { key: 'score', name: 'Anomaly Score', color: '#ef4444' }
-          ]}
-        />
-      </Card>
-    </div>
-  );
+      </div>
+    </Card>
+  )
 }

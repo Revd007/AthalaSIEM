@@ -23,7 +23,7 @@ logging:
 
 # Security Configuration
 security:
-  secret_key: "your_secret_key_here"
+  secret_key: "fae1044cf8b3c10cbe8c50933f090633593372e61db672db0873e27cc96438c3" #1[}4j$P!u#1Z:Z2v
   token_expiration: 3600  # seconds
 
 # Features Configuration
