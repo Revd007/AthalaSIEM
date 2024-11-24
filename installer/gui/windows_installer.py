@@ -73,3 +73,4 @@ class WindowsAgentInstaller(tk.Tk):
             winreg.SetValueEx(key, "LogTypes", 0, winreg.REG_MULTI_SZ, config["log_types"])
         finally:
             winreg.CloseKey(key)
+            

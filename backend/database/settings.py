@@ -14,7 +14,7 @@ class Settings:
     
     # Database settings
     DB_USER: str = os.getenv("DB_USER", "revian_dbsiem")
-    DB_PASSWORD: str = os.getenv("DB_PASSWORD", "Wokolcoy@20")
+    DB_PASSWORD: str = os.getenv("DB_PASSWORD", "Wokolcoy%4020")
     DB_HOST: str = os.getenv("DB_HOST", ".\SQLEXPRESS")
     DB_PORT: str = os.getenv("DB_PORT", "1433")
     DB_NAME: str = os.getenv("DB_NAME", "siem_db")

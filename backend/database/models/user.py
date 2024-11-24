@@ -1,9 +1,9 @@
 from sqlalchemy import Column, String, DateTime, Boolean, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
+from database.connection import Base
 from sqlalchemy.sql import func
 import uuid
 from enum import Enum
-from ..connection import Base
 
 class UserRole(str, Enum):
     ADMIN = "admin"

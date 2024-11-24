@@ -20,7 +20,7 @@ class DatabaseConfig:
     host: str = "localhost"
     name: str = "siem_db"
     user: str = "revian_dbsiem"
-    password: str = "Wokolcoy@20"
+    password: str = "Wokolcoy%4020"
     port: int = 1433
     auto_install: bool = True
 

@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import Depends, HTTPException
-from sqlalchemy.orm import Session
-
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from auth.dependencies.auth_bearer import JWTBearer
 from database.models import User
 from auth.utils.security import create_jwt, decode_jwt
@@ -17,9 +17,12 @@ class AuthHandler:
         self, 
         email: str, 
         password: str, 
-        db: Session = Depends(get_db)
+        db: AsyncSession = Depends(get_db)
     ) -> Optional[User]:
-        user = db.query(User).filter(User.email == email).first()
+        query = select(User).filter(User.email == email)
+        result = await db.execute(query)
+        user = result.scalar_one_or_none()
+        
         if not user or not verify_password(password, user.password_hash):
             return None
         return user
@@ -33,10 +36,19 @@ class AuthHandler:
     async def get_current_user(
         self, 
         token: str = Depends(JWTBearer()),
-        db: Session = Depends(get_db)
+        db: AsyncSession = Depends(get_db)
     ) -> User:
         payload = decode_jwt(token)
-        user = db.query(User).filter(User.id == payload["user_id"]).first()
+        query = select(User).filter(User.id == payload["user_id"])
+        result = await db.execute(query)
+        user = result.scalar_one_or_none()
+        
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
         return user
+    
+    def decode_token(self, token: str) -> Optional[dict]:
+        try:
+            return decode_jwt(token)
+        except:
+            raise HTTPException(status_code=401, detail="Invalid token")

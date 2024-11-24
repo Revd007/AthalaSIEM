@@ -4,6 +4,9 @@ from pydantic_settings import BaseSettings
 from typing import Optional
 import json
 
+class Config:
+    env_file = ".env"
+
 class AISettings(BaseModel):
     TRAINING_INTERVAL: int = 3600
     EVALUATION_INTERVAL: int = 7200
@@ -21,7 +24,7 @@ class AISettings(BaseModel):
     ENABLE_GPU: bool = True
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = "mssql+pyodbc://username:password@server/database?driver=ODBC+Driver+17+for+SQL+Server"
+    DATABASE_URL: str = "mssql+pyodbc://revian_dbsiem:Wokolcoy%4020@localhost/siem_db?driver=ODBC+Driver+17+for+SQL+Server"
     SECRET_KEY: str = "your-secret-key-here"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
@@ -55,5 +58,6 @@ class Settings(BaseSettings):
         case_sensitive = True
         extra = "allow"  # Allow extra fields
 
-# Create settings instance
+# Create settings instance with environment variables
+settings = Settings(_env_file='.env', _env_file_encoding='utf-8')
 settings = Settings()

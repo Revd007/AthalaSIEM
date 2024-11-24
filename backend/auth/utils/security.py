@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 import jwt
-from database.settings import settings
+from config import settings
 
 def create_jwt(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
