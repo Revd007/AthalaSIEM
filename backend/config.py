@@ -21,13 +21,9 @@ class AISettings(BaseModel):
     ENABLE_GPU: bool = True
 
 class Settings(BaseSettings):
-    # Database Settings
-    SIEM_DB_URL: str
-    DATABASE_URL: Optional[str] = None
-    
-    # JWT Settings
-    JWT_SECRET_KEY: str
-    ALGORITHM: str
+    DATABASE_URL: str = "mssql+pyodbc://username:password@server/database?driver=ODBC+Driver+17+for+SQL+Server"
+    SECRET_KEY: str = "your-secret-key-here"
+    ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     # AI Settings
