@@ -8,35 +8,36 @@ async function fetchAlertSummary(): Promise<Alert[]> {
   return response.json()
 }
 
-export default function AlertSummary() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['alertSummary'],
-    queryFn: fetchAlertSummary
-  })
+interface AlertSummaryProps {
+  alerts?: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+  };
+}
 
-  if (isLoading) return <div>Loading...</div>
-  if (error) return <div>Error loading alerts</div>
+export default function AlertSummary({ alerts }: AlertSummaryProps) {
+  if (!alerts) return null;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Alert Summary</CardTitle>
-      </CardHeader>
-      <div className="p-6">
-        {data?.map((alert) => (
-          <div key={alert.id} className="flex items-center justify-between py-2 border-b last:border-0">
-            <div className="flex items-center gap-2">
-              <span className={`h-2 w-2 rounded-full ${
-                alert.severity === 'high' ? 'bg-red-500' :
-                alert.severity === 'medium' ? 'bg-yellow-500' :
-                'bg-blue-500'
-              }`} />
-              <span className="font-medium">{alert.title}</span>
-            </div>
-            <span className="text-sm text-gray-500">{alert.timestamp}</span>
-          </div>
-        ))}
+    <div className="grid grid-cols-2 gap-4">
+      <div className="p-4 bg-red-100 rounded-lg">
+        <p className="text-sm text-red-800">Critical</p>
+        <p className="text-2xl font-bold text-red-900">{alerts.critical}</p>
       </div>
-    </Card>
+      <div className="p-4 bg-orange-100 rounded-lg">
+        <p className="text-sm text-orange-800">High</p>
+        <p className="text-2xl font-bold text-orange-900">{alerts.high}</p>
+      </div>
+      <div className="p-4 bg-yellow-100 rounded-lg">
+        <p className="text-sm text-yellow-800">Medium</p>
+        <p className="text-2xl font-bold text-yellow-900">{alerts.medium}</p>
+      </div>
+      <div className="p-4 bg-blue-100 rounded-lg">
+        <p className="text-sm text-blue-800">Low</p>
+        <p className="text-2xl font-bold text-blue-900">{alerts.low}</p>
+      </div>
+    </div>
   )
 }
