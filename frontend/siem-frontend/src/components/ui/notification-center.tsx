@@ -55,7 +55,7 @@ export function NotificationCenter({
         )}
       </Button>
 
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {isOpen && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}

@@ -5,7 +5,19 @@ import * as PopoverPrimitive from "@radix-ui/react-popover"
 
 import { cn } from '../../lib/utils'
 
-const Popover = PopoverPrimitive.Root
+const PopoverRoot = ({ children, ...props }: PopoverPrimitive.PopoverProps) => {
+  const [mounted, setMounted] = React.useState(false)
+
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) {
+    return null
+  }
+
+  return <PopoverPrimitive.Root {...props}>{children}</PopoverPrimitive.Root>
+}
 
 const PopoverTrigger = PopoverPrimitive.Trigger
 
@@ -28,4 +40,4 @@ const PopoverContent = React.forwardRef<
 ))
 PopoverContent.displayName = PopoverPrimitive.Content.displayName
 
-export { Popover, PopoverTrigger, PopoverContent }
+export { PopoverRoot as Popover, PopoverTrigger, PopoverContent }

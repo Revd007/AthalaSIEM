@@ -1,44 +1,93 @@
-import React, { useEffect, useState } from 'react';
-import { EventsOverview } from './events-overview';
-import { AlertSummary } from '../alert-summary';
-import { SystemHealth } from './system-health';
-import { ThreatMap } from './threat-map';
-import { aiService } from '../../../services/ai-service';
-import { SystemMonitor } from '../system-monitor';
+'use client'
+
+import React, { useState, useEffect } from 'react'
+import AlertSummary from '../alert-summary'
+import { SystemHealth } from './system-health'
+import { ThreatMap } from './threat-map'
+import { Card } from '../../ui/card'
+import { SecurityMetrics } from '../SecurityMetrics'
+
+// Define interfaces
+interface ThreatAnalysis {
+  risk_level: string
+  recommendations: string[]
+  details: {
+    source: string
+    type: string
+    severity: string
+  }
+}
+
+interface AnomalyResult {
+  detected: boolean
+  score: number
+  details: string
+}
+
+interface SystemMetrics {
+  cpu_usage: number
+  memory_usage: number
+  disk_usage: number
+  network_traffic: number
+}
 
 export const SecurityDashboard: React.FC = () => {
-  const [threatAnalysis, setThreatAnalysis] = useState<ThreatAnalysis | null>(null);
-  const [anomalyData, setAnomalyData] = useState<AnomalyResult | null>(null);
+  const [mounted, setMounted] = useState(false)
+  const [threatAnalysis, setThreatAnalysis] = useState<ThreatAnalysis | null>(null)
+  const [anomalyData, setAnomalyData] = useState<AnomalyResult | null>(null)
+  const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null)
 
   useEffect(() => {
-    const fetchAIInsights = async () => {
+    setMounted(true)
+    const fetchData = async () => {
       try {
-        // Get latest event for threat analysis
-        const latestEvent = await eventsApi.getLatestEvent();
-        const threatResult = await aiService.analyzeThreat(latestEvent);
-        setThreatAnalysis(threatResult);
+        // Fetch system metrics
+        const metricsResponse = await fetch('/api/metrics')
+        const metrics = await metricsResponse.json()
+        setSystemMetrics(metrics)
 
-        // Get system metrics for anomaly detection
-        const metrics = await monitoringService.getSystemMetrics();
-        const anomalyResult = await aiService.detectAnomalies(metrics);
-        setAnomalyData(anomalyResult);
+        // Fetch threat analysis
+        const threatResponse = await fetch('/api/threats/analysis')
+        const threatData = await threatResponse.json()
+        setThreatAnalysis(threatData)
+
+        // Fetch anomaly data
+        const anomalyResponse = await fetch('/api/anomalies')
+        const anomalyResult = await anomalyResponse.json()
+        setAnomalyData(anomalyResult)
       } catch (error) {
-        console.error('Error fetching AI insights:', error);
+        console.error('Error fetching dashboard data:', error)
       }
-    };
+    }
 
-    fetchAIInsights();
-    const interval = setInterval(fetchAIInsights, 300000); // Update every 5 minutes
-    return () => clearInterval(interval);
-  }, []);
+    if (mounted) {
+      fetchData()
+      const interval = setInterval(fetchData, 300000) // Update every 5 minutes
+      return () => clearInterval(interval)
+    }
+  }, [mounted])
+
+  if (!mounted) return null
 
   return (
-    <div className="grid grid-cols-2 gap-4">
-      <EventsOverview />
-      <AlertSummary threatData={threatAnalysis} />
-      <SystemHealth anomalyData={anomalyData} />
-      <ThreatMap />
-      <SystemMonitor />
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <Card className="p-6">
+        <SecurityMetrics />
+      </Card>
+      
+      <Card className="p-6">
+        <AlertSummary data={threatAnalysis} />
+      </Card>
+      
+      <Card className="p-6">
+        <SystemHealth metrics={systemMetrics} />
+      </Card>
+      
+      <Card className="p-6">
+        <ThreatMap />
+      </Card>
     </div>
-  );
-};
+  )
+}
+
+export default SecurityDashboard
