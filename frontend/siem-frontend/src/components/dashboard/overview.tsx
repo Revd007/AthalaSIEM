@@ -37,7 +37,9 @@ export function DashboardOverview() {
         </Card>
         
         <Card className="p-6">
-          <SystemHealth healthData={data?.health} />
+          <SystemHealth healt
+           
+           hData={data?.health} />
         </Card>
       </div>
 
