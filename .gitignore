@@ -7,6 +7,7 @@ ENV/
 __pycache__/
 *.py[cod]
 *$py.class
+.next/
 
 # Logs and databases
 *.log
@@ -91,6 +92,7 @@ target/
 *.css.map
 *.sass.map
 *.scss.map
+*.hot-update.js
 
 # Temporary files
 *.tmp
@@ -113,6 +115,8 @@ docker-compose.*.yml
 *.7z
 *.dmg
 *.gz
+*.pkg
+*.pack.gz
 *.iso
 *.jar
 *.rar
