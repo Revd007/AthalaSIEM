@@ -1,114 +1,42 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
-import React from 'react'
+import { useAuthStore } from '../hooks/use-auth'
+import { HashLoader } from 'react-spinners'
 
-export default function Login() {
+export default function Home() {
   const router = useRouter()
-  const [error, setError] = useState('')
-  const [formData, setFormData] = useState({
-    username: '',
-    password: '',
-  })
+  const { token } = useAuthStore()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    
-    try {
-      const response = await fetch('/api/auth//routeslogin', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: formData.username,
-          password: formData.password,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.message || 'Login failed. Please try again.')
-      }
-
-      const data = await response.json()
-      localStorage.setItem('token', data.token)
-      
-      if (data.user?.role) {
-        localStorage.setItem('userRole', data.user.role)
-      }
-      
-      router.push('/dashboard')
-    } catch (error) {
-      console.error('Login error:', error)
-      setError(error instanceof Error ? error.message : 'An unexpected error occurred')
-    }
-  }
+  useEffect(() => {
+    router.replace('/login')
+  }, [router])
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <img
-            className="mx-auto h-12 w-auto"
-            src="/assets/images/logo.svg"
-            alt="SIEM Logo"
-          />
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Sign in to your account
-          </h2>
-        </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div className="rounded-md bg-red-50 p-4">
-              <div className="text-sm text-red-700">{error}</div>
-            </div>
-          )}
-          <div className="rounded-md shadow-sm -space-y-px">
-            <div>
-              <label htmlFor="username" className="sr-only">
-                Username
-              </label>
-              <input
-                id="username"
-                name="username"
-                type="text"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Username"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="sr-only">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              />
-            </div>
-          </div>
+    <div 
+      className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-sky-400 via-blue-400 to-indigo-400 relative overflow-hidden"
+    >
+      {/* Animated background elements */}
+      <div className="absolute inset-0 w-full h-full">
+        <div className="absolute w-96 h-96 -top-10 -left-10 bg-purple-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
+        <div className="absolute w-96 h-96 -bottom-10 -right-10 bg-yellow-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
+        <div className="absolute w-96 h-96 top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-pink-400 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
+      </div>
 
-          <div>
-            <button
-              type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              Sign in
-            </button>
-          </div>
-        </form>
+      {/* Content */}
+      <div className="relative z-10 flex flex-col items-center">
+        <HashLoader 
+          color="#000B58" 
+          size={100} 
+          speedMultiplier={1.2}
+        />
+        <p className="mt-8 text-white text-xl font-medium animate-pulse">
+          AthalaSIEM
+        </p>
+        <p className='mt-2 text-white text-sm font-medium animate-pulse'>
+          Security Information and Event Management System
+        </p>
       </div>
     </div>
   )

@@ -1,11 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAlerts } from './use-alerts';
 import { useEvents } from './use-events';
+import { axiosInstance } from '../lib/axios';
 
 export const useWebSocket = (url: string) => {
   const ws = useRef<WebSocket | null>(null);
   const { refreshAlerts } = useAlerts();
   const { addEvent } = useEvents();
+  const [data, setData] = useState(null);
 
   useEffect(() => {
     ws.current = new WebSocket(url);
@@ -37,6 +39,20 @@ export const useWebSocket = (url: string) => {
       ws.current?.close();
     };
   }, [url, refreshAlerts, addEvent]);
+
+  useEffect(() => {
+    // Fetch data here
+    const fetchData = async () => {
+      try {
+        const response = await axiosInstance.get('/api/data');
+        setData(response.data);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      }
+    };
+    
+    fetchData();
+  }, []);
 
   return ws.current;
 };

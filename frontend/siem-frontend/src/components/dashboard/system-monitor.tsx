@@ -1,79 +1,122 @@
 import React, { useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { MonitoringService, SystemMetrics } from '../../services/monitoring-service'
-import { StatCard } from '../ui/stat-card'
+import { motion } from 'framer-motion'
+import { StatCard } from '../../components/ui/stat-card'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import { Cpu, Ram, HardDrive, Activity } from 'lucide-react'
+import { Cpu, HardDrive, Activity, MemoryStick } from 'lucide-react'
+
+// Define proper types
+interface SystemMetrics {
+  cpu: {
+    usage: number;
+  };
+  memory: {
+    used: number;
+    total: number;
+  };
+  storage: {
+    used: number;
+    total: number;
+    free: number;
+  };
+  network: {
+    incoming: number;
+    outgoing: number;
+  };
+}
+
+interface HealthComponent {
+  status: 'up' | 'down';
+  latency: number;
+}
+
+interface SystemHealth {
+  components: Record<string, HealthComponent>;
+}
 
 export function SystemMonitor() {
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null)
   const [historicalData, setHistoricalData] = useState<any[]>([])
-  const [health, setHealth] = useState<any>(null)
+  const [health, setHealth] = useState<SystemHealth | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Subscribe to real-time metrics
-    const unsubscribe = MonitoringService.subscribeToMetrics((newMetrics) => {
-      setMetrics(newMetrics)
-    })
-
-    // Fetch historical data
-    const fetchHistorical = async () => {
+    const fetchData = async () => {
       try {
-        const data = await MonitoringService.getHistoricalMetrics('1h')
-        setHistoricalData(data.metrics)
+        setLoading(true)
+        // Simulasi data untuk development
+        const mockMetrics: SystemMetrics = {
+          cpu: { usage: 45.5 },
+          memory: { used: 8.2, total: 16 },
+          storage: { used: 256, total: 512, free: 256 },
+          network: { incoming: 1024 * 1024, outgoing: 512 * 1024 }
+        }
+        setMetrics(mockMetrics)
+
+        // Mock historical data
+        setHistoricalData([
+          { timestamp: '00:00', cpu: { usage: 40 }, memory: { used: 7.8 } },
+          { timestamp: '00:05', cpu: { usage: 42 }, memory: { used: 8.0 } },
+          // ... more data points
+        ])
+
+        // Mock health data
+        setHealth({
+          components: {
+            'Database': { status: 'up', latency: 45 },
+            'API Server': { status: 'up', latency: 23 },
+            'Cache': { status: 'up', latency: 12 }
+          }
+        })
       } catch (error) {
-        console.error('Failed to fetch historical metrics:', error)
+        console.error('Failed to fetch metrics:', error)
+      } finally {
+        setLoading(false)
       }
     }
 
-    // Fetch system health
-    const fetchHealth = async () => {
-      try {
-        const healthData = await MonitoringService.getSystemHealth()
-        setHealth(healthData)
-      } catch (error) {
-        console.error('Failed to fetch system health:', error)
-      }
-    }
-
-    fetchHistorical()
-    fetchHealth()
-
-    // Cleanup subscription
-    return () => {
-      unsubscribe()
-    }
+    fetchData()
+    const interval = setInterval(fetchData, 10000)
+    return () => clearInterval(interval)
   }, [])
+
+  if (loading || !metrics) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="CPU Usage"
-          value={`${metrics?.cpu.usage.toFixed(1)}%`}
+          value={`${metrics.cpu.usage.toFixed(1)}%`}
           icon={<Cpu className="h-6 w-6 text-blue-500" />}
-          variant={metrics?.cpu.usage > 80 ? 'danger' : 'default'}
+          variant={metrics.cpu.usage > 80 ? 'danger' : 'default'}
         />
         <StatCard
           title="Memory Usage"
-          value={`${((metrics?.memory.used || 0) / (metrics?.memory.total || 1) * 100).toFixed(1)}%`}
-          icon={<Ram className="h-6 w-6 text-green-500" />}
-          description={`${(metrics?.memory.used || 0).toFixed(2)}GB / ${(metrics?.memory.total || 0).toFixed(2)}GB`}
+          value={`${((metrics.memory.used / metrics.memory.total) * 100).toFixed(1)}%`}
+          icon={<MemoryStick className="h-6 w-6 text-green-500" />}
+          description={`${metrics.memory.used.toFixed(2)}GB / ${metrics.memory.total.toFixed(2)}GB`}
         />
         <StatCard
           title="Storage"
-          value={`${((metrics?.storage.used || 0) / (metrics?.storage.total || 1) * 100).toFixed(1)}%`}
+          value={`${((metrics.storage.used / metrics.storage.total) * 100).toFixed(1)}%`}
           icon={<HardDrive className="h-6 w-6 text-yellow-500" />}
-          description={`${(metrics?.storage.free || 0).toFixed(2)}GB free`}
+          description={`${metrics.storage.free.toFixed(2)}GB free`}
         />
         <StatCard
           title="Network Traffic"
-          value={`${((metrics?.network.incoming || 0) / 1024 / 1024).toFixed(2)} MB/s`}
+          value={`${(metrics.network.incoming / 1024 / 1024).toFixed(2)} MB/s`}
           icon={<Activity className="h-6 w-6 text-purple-500" />}
-          description={`Out: ${((metrics?.network.outgoing || 0) / 1024 / 1024).toFixed(2)} MB/s`}
+          description={`Out: ${(metrics.network.outgoing / 1024 / 1024).toFixed(2)} MB/s`}
         />
       </div>
 
+      {/* Performance Chart */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -81,60 +124,81 @@ export function SystemMonitor() {
       >
         <h3 className="mb-4 text-lg font-medium">System Performance</h3>
         <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={historicalData}>
-              <XAxis dataKey="timestamp" />
-              <YAxis />
-              <Tooltip />
-              <Line
-                type="monotone"
-                dataKey="cpu.usage"
-                stroke="#3b82f6"
-                name="CPU"
-              />
-              <Line
-                type="monotone"
-                dataKey="memory.used"
-                stroke="#10b981"
-                name="Memory"
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {historicalData.length > 0 && (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={historicalData}
+                margin={{
+                  top: 5,
+                  right: 30,
+                  left: 20,
+                  bottom: 5,
+                }}
+              >
+                <XAxis 
+                  dataKey="timestamp"
+                  stroke="#888888"
+                  fontSize={12}
+                />
+                <YAxis
+                  stroke="#888888"
+                  fontSize={12}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'white',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '6px',
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="cpu.usage"
+                  stroke="#3b82f6"
+                  name="CPU"
+                  strokeWidth={2}
+                  dot={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="memory.used"
+                  stroke="#10b981"
+                  name="Memory"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </motion.div>
 
+      {/* Health and Alerts Grid */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="rounded-lg border bg-white p-6"
-        >
-          <h3 className="mb-4 text-lg font-medium">System Health</h3>
-          <div className="space-y-4">
-            {health?.components && Object.entries(health.components).map(([name, data]: [string, any]) => (
-              <div key={name} className="flex items-center justify-between">
-                <span className="text-sm font-medium">{name}</span>
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-500">{data.latency}ms</span>
-                  <span
-                    className={`h-2 w-2 rounded-full ${
-                      data.status === 'up' ? 'bg-green-500' : 'bg-red-500'
-                    }`}
-                  />
+        {health && (
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="rounded-lg border bg-white p-6"
+          >
+            <h3 className="mb-4 text-lg font-medium">System Health</h3>
+            <div className="space-y-4">
+              {Object.entries(health.components).map(([name, data]) => (
+                <div key={name} className="flex items-center justify-between">
+                  <span className="text-sm font-medium">{name}</span>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-500">{data.latency}ms</span>
+                    <span
+                      className={`h-2 w-2 rounded-full ${
+                        data.status === 'up' ? 'bg-green-500' : 'bg-red-500'
+                      }`}
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="rounded-lg border bg-white p-6"
-        >
-          <h3 className="mb-4 text-lg font-medium">Active Alerts</h3>
-          {/* Add alerts component here */}
-        </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   )

@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{}"
+self.__REACT_LOADABLE_MANIFEST="{\"app\\\\dashboard\\\\layout.tsx -> ../../components/layout/navbar\":{\"id\":\"app\\\\dashboard\\\\layout.tsx -> ../../components/layout/navbar\",\"files\":[\"static/chunks/_app-pages-browser_src_components_layout_navbar_tsx.js\"]},\"app\\\\dashboard\\\\layout.tsx -> ../../components/layout/sidebar\":{\"id\":\"app\\\\dashboard\\\\layout.tsx -> ../../components/layout/sidebar\",\"files\":[\"static/chunks/_app-pages-browser_src_components_layout_sidebar_tsx.js\"]}}"

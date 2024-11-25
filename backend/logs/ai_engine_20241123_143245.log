@@ -1,3 +1,0 @@
-2024-11-23 14:32:45,943 - root - WARNING - AI config file not found, using default settings
-2024-11-23 14:32:45,945 - ai_engine.core.model_manager - ERROR - Error initializing models: ThreatDetector.__init__() got an unexpected keyword argument 'model_config'
-2024-11-23 14:32:45,946 - root - ERROR - Failed to initialize AI components: ThreatDetector.__init__() got an unexpected keyword argument 'model_config'

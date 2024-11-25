@@ -1,10 +1,9 @@
 'use client'
 
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '../../../hooks/use-auth'
 import { Card } from '../../../components/ui/card'
-import { SecurityMetrics } from '../../../components/dashboard/SecurityMetrics'
 import { SystemHealth } from '../../../components/dashboard/components/system-health'
 import { ThreatMap } from '../../../components/dashboard/components/threat-map'
 import { SecurityAlerts } from '../../../components/dashboard/security-alerts'
@@ -13,62 +12,76 @@ import { EventsOverview } from '../../../components/dashboard/components/events-
 import { AIInsights } from '../../../components/dashboard/ai-insights'
 import { RecentActivity } from '../../../components/dashboard/recent-activity'
 
+function LoadingFallback() {
+  return (
+    <div className="animate-pulse space-y-4">
+      <div className="h-8 bg-gray-200 rounded w-1/4"></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="h-32 bg-gray-200 rounded"></div>
+        <div className="h-32 bg-gray-200 rounded"></div>
+        <div className="h-32 bg-gray-200 rounded"></div>
+        <div className="h-32 bg-gray-200 rounded"></div>
+      </div>
+    </div>
+  )
+}
+
 export default function DashboardOverview() {
   const router = useRouter()
-  const { token } = useAuthStore()
+  const { token, initialized } = useAuthStore()
 
   useEffect(() => {
-    if (!token) {
-      router.push('/login')
+    if (initialized && !token) {
+      router.replace('/login')
     }
-  }, [token, router])
+  }, [token, initialized, router])
 
-  if (!token) return null
+  if (!initialized || !token) return null
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
-      {/* Top Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <SystemMonitor />
-      </div>
-
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Left Column */}
-        <div className="space-y-6">
-          <Card className="p-6">
-            <SecurityAlerts />
-          </Card>
-          
-          <Card className="p-6">
-            <SecurityMetrics />
-          </Card>
-          
-          <Card className="p-6">
-            <AIInsights />
-          </Card>
+      <Suspense fallback={<LoadingFallback />}>
+        {/* Top Stats Row */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Suspense fallback={<div className="h-32 bg-gray-200 rounded animate-pulse"></div>}>
+            <SystemMonitor />
+          </Suspense>
         </div>
 
-        {/* Right Column */}
-        <div className="space-y-6">
-          <Card className="p-6">
-            <ThreatMap />
-          </Card>
-          
-          <Card className="p-6">
-            <SystemHealth />
-          </Card>
-          
-          <Card className="p-6">
-            <EventsOverview />
-          </Card>
-        </div>
-      </div>
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left Column */}
+          <div className="space-y-6">
+            <Card className="p-6">
+              <SecurityAlerts />
+            </Card>
+            
+            <Card className="p-6">
+              <AIInsights />
+            </Card>
+          </div>
 
-      {/* Bottom Section */}
-      <Card className="p-6">
-        <RecentActivity />
-      </Card>
+          {/* Right Column */}
+          <div className="space-y-6">
+            <Card className="p-6">
+              <ThreatMap />
+            </Card>
+            
+            <Card className="p-6">
+              <SystemHealth />
+            </Card>
+            
+            <Card className="p-6">
+              <EventsOverview />
+            </Card>
+          </div>
+        </div>
+
+        {/* Bottom Section */}
+        <Card className="p-6">
+          <RecentActivity />
+        </Card>
+      </Suspense>
     </div>
   )
 }

@@ -1,51 +1,68 @@
 // src/hooks/use-auth.ts
 import { create } from 'zustand'
 import { axiosInstance } from '../lib/axios'
+import { persist, createJSONStorage } from 'zustand/middleware'
 
+// Simplified state interface
 interface AuthState {
-  user: any | null
-  token: string | null
-  isLoading: boolean
-  login: (credentials: { username: string; password: string }) => Promise<void>
-  logout: () => void
-  checkAuth: () => Promise<void>
+  user: any | null;
+  token: string | null;
+  initialized: boolean;
+  loading: boolean;
+  login: (username: string, password: string) => Promise<boolean>;
+  logout: () => void;
+  setInitialized: (initialized: boolean) => void;
 }
 
-export const useAuth = create<AuthState>((set) => ({
-  user: null,
-  token: localStorage.getItem('token'),
-  isLoading: true,
-  
-  login: async (credentials) => {
-    try {
-      const response = await axiosInstance.post('/auth/login', credentials)
-      const { token, user } = response.data
-      localStorage.setItem('token', token)
-      set({ user, token })
-    } catch (error) {
-      console.error('Login failed:', error)
-      throw error
-    }
-  },
-  
-  logout: () => {
-    localStorage.removeItem('token')
-    set({ user: null, token: null })
-  },
-  
-  checkAuth: async () => {
-    try {
-      const token = localStorage.getItem('token')
-      if (!token) {
-        set({ isLoading: false })
-        return
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      user: null,
+      token: null,
+      initialized: false,
+      loading: false,
+      setInitialized: (initialized) => set({ initialized }),
+      login: async (username: string, password: string) => {
+        try {
+          set({ loading: true });
+          const response = await axiosInstance.post('/auth/login', {
+            username,
+            password,
+          });
+          const { token, user } = response.data;
+          
+          localStorage.setItem('token', token);
+          axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+          
+          set({ 
+            token, 
+            user, 
+            loading: false, 
+            initialized: true 
+          });
+          
+          return true;
+        } catch (error) {
+          set({ loading: false });
+          throw error;
+        }
+      },
+      logout: () => {
+        localStorage.removeItem('token');
+        delete axiosInstance.defaults.headers.common['Authorization'];
+        set({ user: null, token: null });
       }
-      
-      const response = await axiosInstance.get('/auth/me')
-      set({ user: response.data, isLoading: false })
-    } catch (error) {
-      localStorage.removeItem('token')
-      set({ user: null, token: null, isLoading: false })
+    }),
+    {
+      name: 'auth-storage',
+      storage: createJSONStorage(() => localStorage),
+      skipHydration: true,
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.setInitialized(true);
+        }
+      }
     }
-  },
-}))
+  )
+)
+

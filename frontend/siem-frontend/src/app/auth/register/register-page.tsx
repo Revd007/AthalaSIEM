@@ -22,7 +22,7 @@ export default function Register() {
     password: '',
     confirmPassword: '',
     full_name: '',
-    role: 'VIEWER' // Default role
+    role: 'VIEWER'
   })
 
   const [error, setError] = useState<string | null>(null)
@@ -50,8 +50,7 @@ export default function Register() {
       })
 
       if (response.status === 200 || response.status === 201) {
-        alert('Registration successful! Please log in.')
-        router.push('/dashboard')
+        router.push('/login')
       }
     } catch (error: any) {
       setError(error.response?.data?.detail || 'Registration failed')
@@ -61,134 +60,91 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Create your account
-          </h2>
-        </div>
-
-        {error && (
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-            <span className="block sm:inline">{error}</span>
+    <div className="min-h-screen">
+      <div className="form-block-wrapper form-block-wrapper--is-signup">
+        <section className="form-block">
+          <div className="form-block__header">
+            <h1>Create Account</h1>
+            {error && (
+              <div className="bg-red-500/20 p-3 rounded">
+                <p className="text-sm">{error}</p>
+              </div>
+            )}
           </div>
-        )}
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-md shadow-sm -space-y-px">
-            {/* Username Field */}
-            <div className="mb-4">
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700">
-                Username
-              </label>
+          <form onSubmit={handleSubmit}>
+            <div className="form-group form-group--signup">
               <input
-                id="username"
-                name="username"
                 type="text"
-                required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                className="form-group__input"
+                placeholder="Username"
                 value={formData.username}
                 onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-              />
-            </div>
-
-            {/* Email Field */}
-            <div className="mb-4">
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
                 required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+              />
+              <input
+                type="email"
+                className="form-group__input"
+                placeholder="Email"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </div>
-
-            {/* Full Name Field */}
-            <div className="mb-4">
-              <label htmlFor="full_name" className="block text-sm font-medium text-gray-700">
-                Full Name
-              </label>
-              <input
-                id="full_name"
-                name="full_name"
-                type="text"
                 required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+              />
+              <input
+                type="text"
+                className="form-group__input"
+                placeholder="Full Name"
                 value={formData.full_name}
                 onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-              />
-            </div>
-
-            {/* Role Selection */}
-            <div className="mb-4">
-              <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-                Role
-              </label>
-              <select
-                id="role"
-                name="role"
                 required
-                className="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              />
+              <select
+                className="form-group__input"
                 value={formData.role}
                 onChange={(e) => setFormData({ ...formData, role: e.target.value as RegisterFormData['role'] })}
+                required
               >
                 <option value="VIEWER">Viewer</option>
                 <option value="OPERATOR">Operator</option>
                 <option value="ANALYST">Analyst</option>
                 <option value="ADMIN">Admin</option>
               </select>
+              <input
+                type="password"
+                className="form-group__input"
+                placeholder="Password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                required
+              />
+              <input
+                type="password"
+                className="form-group__input"
+                placeholder="Confirm Password"
+                value={formData.confirmPassword}
+                onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                required
+              />
             </div>
 
-            {/* Password Fields */}
-            <div className="rounded-md shadow-sm -space-y-px">
-              <div>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                  placeholder="Password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                />
-              </div>
-              <div>
-                <input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  required
-                  className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                  placeholder="Confirm password"
-                  value={formData.confirmPassword}
-                  onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <button
+            <button 
+              className="button button--primary full-width"
               type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              disabled={loading}
             >
-              Register
+              {loading ? 'Creating Account...' : 'Create Account'}
             </button>
-          </div>
+          </form>
 
-          <div className="text-center">
-            <Link href="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
+          <div className="mt-4 text-center">
+            <Link 
+              href="/login" 
+              className="text-sm hover:text-white/80"
+            >
               Already have an account? Sign in
             </Link>
           </div>
-        </form>
+        </section>
       </div>
     </div>
   )
