@@ -3,17 +3,8 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '../../hooks/use-auth'
-import dynamic from 'next/dynamic'
-
-const Sidebar = dynamic(() => import('../../components/layout/sidebar'), {
-  loading: () => <div>Loading...</div>,
-  ssr: false
-})
-
-const Navbar = dynamic(() => import('../../components/layout/navbar'), {
-  loading: () => <div>Loading...</div>,
-  ssr: false
-})
+import Sidebar from '../../components/navigation/Sidebar'
+import Header from '../../components/navigation/Header'
 
 export default function DashboardLayout({
   children,
@@ -21,33 +12,25 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
-  const { token, initialized, loading } = useAuthStore()
+  const { user, initialized } = useAuthStore()
 
   useEffect(() => {
-    if (initialized && !token) {
-      router.replace('/login')
+    if (initialized && !user) {
+      router.push('/login')
     }
-  }, [token, initialized, router])
+  }, [initialized, user, router])
 
-  // Show loading state
-  if (loading || !initialized) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <div className="w-8 h-8 border-2 border-primary rounded-full animate-spin border-t-transparent"></div>
-      </div>
-    )
-  }
-
-  // If no token, don't render anything
-  if (!token) return null
+  if (!user) return null
 
   return (
-    <div className="min-h-screen bg-gray-100">
-      <Navbar />
-      <div className="flex">
-        <Sidebar />
-        <main className="flex-1 p-6 overflow-auto">
-          {children}
+    <div className="flex h-screen bg-gray-100">
+      <Sidebar />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <Header />
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-200">
+          <div className="container mx-auto px-6 py-8">
+            {children}
+          </div>
         </main>
       </div>
     </div>

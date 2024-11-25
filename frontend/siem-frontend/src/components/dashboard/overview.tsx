@@ -36,11 +36,6 @@ export function DashboardOverview() {
           <EventTrendChart data={data?.metrics?.eventTrend || []} />
         </Card>
         
-        <Card className="p-6">
-          <SystemHealth healt
-           
-           hData={data?.health} />
-        </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

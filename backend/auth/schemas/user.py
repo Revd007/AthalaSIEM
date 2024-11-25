@@ -19,5 +19,9 @@ class LoginResponse(BaseModel):
 class UserResponse(BaseModel):
     id: str
     email: str
+    username: str
     role: str
-    name: str | None = None
+    full_name: str | None = None
+
+    class Config:
+        from_attributes = True

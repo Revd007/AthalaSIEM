@@ -1,82 +1,110 @@
 'use client'
 
-import { Suspense, useState, useEffect } from 'react'
-import { Card } from '../../components/ui/card'
-import { Calendar } from '../../components/ui/calendar'
-import { Button } from '../../components/ui/button'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select'
-import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover'
-import { Input } from '../../components/ui/input'
-import { LineChart, Line, BarChart, Bar, PieChart, Pie, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid, Cell } from 'recharts'
-import { Search, Calendar as CalendarIcon, Filter, Download, Settings, RefreshCcw } from 'lucide-react'
-import { DashboardOverview } from '../../components/dashboard/overview'
-import { LoadingSkeleton } from '../../components/ui/loading-skeleton'
+import { useEffect, useState } from 'react'
+import DashboardLayout from '../../components/layouts/DashboardLayout'
+import { useQuery } from '@tanstack/react-query'
+import { StatCard } from '../../components/dashboard/stat-card'
+import { SeverityBadge } from '../../components/dashboard/severity-badge'
+interface DashboardStats {
+  totalAlerts: number
+  activeThreats: number
+  systemHealth: number
+  recentEvents: Array<{
+    id: string
+    type: string
+    severity: string
+    timestamp: string
+    description: string
+  }>
+}
 
-export default function DashboardPage() {
-  const [mounted, setMounted] = useState(false)
+async function fetchDashboardStats(): Promise<DashboardStats> {
+  const response = await fetch('/api/dashboard/stats', {
+    headers: {
+      'Authorization': `Bearer ${localStorage.getItem('token')}`
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch dashboard stats')
+  }
+  
+  return response.json()
+}
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+export default function Dashboard() {
+  const { data: stats, isLoading, error } = useQuery({
+    queryKey: ['dashboardStats'],
+    queryFn: fetchDashboardStats
+  })
 
-  if (!mounted) return <LoadingSkeleton />
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="text-red-500">Error loading dashboard data</div>
+      </DashboardLayout>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div>Loading dashboard data...</div>
+      </DashboardLayout>
+    )
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Header with Actions */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-gray-500">Monitor your security metrics and events</p>
-        </div>
-        
-        <div className="flex items-center gap-4">
-          {/* Search */}
-          <div className="flex items-center gap-2 relative">
-            <Search className="w-4 h-4 absolute left-3 text-gray-500" />
-            <Input
-              placeholder="Search events..."
-              className="w-64 pl-9"
-            />
-          </div>
-
-          {/* Date Filter */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <CalendarIcon className="w-4 h-4" />
-                Filter Date
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
-              <Calendar />
-            </PopoverContent>
-          </Popover>
-
-          {/* Actions */}
-          <Button variant="outline" className="gap-2">
-            <Filter className="w-4 h-4" />
-            Filters
-          </Button>
-          <Button variant="outline" className="gap-2">
-            <Download className="w-4 h-4" />
-            Export
-          </Button>
-          <Button variant="outline" className="gap-2">
-            <RefreshCcw className="w-4 h-4" />
-            Refresh
-          </Button>
-          <Button variant="outline" className="gap-2">
-            <Settings className="w-4 h-4" />
-            Settings
-          </Button>
-        </div>
+    <DashboardLayout>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <StatCard
+          title="Total Alerts"
+          value={stats?.totalAlerts || 0}
+          icon="🚨"
+        />
+        <StatCard
+          title="Active Threats"
+          value={stats?.activeThreats || 0}
+          icon="⚠️"
+        />
+        <StatCard
+          title="System Health"
+          value={`${stats?.systemHealth || 0}%`}
+          icon="💻"
+        />
       </div>
 
-      {/* Main Dashboard Content */}
-      <Suspense fallback={<LoadingSkeleton />}>
-        <DashboardOverview />
-      </Suspense>
-    </div>
+      <div className="bg-white rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold mb-4">Recent Events</h2>
+        <div className="overflow-x-auto">
+          <table className="min-w-full">
+            <thead>
+              <tr>
+                <th className="px-6 py-3 border-b">Type</th>
+                <th className="px-6 py-3 border-b">Severity</th>
+                <th className="px-6 py-3 border-b">Timestamp</th>
+                <th className="px-6 py-3 border-b">Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats?.recentEvents.map((event) => (
+                <tr key={event.id}>
+                  <td className="px-6 py-4 border-b">{event.type}</td>
+                  <td className="px-6 py-4 border-b">
+                    <SeverityBadge severity={event.severity} />
+                  </td>
+                  <td className="px-6 py-4 border-b">
+                    {new Date(event.timestamp).toLocaleString()}
+                  </td>
+                  <td className="px-6 py-4 border-b">{event.description}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </DashboardLayout>
   )
 }
+
+// ... StatCard and SeverityBadge components remain the same ...

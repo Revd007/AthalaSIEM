@@ -1,52 +1,41 @@
 import { useState, useEffect } from 'react'
 import { Card, CardHeader, CardTitle } from '../../ui/card'
+import { SystemStatus } from '../../../types/dashboard'
 
-interface SystemStatus {
-  name: string
-  status: 'healthy' | 'warning' | 'critical'
-  uptime: string
+interface SystemHealthProps {
+  healthData: SystemStatus;
 }
 
-export function SystemHealth() {
-  const [systems, setSystems] = useState<SystemStatus[]>([])
-
-  useEffect(() => {
-    // Fetch system status
-    const fetchStatus = async () => {
-      try {
-        const response = await fetch('/api/system/health')
-        const data = await response.json()
-        setSystems(data)
-      } catch (error) {
-        console.error('Failed to fetch system health:', error)
-      }
-    }
-
-    fetchStatus()
-    const interval = setInterval(fetchStatus, 60000) // Update every minute
-    return () => clearInterval(interval)
-  }, [])
-
+export function SystemHealth({ healthData }: SystemHealthProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>System Health</CardTitle>
-      </CardHeader>
-      <div className="p-6">
-        {systems.map((system) => (
-          <div key={system.name} className="flex items-center justify-between py-2">
-            <span>{system.name}</span>
-            <div className="flex items-center gap-2">
-              <span className={`h-3 w-3 rounded-full ${
-                system.status === 'healthy' ? 'bg-green-500' :
-                system.status === 'warning' ? 'bg-yellow-500' :
-                'bg-red-500'
-              }`} />
-              <span>{system.uptime}</span>
-            </div>
+    <div className="space-y-4">
+      <h3 className="text-lg font-semibold">System Health</h3>
+      <div className="grid gap-4">
+        <div className={`p-4 rounded-lg ${getStatusColor(healthData.status)}`}>
+          <h4 className="font-medium">{healthData.name}</h4>
+          <p className="text-sm">Uptime: {healthData.uptime}</p>
+        </div>
+        {healthData.components.map((component) => (
+          <div
+            key={component.name}
+            className={`p-4 rounded-lg ${getStatusColor(component.status)}`}
+          >
+            <h4 className="font-medium">{component.name}</h4>
+            <p className="text-sm">Uptime: {component.uptime}</p>
           </div>
         ))}
       </div>
-    </Card>
-  )
+    </div>
+  );
+}
+
+function getStatusColor(status: 'healthy' | 'warning' | 'critical'): string {
+  switch (status) {
+    case 'healthy':
+      return 'bg-green-100 text-green-800';
+    case 'warning':
+      return 'bg-yellow-100 text-yellow-800';
+    case 'critical':
+      return 'bg-red-100 text-red-800';
+  }
 }

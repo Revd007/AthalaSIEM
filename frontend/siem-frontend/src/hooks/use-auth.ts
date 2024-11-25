@@ -9,7 +9,7 @@ interface AuthState {
   token: string | null;
   initialized: boolean;
   loading: boolean;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => void;
   setInitialized: (initialized: boolean) => void;
 }
@@ -29,22 +29,24 @@ export const useAuthStore = create<AuthState>()(
             username,
             password,
           });
-          const { token, user } = response.data;
           
-          localStorage.setItem('token', token);
-          axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+          const { access_token, user } = response.data;
+          
+          // Store token in localStorage and set axios default header
+          localStorage.setItem('token', access_token);
+          axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
           
           set({ 
-            token, 
+            token: access_token, 
             user, 
             loading: false, 
             initialized: true 
           });
-          
-          return true;
-        } catch (error) {
+
+          return response.data;
+        } catch (error: any) {
           set({ loading: false });
-          throw error;
+          throw new Error(error.response?.data?.detail || 'Login failed');
         }
       },
       logout: () => {
@@ -56,12 +58,7 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => localStorage),
-      skipHydration: true,
-      onRehydrateStorage: () => (state) => {
-        if (state) {
-          state.setInitialized(true);
-        }
-      }
+      skipHydration: true
     }
   )
 )

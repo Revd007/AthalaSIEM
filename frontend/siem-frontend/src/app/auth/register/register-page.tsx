@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useMutation } from '@tanstack/react-query'
 import Link from 'next/link'
-import { axiosInstance } from '../../../lib/axios'
 
 interface RegisterFormData {
   username: string
@@ -14,8 +14,29 @@ interface RegisterFormData {
   role: 'ADMIN' | 'ANALYST' | 'OPERATOR' | 'VIEWER'
 }
 
+const register = async (data: Omit<RegisterFormData, 'confirmPassword'>) => {
+  const response = await fetch('/auth/register', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      ...data,
+      is_active: true
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || 'Registration failed')
+  }
+
+  return response.json()
+}
+
 export default function Register() {
   const router = useRouter()
+  const [passwordError, setPasswordError] = useState<string | null>(null)
   const [formData, setFormData] = useState<RegisterFormData>({
     username: '',
     email: '',
@@ -25,39 +46,27 @@ export default function Register() {
     role: 'VIEWER'
   })
 
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const registerMutation = useMutation({
+    mutationFn: (data: Omit<RegisterFormData, 'confirmPassword'>) => register(data),
+    onSuccess: () => {
+      router.push('/login')
+    }
+  })
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
-    setLoading(true)
+    setPasswordError(null)
 
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match')
-      setLoading(false)
+      setPasswordError('Passwords do not match')
       return
     }
 
-    try {
-      const response = await axiosInstance.post('/auth/register', {
-        username: formData.username,
-        email: formData.email,
-        password: formData.password,
-        full_name: formData.full_name,
-        role: formData.role,
-        is_active: true
-      })
-
-      if (response.status === 200 || response.status === 201) {
-        router.push('/login')
-      }
-    } catch (error: any) {
-      setError(error.response?.data?.detail || 'Registration failed')
-    } finally {
-      setLoading(false)
-    }
+    const { confirmPassword, ...registerData } = formData
+    registerMutation.mutate(registerData)
   }
+
+  const errorMessage = passwordError || registerMutation.error?.message
 
   return (
     <div className="min-h-screen">
@@ -65,9 +74,9 @@ export default function Register() {
         <section className="form-block">
           <div className="form-block__header">
             <h1>Create Account</h1>
-            {error && (
+            {errorMessage && (
               <div className="bg-red-500/20 p-3 rounded">
-                <p className="text-sm">{error}</p>
+                <p className="text-sm">{errorMessage}</p>
               </div>
             )}
           </div>
@@ -130,9 +139,9 @@ export default function Register() {
             <button 
               className="button button--primary full-width"
               type="submit"
-              disabled={loading}
+              disabled={registerMutation.isPending}
             >
-              {loading ? 'Creating Account...' : 'Create Account'}
+              {registerMutation.isPending ? 'Creating Account...' : 'Create Account'}
             </button>
           </form>
 

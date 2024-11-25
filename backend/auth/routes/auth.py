@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import timedelta
 import logging
+from sqlalchemy.sql import or_
 
 from auth.dependencies.auth_handler import AuthHandler
 from auth.schemas.user import UserLogin
@@ -23,43 +24,59 @@ logger = logging.getLogger(__name__)
 
 @router.post("/register", response_model=UserResponse)
 async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
-    # Check if user exists
-    query = select(UserModel).filter(UserModel.email == user.email)
-    result = await db.execute(query)
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400,
-            detail="Email already registered"
-        )
-    
-    query = select(UserModel).filter(UserModel.username == user.username)
-    result = await db.execute(query)
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=400,
-            detail="Username already taken"
-        )
-    
-    # Create new user
-    hashed_password = hash_password(user.password)
-    db_user = UserModel(
-        email=user.email,
-        username=user.username,
-        password_hash=hashed_password,
-        full_name=user.full_name,
-        role=UserRole.VIEWER
-    )
-    
     try:
+        # Check if user exists
+        query = select(UserModel).filter(
+            or_(
+                UserModel.email == user.email,
+                UserModel.username == user.username
+            )
+        )
+        result = await db.execute(query)
+        existing_user = result.scalar_one_or_none()
+        
+        if existing_user:
+            if existing_user.email == user.email:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Email already registered"
+                )
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Username already taken"
+                )
+        
+        # Create new user
+        hashed_password = hash_password(user.password)
+        db_user = UserModel(
+            email=user.email,
+            username=user.username,
+            password_hash=hashed_password,
+            full_name=user.full_name,
+            role=UserRole.VIEWER
+        )
+        
         db.add(db_user)
         await db.commit()
         await db.refresh(db_user)
-        return db_user
+        
+        return UserResponse(
+            id=str(db_user.id),
+            email=db_user.email,
+            username=db_user.username,
+            role=db_user.role,
+            full_name=db_user.full_name
+        )
+        
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
+        logger.error(f"Registration error: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error creating user: {str(e)}"
+            detail="Internal server error during registration"
         )
 
 @router.post("/login", response_model=LoginResponse)

@@ -20,6 +20,7 @@ interface DashboardData {
       high: number;
       medium: number;
       low: number;
+      total: number;
     };
   };
   metrics: {
@@ -29,7 +30,9 @@ interface DashboardData {
     // Add other metric fields as needed
   };
   health: {
-    status: string;
+    name: string;
+    status: 'healthy' | 'warning' | 'critical';
+    uptime: string;
     components: {
       name: string;
       status: 'healthy' | 'warning' | 'critical';
@@ -79,7 +82,18 @@ export default function DashboardOverview() {
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Suspense fallback={<LoadingSkeleton />}>
-          <AlertSummary alerts={dashboardData?.summary?.alerts} />
+          {dashboardData?.summary?.alerts && (
+            <AlertSummary alerts={{
+              critical: dashboardData.summary.alerts.critical,
+              high: dashboardData.summary.alerts.high,
+              medium: dashboardData.summary.alerts.medium,
+              low: dashboardData.summary.alerts.low,
+              total: dashboardData.summary.alerts.critical + 
+                     dashboardData.summary.alerts.high + 
+                     dashboardData.summary.alerts.medium + 
+                     dashboardData.summary.alerts.low
+            }} />
+          )}
         </Suspense>
       </div>
 
@@ -109,7 +123,14 @@ export default function DashboardOverview() {
         
         <Card className="p-6">
           <Suspense fallback={<LoadingSkeleton />}>
-            <SystemHealth healthData={dashboardData?.health} />
+            {dashboardData?.health && (
+              <SystemHealth healthData={{
+                name: dashboardData.health.name,
+                status: dashboardData.health.status,
+                uptime: dashboardData.health.uptime,
+                components: dashboardData.health.components
+              }} />
+            )}
           </Suspense>
         </Card>
       </div>
