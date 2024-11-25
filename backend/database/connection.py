@@ -44,3 +44,12 @@ async def get_db():
             yield session
         finally:
             await session.close()
+
+async def init_models():
+    """Initialize database models"""
+    async with engine.begin() as conn:
+        try:
+            await conn.run_sync(Base.metadata.create_all)
+        except Exception as e:
+            logging.error(f"Error initializing models: {e}")
+            await conn.rollback()
