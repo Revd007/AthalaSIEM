@@ -14,9 +14,9 @@ class Settings:
     
     # Database settings
     DB_USER: str = os.getenv("DB_USER", "revian_dbsiem")
-    DB_PASSWORD: str = os.getenv("DB_PASSWORD", "Wokolcoy%4020")
-    DB_HOST: str = os.getenv("DB_HOST", ".\SQLEXPRESS")
-    DB_PORT: str = os.getenv("DB_PORT", "1433")
+    DB_PASSWORD: str = os.getenv("DB_PASSWORD", "wokolcoy%4020")
+    DB_HOST: str = os.getenv("DB_HOST", "46.250.234.160")
+    DB_PORT: str = os.getenv("DB_PORT", "5432")
     DB_NAME: str = os.getenv("DB_NAME", "siem_db")
     
     # CORS settings
@@ -35,7 +35,7 @@ class Settings:
     SSL_CERTFILE: str = os.getenv("SSL_CERTFILE", "certs/cert.pem")
     
     # Database settings
-    DB_TYPE: str = os.getenv("DB_TYPE", "MSSQL")  # MSSQL or SQLite
+    DB_TYPE: str = os.getenv("DB_TYPE", "POSTGRESQL")
     DB_AUTO_INSTALL: bool = True
     
     # Service management

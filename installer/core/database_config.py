@@ -1,6 +1,5 @@
 from typing import Dict, Any, Optional
-import pyodbc
-import sqlalchemy
+import psycopg2
 from sqlalchemy import create_engine
 import logging
 from pathlib import Path
@@ -11,7 +10,7 @@ class DatabaseConfigManager:
         self.logger = logging.getLogger(__name__)
         
     async def configure_database(self) -> Dict[str, Any]:
-        """Configure SQL Server database"""
+        """Configure PostgreSQL database"""
         try:
             # Create database
             await self._create_database()
@@ -37,29 +36,31 @@ class DatabaseConfigManager:
 
     async def _create_database(self) -> None:
         """Create application database"""
-        engine = create_engine(
-            f"mssql+pyodbc://sa:{self.config['sa_password']}@"
-            f"localhost\\SQLEXPRESS?driver=ODBC+Driver+17+for+SQL+Server"
+        conn = psycopg2.connect(
+            host=self.config['host'],
+            user=self.config['user'],
+            password=self.config['password']
         )
+        conn.autocommit = True
         
-        with engine.connect() as conn:
-            conn.execute(f"CREATE DATABASE {self.config['database_name']}")
+        with conn.cursor() as cur:
+            cur.execute(f"CREATE DATABASE {self.config['database_name']}")
 
     async def _create_app_user(self) -> None:
         """Create application database user"""
-        engine = self._get_db_engine()
+        conn = psycopg2.connect(
+            host=self.config['host'],
+            user=self.config['user'],
+            password=self.config['password'],
+            database=self.config['database_name']
+        )
+        conn.autocommit = True
         
-        with engine.connect() as conn:
-            # Create login
-            conn.execute(f"""
-                CREATE LOGIN {self.config['app_user']}
-                WITH PASSWORD = '{self.config['app_password']}'
-            """)
-            
-            # Create user and assign roles
-            conn.execute(f"""
-                USE {self.config['database_name']};
-                CREATE USER {self.config['app_user']}
-                FOR LOGIN {self.config['app_user']};
-                ALTER ROLE db_owner ADD MEMBER {self.config['app_user']};
+        with conn.cursor() as cur:
+            # Create user
+            cur.execute(f"""
+                CREATE USER {self.config['app_user']} WITH PASSWORD '{self.config['app_password']}';
+                GRANT ALL PRIVILEGES ON DATABASE {self.config['database_name']} TO {self.config['app_user']};
+                GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO {self.config['app_user']};
+                ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO {self.config['app_user']};
             """)

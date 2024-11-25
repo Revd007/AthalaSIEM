@@ -3,6 +3,10 @@ from sqlalchemy import create_engine
 import subprocess
 import os
 from typing import Optional
+import psycopg2
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+from backend.database.settings import settings
+import logging
 
 class DatabaseInitializer:
     def __init__(self, db_type: str, install_path: str):
@@ -14,7 +18,7 @@ class DatabaseInitializer:
         if self.db_type == "SQLite":
             return self._init_sqlite()
         else:
-            return self._init_sqlserver()
+            return self._init_postgresql()
             
     def _init_sqlite(self) -> str:
         """Initialize SQLite database"""
@@ -29,41 +33,30 @@ class DatabaseInitializer:
         
         return f"sqlite:///{db_path}"
         
-    def _init_sqlserver(self) -> Optional[str]:
-        """Initialize SQL Server database"""
+    def _init_postgresql(self) -> Optional[str]:
+        """Initialize PostgreSQL database"""
         try:
-            # Check if SQL Server Express is installed
-            subprocess.run(
-                ["sqlcmd", "-?"],
-                capture_output=True,
-                check=True
+            # Connect to PostgreSQL server
+            conn = psycopg2.connect(
+                host=settings.DB_HOST,
+                user=settings.DB_USER,
+                password=settings.DB_PASSWORD
             )
-        except subprocess.CalledProcessError:
-            # Install SQL Server Express
-            self._install_sqlserver_express()
+            conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
             
-        # Create database
-        conn_str = "mssql+pyodbc://./SQLEXPRESS/siem_db?driver=ODBC+Driver+17+for+SQL+Server"
-        engine = create_engine(conn_str)
-        
-        # Import and create all models
-        from database.models import Base
-        Base.metadata.create_all(engine)
-        
-        return conn_str
-        
-    def _install_sqlserver_express(self):
-        """Install SQL Server Express"""
-        # Download SQL Server Express installer
-        subprocess.run([
-            "curl", "-o", "SQLEXPR.exe",
-            "https://go.microsoft.com/fwlink/?linkid=866658"
-        ], check=True)
-        
-        # Install SQL Server Express silently
-        subprocess.run([
-            "SQLEXPR.exe",
-            "/IACCEPTSQLSERVERLICENSETERMS",
-            "/Q",
-            "/HIDECONSOLE"
-        ], check=True)
+            # Create database if not exists
+            cur = conn.cursor()
+            cur.execute(f"SELECT 1 FROM pg_catalog.pg_database WHERE datname = '{settings.DB_NAME}'")
+            exists = cur.fetchone()
+            if not exists:
+                cur.execute(f"CREATE DATABASE {settings.DB_NAME}")
+            
+            cur.close()
+            conn.close()
+            
+            # Return connection string
+            return f"postgresql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
+            
+        except Exception as e:
+            logging.error(f"Failed to initialize PostgreSQL: {e}")
+            return None

@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, DateTime, Boolean, Enum as SQLEnum
-from sqlalchemy.dialects.mssql import UNIQUEIDENTIFIER
+from sqlalchemy.dialects.postgresql import UUID
 from database.connection import Base
 from sqlalchemy.sql import func
 import uuid
@@ -7,9 +7,9 @@ from database.enums import UserRole
 
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = {"schema": "dbo"}
+    __table_args__ = {"schema": "public"}
 
-    id = Column(UNIQUEIDENTIFIER, primary_key=True, default=uuid.uuid4)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(100), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
