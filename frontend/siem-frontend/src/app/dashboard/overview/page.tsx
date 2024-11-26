@@ -11,6 +11,7 @@ import { SystemMonitor } from '../../../components/dashboard/system-monitor'
 import { EventsOverview } from '../../../components/dashboard/components/events-overview'
 import { AIInsights } from '../../../components/dashboard/ai-insights'
 import { RecentActivity } from '../../../components/dashboard/recent-activity'
+import { LoadingSkeleton } from '../../../components/ui/loading-skeleton'
 
 function LoadingFallback() {
   return (
@@ -68,7 +69,14 @@ export default function DashboardOverview() {
             </Card>
             
             <Card className="p-6">
-              <SystemHealth />
+              <Suspense fallback={<LoadingSkeleton />}>
+                <SystemHealth healthData={{
+                  name: "System",
+                  status: "healthy",
+                  uptime: "99.9%",
+                  components: []
+                }} />
+              </Suspense>
             </Card>
             
             <Card className="p-6">

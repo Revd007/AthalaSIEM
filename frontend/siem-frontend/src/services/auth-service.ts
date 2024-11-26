@@ -13,7 +13,7 @@ interface RegisterCredentials {
   password: string;
 }
 
-interface LoginResponse {
+export interface LoginResponse {
   access_token: string;
   token_type: string;
   user: {
@@ -27,25 +27,32 @@ interface LoginResponse {
 
 export const authService = {
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
-    const response = await fetch(`${API_URL}/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify(credentials),
-    });
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(credentials),
+        credentials: 'include',
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Login failed');
-    }
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Login failed');
+      }
 
-    const data = await response.json();
-    if (data.access_token) {
-      localStorage.setItem('token', data.access_token);
+      const data = await response.json();
+      return {
+        ...data,
+        user: {
+          ...data.user,
+          id: String(data.user.id)
+        }
+      };
+    } catch (error) {
+      throw error;
     }
-    return data;
   },
 
   async register(credentials: RegisterCredentials) {
@@ -73,20 +80,30 @@ export const authService = {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('No token found');
 
-    const response = await fetch(`${API_URL}/auth/me`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-    });
+    try {
+      const response = await fetch(`${API_URL}/auth/me`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: 'include',
+      });
 
-    if (!response.ok) {
-      localStorage.removeItem('token');
-      throw new Error('Failed to get current user');
+      if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('token');
+          throw new Error('Session expired');
+        }
+        throw new Error('Failed to get current user');
+      }
+
+      const data = await response.json();
+      return {
+        ...data,
+        id: String(data.id)
+      };
+    } catch (error) {
+      throw error;
     }
-
-    return response.json();
   },
 
   async logout() {

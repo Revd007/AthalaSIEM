@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { authService } from '../services/auth-service';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import type { LoginResponse } from '../services/auth-service';
+import { useQuery, useMutation, QueryKey } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
 interface User {
   id: string;
@@ -16,40 +18,34 @@ interface AuthState {
   token: string | null;
   initialized: boolean;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  setUser: (user: User | null) => void;
+  setToken: (token: string | null) => void;
   setInitialized: (initialized: boolean) => void;
+  login: (credentials: { username: string; password: string }) => Promise<LoginResponse>;
+  logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
+export const useAuthStore = create(
+  persist<AuthState>(
     (set) => ({
       user: null,
       token: null,
       initialized: false,
       loading: false,
+      setUser: (user) => set({ user }),
+      setToken: (token) => set({ token }),
       setInitialized: (initialized) => set({ initialized }),
-      login: async (username: string, password: string) => {
+      login: async (credentials) => {
         try {
           set({ loading: true });
-          const response = await authService.login({ username, password });
-          
-          const { access_token, user } = response;
-          
-          if (!access_token || !user) {
-            throw new Error('Invalid response from server');
-          }
-          
-          localStorage.setItem('token', access_token);
-          
+          const response = await authService.login(credentials);
           set({ 
-            token: access_token, 
-            user, 
-            loading: false, 
+            user: response.user, 
+            token: response.access_token,
             initialized: true 
           });
-          
-        } catch (error: any) {
+          return response;
+        } catch (error) {
           set({ loading: false });
           throw error;
         }
@@ -69,61 +65,65 @@ export const useAuthStore = create<AuthState>()(
 
 // Hook untuk menggunakan auth dengan React Query
 export function useAuth() {
-  const { user, token, login: storeLogin, logout: storeLogout } = useAuthStore();
+  const { user, token, setUser, setToken } = useAuthStore();
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: { username: string; password: string }) => {
       try {
         const response = await authService.login(credentials);
+        useAuthStore.setState({ 
+          user: response.user, 
+          token: response.access_token,
+          initialized: true
+        });
+        localStorage.setItem('token', response.access_token);
         return response;
       } catch (error: any) {
         console.error('Login error:', error);
         throw new Error(error.message || 'Login failed');
       }
-    },
-    onSuccess: (data) => {
-      useAuthStore.setState({ 
-        user: data.user, 
-        token: data.access_token,
-        initialized: true
-      });
-      localStorage.setItem('token', data.access_token);
-    },
-    onError: (error: any) => {
-      console.error('Login mutation error:', error);
     }
   });
 
+  // Perbaikan query untuk getCurrentUser
   const {
     data: currentUser,
     isLoading: isLoadingUser,
-    error: userError
   } = useQuery({
     queryKey: ['currentUser'],
-    queryFn: authService.getCurrentUser,
+    queryFn: () => authService.getCurrentUser(),
     enabled: !!token,
-    retry: false,
-    gcTime: 0,
-    staleTime: 0,
-    select: (data) => {
-      console.log('Current user fetched successfully:', data);
+    retry: 1,
+    select: (data: User) => {
+      if (data) {
+        setUser(data);
+      }
       return data;
     },
-    throwOnError: true
+    // Gunakan callbacks yang tersedia di versi terbaru
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
-  // Handle error separately using the error value
-  if (userError) {
-    console.error('Current user query error:', userError);
-    storeLogout();
-  }
+  // Effect untuk handle error
+  useEffect(() => {
+    if (currentUser === undefined) {
+      setToken(null);
+      setUser(null);
+    }
+  }, [currentUser, setToken, setUser]);
 
   return {
     user: user || currentUser,
     isAuthenticated: !!token,
     isLoading: loginMutation.isPending || isLoadingUser,
-    login: loginMutation.mutate,
-    logout: storeLogout,
+    login: loginMutation.mutateAsync,
+    logout: () => {
+      setToken(null);
+      setUser(null);
+      localStorage.removeItem('token');
+    },
     loginError: loginMutation.error
   };
 }

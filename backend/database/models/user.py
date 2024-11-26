@@ -55,3 +55,12 @@ class User(Base):
     @property
     def can_manage_users(self):
         return self.role == UserRole.ADMIN.value
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "email": self.email,
+            "username": self.username,
+            "role": self.role,
+            "full_name": self.full_name
+        }

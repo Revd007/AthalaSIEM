@@ -10,8 +10,12 @@ export default function Home() {
   const { token } = useAuthStore()
 
   useEffect(() => {
-    router.replace('/login')
-  }, [router])
+    if (token) {
+      router.replace('/dashboard/overview')
+    } else {
+      router.replace('/login')
+    }
+  }, [router, token])
 
   return (
     <div 

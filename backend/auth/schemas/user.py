@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr
+import uuid
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -25,3 +26,6 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+        json_encoders = {
+            uuid.UUID: str
+        }

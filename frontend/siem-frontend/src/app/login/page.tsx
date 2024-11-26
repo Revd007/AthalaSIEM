@@ -1,55 +1,41 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useMutation } from '@tanstack/react-query'
+import { useAuth } from '../../hooks/use-auth'
 
 interface LoginFormData {
   username: string
   password: string
 }
 
-const login = async (data: LoginFormData) => {
-  const response = await fetch('http://localhost:8000/auth/login', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify(data),
-  })
-
-  if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.detail || 'Login failed')
-  }
-
-  return response.json()
-}
-
 export default function Login() {
   const router = useRouter()
+  const { login, isLoading, loginError, isAuthenticated } = useAuth()
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const [formData, setFormData] = useState<LoginFormData>({
     username: '',
     password: '',
   })
 
-  const loginMutation = useMutation({
-    mutationFn: (data: LoginFormData) => login(data),
-    onSuccess: () => {
-      router.push('/dashboard')
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/dashboard/overview')
     }
-  })
+  }, [isAuthenticated, router])
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setPasswordError(null)
-    loginMutation.mutate(formData)
+    try {
+      await login(formData)
+    } catch (error: any) {
+      setPasswordError(error.message)
+    }
   }
 
-  const errorMessage = passwordError || loginMutation.error?.message
+  const errorMessage = passwordError || loginError?.message
 
   return (
     <div className="min-h-screen">
@@ -88,9 +74,9 @@ export default function Login() {
             <button 
               className="button button--primary full-width"
               type="submit"
-              disabled={loginMutation.isPending}
+              disabled={isLoading}
             >
-              {loginMutation.isPending ? 'Signing In...' : 'Sign In'}
+              {isLoading ? 'Signing In...' : 'Sign In'}
             </button>
           </form>
 

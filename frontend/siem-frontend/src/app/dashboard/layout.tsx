@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuthStore } from '../../hooks/use-auth'
+import { useAuth, useAuthStore } from '../../hooks/use-auth'
 import Sidebar from '../../components/navigation/Sidebar'
 import Header from '../../components/navigation/Header'
 
@@ -12,15 +12,21 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
-  const { user, initialized } = useAuthStore()
+  const { isAuthenticated, isLoading } = useAuth()
 
   useEffect(() => {
-    if (initialized && !user) {
-      router.push('/login')
+    if (!isLoading && !isAuthenticated) {
+      router.replace('/login')
     }
-  }, [initialized, user, router])
+  }, [isAuthenticated, isLoading, router])
 
-  if (!user) return null
+  if (isLoading) {
+    return <div>Loading...</div>
+  }
+
+  if (!isAuthenticated) {
+    return null
+  }
 
   return (
     <div className="flex h-screen bg-gray-100">

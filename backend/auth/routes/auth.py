@@ -143,8 +143,15 @@ async def login(login_data: LoginRequest, db: AsyncSession = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 async def get_current_user(
     current_user: UserModel = Depends(auth_handler.get_current_user)
-):
-    return current_user
+) -> UserResponse:
+    """Get current authenticated user"""
+    return UserResponse(
+        id=str(current_user.id),  # Konversi UUID ke string
+        email=current_user.email,
+        username=current_user.username,
+        role=current_user.role,
+        full_name=current_user.full_name
+    )
 
 @router.post("/logout")
 async def logout(current_user: UserModel = Depends(auth_handler.get_current_user)):
