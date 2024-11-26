@@ -60,8 +60,10 @@ export default function Sidebar() {
   const pathname = usePathname()
   const { user } = useAuthStore()
 
+  const userRole = user?.role?.toLowerCase() || 'viewer'
+
   const filteredNavigation = navigation.filter(item => 
-    item.roles.includes(user?.role?.toLowerCase())
+    item.roles.includes(userRole)
   )
 
   return (

@@ -5,7 +5,7 @@ from auth.routes import auth
 from api.routes import alerts, events, users, playbooks, system, dashboard
 from database.connection import init_db
 from database.models.user import UserRole
-from config import settings
+from database.settings import settings
 import logging
 from pathlib import Path
 import yaml
@@ -40,34 +40,35 @@ async def lifespan(app: FastAPI):
     # Initialize database
     await init_db()
     
-    yield  # Server is running and ready to handle requests
+    yield
     
     # Cleanup (if needed)
-    # Add any cleanup code here
 
 # Initialize FastAPI app with lifespan
 app = FastAPI(
-    title="AthalaSIEM API",
+    title=settings.PROJECT_NAME,
+    version=settings.PROJECT_VERSION,
+    description=settings.PROJECT_DESCRIPTION,
     lifespan=lifespan
 )
 
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Include routers
-app.include_router(auth.router, prefix="/auth", tags=["auth"])
-app.include_router(events.router, prefix="/api/v1", tags=["events"])
-app.include_router(alerts.router, prefix="/api/v1", tags=["alerts"])
-app.include_router(users.router, prefix="/api/v1", tags=["users"])
-app.include_router(playbooks.router, prefix="/api/v1", tags=["playbooks"])
-app.include_router(system.router, prefix="/api/v1", tags=["system"])
-app.include_router(dashboard.router, prefix="/api/v1", tags=["dashboard"])
+app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+app.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+app.include_router(alerts.router, prefix="/alerts", tags=["Alerts"])
+app.include_router(events.router, prefix="/events", tags=["Events"])
+app.include_router(users.router, prefix="/users", tags=["Users"])
+app.include_router(playbooks.router, prefix="/playbooks", tags=["Playbooks"])
+app.include_router(system.router, prefix="/system", tags=["System"])
 
 @app.get("/")
 async def root():
@@ -75,13 +76,3 @@ async def root():
         "message": "AthalaSIEM API is running",
         "ai_service_status": "running" if ai_service else "not initialized"
     }
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )

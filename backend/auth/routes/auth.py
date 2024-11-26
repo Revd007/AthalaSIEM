@@ -117,8 +117,17 @@ async def login(login_data: LoginRequest, db: AsyncSession = Depends(get_db)):
         
         return {
             "access_token": access_token,
-            "token_type": "bearer"
+            "token_type": "bearer",
+            "user": {
+                "id": str(user.id),
+                "email": user.email,
+                "username": user.username,
+                "role": user.role,
+                "full_name": user.full_name
+            }
         }
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Login error: {str(e)}")

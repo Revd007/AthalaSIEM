@@ -17,6 +17,7 @@ class AuthHandler:
     
     def __init__(self, secret_key: str):
         self.secret_key = secret_key
+        self.algorithm = 'HS256'
         
     def encode_token(self, user_id: str) -> str:
         payload = {
