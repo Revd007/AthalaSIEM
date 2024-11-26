@@ -11,7 +11,7 @@ interface RegisterFormData {
   password: string
   confirmPassword: string
   full_name: string
-  role: 'ADMIN' | 'ANALYST' | 'OPERATOR' | 'VIEWER'
+  role: 'admin' | 'analyst' | 'operator' | 'viewer'
 }
 
 const register = async (data: Omit<RegisterFormData, 'confirmPassword'>) => {
@@ -21,11 +21,11 @@ const register = async (data: Omit<RegisterFormData, 'confirmPassword'>) => {
       headers: {
         'Content-Type': 'application/json',
       },
-      credentials: 'include',
       body: JSON.stringify({
         ...data,
-        is_active: true
+        role: data.role.toLowerCase()
       }),
+      credentials: 'include',
     });
 
     const responseData = await response.json();
@@ -40,10 +40,8 @@ const register = async (data: Omit<RegisterFormData, 'confirmPassword'>) => {
 
     return responseData;
   } catch (error: any) {
-    if (error.message) {
-      throw error;
-    }
-    throw new Error('Network error occurred');
+    console.error('Registration error details:', error);
+    throw error;
   }
 };
 
@@ -56,7 +54,7 @@ export default function Register() {
     password: '',
     confirmPassword: '',
     full_name: '',
-    role: 'VIEWER'
+    role: 'viewer'
   })
 
   const registerMutation = useMutation({
@@ -69,10 +67,6 @@ export default function Register() {
           status: error.status,
           data: error.data
         });
-        
-        if (error.data?.detail) {
-          throw new Error(error.data.detail);
-        }
         throw new Error(error.message || 'Registration failed');
       }
     },
@@ -147,10 +141,10 @@ export default function Register() {
                 onChange={(e) => setFormData({ ...formData, role: e.target.value as RegisterFormData['role'] })}
                 required
               >
-                <option value="VIEWER">Viewer</option>
-                <option value="OPERATOR">Operator</option>
-                <option value="ANALYST">Analyst</option>
-                <option value="ADMIN">Admin</option>
+                <option value="viewer">Viewer</option>
+                <option value="operator">Operator</option>
+                <option value="analyst">Analyst</option>
+                <option value="admin">Admin</option>
               </select>
               <input
                 type="password"
