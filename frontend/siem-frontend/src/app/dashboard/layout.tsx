@@ -2,9 +2,10 @@
 
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuth, useAuthStore } from '../../hooks/use-auth'
+import { useAuth } from '../../hooks/use-auth'
 import Sidebar from '../../components/navigation/Sidebar'
 import Header from '../../components/navigation/Header'
+import { HashLoader } from 'react-spinners'
 
 export default function DashboardLayout({
   children,
@@ -15,13 +16,20 @@ export default function DashboardLayout({
   const { isAuthenticated, isLoading } = useAuth()
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.replace('/login')
+    const redirectToLogin = async () => {
+      if (!isLoading && !isAuthenticated) {
+        await router.replace('/login')
+      }
     }
+    redirectToLogin()
   }, [isAuthenticated, isLoading, router])
 
   if (isLoading) {
-    return <div>Loading...</div>
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <HashLoader color="#000B58" size={50} />
+      </div>
+    )
   }
 
   if (!isAuthenticated) {

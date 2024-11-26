@@ -69,7 +69,7 @@ export default function Sidebar() {
   return (
     <div className="w-64 bg-gray-800 min-h-screen p-4">
       <div className="mb-8">
-        <h2 className="text-white text-xl font-bold">SIEM Dashboard</h2>
+        <h2 className="text-white text-xl font-bold">AthalaSIEM</h2>
       </div>
       
       <nav className="space-y-2">

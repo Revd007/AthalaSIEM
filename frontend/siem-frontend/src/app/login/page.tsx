@@ -21,7 +21,7 @@ export default function Login() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/dashboard/overview')
+      router.replace('/dashboard')
     }
   }, [isAuthenticated, router])
 
@@ -30,7 +30,9 @@ export default function Login() {
     setPasswordError(null)
     try {
       await login(formData)
+      router.replace('/dashboard')
     } catch (error: any) {
+      console.error('Login error:', error)
       setPasswordError(error.message)
     }
   }

@@ -38,9 +38,14 @@ export function SystemMonitor() {
   const [historicalData, setHistoricalData] = useState<any[]>([])
   const [health, setHealth] = useState<SystemHealth | null>(null)
   const [loading, setLoading] = useState(true)
+  const [mounted, setMounted] = useState(true)
 
   useEffect(() => {
+    setMounted(true)
+    
     const fetchData = async () => {
+      if (!mounted) return
+      
       try {
         setLoading(true)
         // Simulasi data untuk development
@@ -68,16 +73,25 @@ export function SystemMonitor() {
           }
         })
       } catch (error) {
-        console.error('Failed to fetch metrics:', error)
+        console.error('Error fetching system metrics:', error)
       } finally {
-        setLoading(false)
+        if (mounted) {
+          setLoading(false)
+        }
       }
     }
 
     fetchData()
-    const interval = setInterval(fetchData, 10000)
-    return () => clearInterval(interval)
+    const interval = setInterval(fetchData, 30000)
+
+    return () => {
+      setMounted(false)
+      clearInterval(interval)
+    }
   }, [])
+
+  // Skip rendering if unmounted
+  if (!mounted) return null
 
   if (loading || !metrics) {
     return (

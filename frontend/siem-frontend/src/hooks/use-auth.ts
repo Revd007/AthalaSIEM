@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { authService } from '../services/auth-service';
 import type { LoginResponse } from '../services/auth-service';
 import { useQuery, useMutation, QueryKey } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 interface User {
   id: string;
@@ -66,63 +66,94 @@ export const useAuthStore = create(
 // Hook untuk menggunakan auth dengan React Query
 export function useAuth() {
   const { user, token, setUser, setToken } = useAuthStore();
-
+  const [isLoading, setIsLoading] = useState(true);
+  
   const loginMutation = useMutation({
     mutationFn: async (credentials: { username: string; password: string }) => {
-      try {
-        const response = await authService.login(credentials);
-        useAuthStore.setState({ 
-          user: response.user, 
-          token: response.access_token,
-          initialized: true
-        });
-        localStorage.setItem('token', response.access_token);
-        return response;
-      } catch (error: any) {
-        console.error('Login error:', error);
-        throw new Error(error.message || 'Login failed');
-      }
+      const response = await authService.login(credentials);
+      // Set cookie and localStorage
+      document.cookie = `token=${response.access_token}; path=/;`;
+      localStorage.setItem('token', response.access_token);
+      
+      // Update store
+      useAuthStore.setState({ 
+        user: response.user, 
+        token: response.access_token,
+        initialized: true 
+      });
+      
+      return response;
     }
   });
 
-  // Perbaikan query untuk getCurrentUser
-  const {
-    data: currentUser,
-    isLoading: isLoadingUser,
-  } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => authService.getCurrentUser(),
-    enabled: !!token,
-    retry: 1,
-    select: (data: User) => {
-      if (data) {
-        setUser(data);
-      }
-      return data;
-    },
-    // Gunakan callbacks yang tersedia di versi terbaru
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  });
-
-  // Effect untuk handle error
+  // Check auth status on mount
   useEffect(() => {
-    if (currentUser === undefined) {
-      setToken(null);
-      setUser(null);
-    }
-  }, [currentUser, setToken, setUser]);
+    const checkAuth = async () => {
+      setIsLoading(true);
+      try {
+        // Check both cookie and localStorage
+        const cookieToken = document.cookie
+          .split('; ')
+          .find(row => row.startsWith('token='))
+          ?.split('=')[1];
+        
+        const localToken = localStorage.getItem('token');
+        
+        // If no token anywhere, clear auth state
+        if (!cookieToken && !localToken) {
+          setToken(null);
+          setUser(null);
+          setIsLoading(false);
+          return;
+        }
+
+        // Use token to verify with backend
+        const response = await authService.getCurrentUser();
+        if (response) {
+          useAuthStore.setState({ 
+            user: response,
+            token: cookieToken || localToken,
+            initialized: true 
+          });
+        } else {
+          // Clear invalid auth state
+          setToken(null);
+          setUser(null);
+          localStorage.removeItem('token');
+          document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        // Clear auth state on error
+        setToken(null);
+        setUser(null);
+        localStorage.removeItem('token');
+        document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuth();
+  }, [setToken, setUser]);
 
   return {
-    user: user || currentUser,
-    isAuthenticated: !!token,
-    isLoading: loginMutation.isPending || isLoadingUser,
+    user,
+    token,
+    isAuthenticated: !!token && !!user,
+    isLoading: isLoading || loginMutation.isPending,
     login: loginMutation.mutateAsync,
-    logout: () => {
-      setToken(null);
-      setUser(null);
-      localStorage.removeItem('token');
+    logout: async () => {
+      try {
+        await authService.logout();
+      } finally {
+        document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+        localStorage.removeItem('token');
+        setToken(null);
+        setUser(null);
+        useAuthStore.setState({ initialized: true });
+        window.location.href = '/login';
+      }
     },
     loginError: loginMutation.error
   };

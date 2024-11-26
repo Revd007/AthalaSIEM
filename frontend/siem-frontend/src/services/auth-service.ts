@@ -33,8 +33,8 @@ export const authService = {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(credentials),
         credentials: 'include',
+        body: JSON.stringify(credentials),
       });
 
       if (!response.ok) {
@@ -43,14 +43,11 @@ export const authService = {
       }
 
       const data = await response.json();
-      return {
-        ...data,
-        user: {
-          ...data.user,
-          id: String(data.user.id)
-        }
-      };
+      document.cookie = `token=${data.access_token}; path=/;`
+      localStorage.setItem('token', data.access_token);
+      return data;
     } catch (error) {
+      console.error('Login error:', error);
       throw error;
     }
   },
