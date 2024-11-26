@@ -82,45 +82,46 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
 @router.post("/login", response_model=LoginResponse)
 async def login(login_data: LoginRequest, db: AsyncSession = Depends(get_db)):
     try:
-        logger.info(f"Login attempt for username: {login_data.username}")
-        # Find user by username
+        # Add debug logging
+        logger.debug(f"Login attempt for username: {login_data.username}")
+        
         query = select(UserModel).filter(UserModel.username == login_data.username)
         result = await db.execute(query)
         user = result.scalar_one_or_none()
         
         if not user:
+            logger.warning(f"Login failed: User not found - {login_data.username}")
             raise HTTPException(
                 status_code=401,
-                detail="Invalid username or password"
+                detail="Invalid credentials"
             )
         
-        # Verify password
         if not verify_password(login_data.password, user.password_hash):
+            logger.warning(f"Login failed: Invalid password for user {login_data.username}")
             raise HTTPException(
                 status_code=401,
-                detail="Invalid username or password"
+                detail="Invalid credentials"
             )
         
         # Update last login
         user.last_login = func.now()
         await db.commit()
         
-        # Generate JWT token
         access_token = create_jwt(
             data={
-                "sub": str(user.id),
+                "user_id": str(user.id),
                 "username": user.username,
                 "role": user.role
-            },
-            expires_delta=timedelta(minutes=30)
+            }
         )
+        
+        logger.info(f"Login successful for user {login_data.username}")
         
         return {
             "access_token": access_token,
             "token_type": "bearer",
             "user": {
                 "id": str(user.id),
-                "email": user.email,
                 "username": user.username,
                 "role": user.role,
                 "full_name": user.full_name
@@ -129,11 +130,10 @@ async def login(login_data: LoginRequest, db: AsyncSession = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        await db.rollback()
         logger.error(f"Login error: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail="Internal server error during login"
+            detail=f"Internal server error during login: {str(e)}"
         )
 
 @router.get("/me", response_model=UserResponse)

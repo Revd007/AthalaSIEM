@@ -1,9 +1,11 @@
-from sqlalchemy import Column, String, DateTime, Boolean, Enum as SQLEnum
+from sqlalchemy import Column, String, DateTime, Boolean, Enum
 from sqlalchemy.dialects.postgresql import UUID
-from database.connection import Base
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import uuid
+from database.connection import Base
 from database.enums import UserRole
+from .group import user_groups
 
 class User(Base):
     __tablename__ = "users"
@@ -19,6 +21,23 @@ class User(Base):
     last_login = Column(DateTime)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # Relationships
+    groups = relationship("Group", secondary=user_groups, back_populates="users")
+    created_groups = relationship("Group", back_populates="creator", foreign_keys="[Group.created_by]")
+
+    @property
+    def permissions(self):
+        base_permissions = {
+            UserRole.VIEWER.value: ["view_dashboard", "view_alerts"],
+            UserRole.OPERATOR.value: ["view_dashboard", "view_alerts", "acknowledge_alerts", "update_alerts"],
+            UserRole.ANALYST.value: ["view_dashboard", "view_alerts", "acknowledge_alerts", "update_alerts", 
+                                   "create_reports", "view_analytics"],
+            UserRole.ADMIN.value: ["view_dashboard", "view_alerts", "acknowledge_alerts", "update_alerts",
+                                 "create_reports", "view_analytics", "manage_users", "manage_groups",
+                                 "manage_settings", "manage_playbooks"]
+        }
+        return base_permissions.get(self.role, [])
 
     def __repr__(self):
         return f"<User {self.username}>"

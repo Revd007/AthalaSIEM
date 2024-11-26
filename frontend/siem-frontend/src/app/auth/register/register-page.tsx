@@ -15,24 +15,37 @@ interface RegisterFormData {
 }
 
 const register = async (data: Omit<RegisterFormData, 'confirmPassword'>) => {
-  const response = await fetch('/auth/register', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      ...data,
-      is_active: true
-    }),
-  })
+  try {
+    const response = await fetch('http://localhost:8000/auth/register', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        ...data,
+        is_active: true
+      }),
+    });
 
-  if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.detail || 'Registration failed')
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      throw {
+        message: responseData.detail || 'Registration failed',
+        status: response.status,
+        data: responseData
+      };
+    }
+
+    return responseData;
+  } catch (error: any) {
+    if (error.message) {
+      throw error;
+    }
+    throw new Error('Network error occurred');
   }
-
-  return response.json()
-}
+};
 
 export default function Register() {
   const router = useRouter()
@@ -47,11 +60,32 @@ export default function Register() {
   })
 
   const registerMutation = useMutation({
-    mutationFn: (data: Omit<RegisterFormData, 'confirmPassword'>) => register(data),
+    mutationFn: async (data: Omit<RegisterFormData, 'confirmPassword'>) => {
+      try {
+        return await register(data);
+      } catch (error: any) {
+        console.error('Registration error:', {
+          message: error.message,
+          status: error.status,
+          data: error.data
+        });
+        
+        if (error.data?.detail) {
+          throw new Error(error.data.detail);
+        }
+        throw new Error(error.message || 'Registration failed');
+      }
+    },
     onSuccess: () => {
-      router.push('/login')
+      router.push('/login');
+    },
+    onError: (error: Error) => {
+      console.error('Registration mutation error:', {
+        name: error.name,
+        message: error.message
+      });
     }
-  })
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()

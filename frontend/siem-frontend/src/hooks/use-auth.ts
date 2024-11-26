@@ -29,10 +29,10 @@ export const useAuthStore = create<AuthState>()(
       initialized: false,
       loading: false,
       setInitialized: (initialized) => set({ initialized }),
-      login: async (email: string, password: string) => {
+      login: async (username: string, password: string) => {
         try {
           set({ loading: true });
-          const response = await authService.login({ email, password });
+          const response = await authService.login({ username, password });
           
           const { access_token, user } = response;
           
@@ -69,11 +69,18 @@ export const useAuthStore = create<AuthState>()(
 
 // Hook untuk menggunakan auth dengan React Query
 export function useAuth() {
-  const { user, token, login, logout, loading } = useAuthStore();
+  const { user, token, login: storeLogin, logout: storeLogout } = useAuthStore();
 
   const loginMutation = useMutation({
-    mutationFn: (credentials: { email: string; password: string }) => 
-      authService.login(credentials),
+    mutationFn: async (credentials: { username: string; password: string }) => {
+      try {
+        const response = await authService.login(credentials);
+        return response;
+      } catch (error: any) {
+        console.error('Login error:', error);
+        throw new Error(error.message || 'Login failed');
+      }
+    },
     onSuccess: (data) => {
       useAuthStore.setState({ 
         user: data.user, 
@@ -81,22 +88,42 @@ export function useAuth() {
         initialized: true
       });
       localStorage.setItem('token', data.access_token);
+    },
+    onError: (error: any) => {
+      console.error('Login mutation error:', error);
     }
   });
 
-  const { data: currentUser, isLoading: isLoadingUser } = useQuery({
+  const {
+    data: currentUser,
+    isLoading: isLoadingUser,
+    error: userError
+  } = useQuery({
     queryKey: ['currentUser'],
     queryFn: authService.getCurrentUser,
     enabled: !!token,
-    retry: false
+    retry: false,
+    gcTime: 0,
+    staleTime: 0,
+    select: (data) => {
+      console.log('Current user fetched successfully:', data);
+      return data;
+    },
+    throwOnError: true
   });
+
+  // Handle error separately using the error value
+  if (userError) {
+    console.error('Current user query error:', userError);
+    storeLogout();
+  }
 
   return {
     user: user || currentUser,
     isAuthenticated: !!token,
-    isLoading: loading || isLoadingUser,
+    isLoading: loginMutation.isPending || isLoadingUser,
     login: loginMutation.mutate,
-    logout,
+    logout: storeLogout,
     loginError: loginMutation.error
   };
 }

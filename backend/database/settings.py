@@ -25,6 +25,7 @@ class Settings(BaseModel):
     
     # CORS settings
     CORS_ORIGINS: list = [
+        "http://localhost:3000"
         "http://localhost:8080",
     ]
     
