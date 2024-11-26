@@ -1,17 +1,19 @@
 import { AlertSummaryData } from '../../types/dashboard'
 
 interface AlertSummaryProps {
-  alerts: AlertSummaryData;
+  alerts?: AlertSummaryData;
 }
 
 export default function AlertSummary({ alerts }: AlertSummaryProps) {
+  if (!alerts) return null;
+
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold">Alert Summary</h3>
       <div className="grid grid-cols-2 gap-4">
         <div className="p-4 bg-red-100 rounded-lg">
-          <p className="text-red-800 font-medium">Critical</p>
-          <p className="text-2xl font-bold text-red-900">{alerts.critical}</p>
+          <p className="text-gray-800 font-medium">Critical Alerts</p>
+          <p className="text-2xl font-bold text-gray-900">{alerts.critical}</p>
         </div>
         <div className="p-4 bg-orange-100 rounded-lg">
           <p className="text-orange-800 font-medium">High</p>

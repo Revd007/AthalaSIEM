@@ -43,8 +43,8 @@ const navigation: NavItem[] = [
     roles: ['admin', 'analyst'] 
   },
   { 
-    name: 'System', 
-    href: '/system', 
+    name: 'Settings', 
+    href: '/settings', 
     icon: '⚙️',
     roles: ['admin'] 
   },

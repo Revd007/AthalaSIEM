@@ -41,11 +41,11 @@ export interface SystemStatus {
   }
   
   export interface AlertSummaryData {
+    total: number;
     critical: number;
     high: number;
     medium: number;
     low: number;
-    total: number;
   }
   
   export interface DashboardData {

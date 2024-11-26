@@ -1,14 +1,10 @@
 import { useEffect, useState } from 'react'
 import { axiosInstance } from '../lib/axios'
+import { AlertSummaryData } from '../types/dashboard'
 
 interface DashboardData {
   summary: {
-    alerts: {
-      critical: number
-      high: number
-      medium: number
-      low: number
-    }
+    alerts: AlertSummaryData
   }
   metrics: {
     events: number
