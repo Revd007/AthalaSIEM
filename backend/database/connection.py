@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from .settings import settings
 import logging
 from urllib.parse import quote_plus
+from sqlalchemy import text
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -22,12 +23,8 @@ try:
         async_database_url,
         echo=False,
         pool_pre_ping=True,
-        pool_recycle=3600,
-        connect_args={
-            "server_settings": {
-                "client_encoding": "utf8"
-            }
-        }
+        pool_size=5,
+        max_overflow=10
     )
 except Exception as e:
     logger.error(f"Failed to create database engine: {e}")
@@ -44,6 +41,17 @@ async def init_db():
     """Initialize database and create tables"""
     try:
         async with engine.begin() as conn:
+            # Create enum type if not exists
+            await conn.execute(
+                text("""
+                    DO $$ 
+                    BEGIN 
+                        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+                            CREATE TYPE user_role AS ENUM ('admin', 'analyst', 'operator', 'viewer');
+                        END IF;
+                    END $$;
+                """)
+            )
             await conn.run_sync(Base.metadata.create_all)
             logger.info("Database initialized successfully")
     except Exception as e:
@@ -52,15 +60,15 @@ async def init_db():
 
 async def get_db():
     """Dependency for getting async database session"""
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        except Exception as e:
-            logger.error(f"Database session error: {e}")
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
+    session = AsyncSessionLocal()
+    try:
+        yield session
+    except Exception as e:
+        logger.error(f"Database session error: {e}")
+        await session.rollback()
+        raise
+    finally:
+        await session.close()
 
 async def init_models():
     """Initialize database models"""

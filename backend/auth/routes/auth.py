@@ -47,14 +47,18 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
                     detail="Username already taken"
                 )
         
-        # Create new user
+        # Create new user dengan role yang diinputkan
         hashed_password = hash_password(user.password)
+        
+        # Pastikan role dalam lowercase dan valid
+        role = user.role.lower() if isinstance(user.role, str) else user.role.value.lower()
+        
         db_user = UserModel(
             email=user.email,
             username=user.username,
             password_hash=hashed_password,
             full_name=user.full_name,
-            role=UserRole.VIEWER
+            role=role  # Gunakan role yang sudah diformat
         )
         
         db.add(db_user)
@@ -76,7 +80,7 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
         logger.error(f"Registration error: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail="Internal server error during registration"
+            detail=f"Internal server error during registration: {str(e)}"
         )
 
 @router.post("/login", response_model=LoginResponse)

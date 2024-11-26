@@ -13,6 +13,7 @@ from ai_engine.donquixote_service import DonquixoteService
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 ai_logger = logging.getLogger('ai_engine')
 
 # Initialize AI service globally
@@ -42,7 +43,8 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # Cleanup (if needed)
+    # Cleanup
+    logger.info("Shutting down application")
 
 # Initialize FastAPI app with lifespan
 app = FastAPI(
@@ -63,10 +65,10 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+app.include_router(users.router, prefix="/users", tags=["Users"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
 app.include_router(alerts.router, prefix="/alerts", tags=["Alerts"])
 app.include_router(events.router, prefix="/events", tags=["Events"])
-app.include_router(users.router, prefix="/users", tags=["Users"])
 app.include_router(playbooks.router, prefix="/playbooks", tags=["Playbooks"])
 app.include_router(system.router, prefix="/system", tags=["System"])
 

@@ -9,14 +9,16 @@ from .group import user_groups
 
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = {"schema": "public"}
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     username = Column(String(50), unique=True, nullable=False)
     email = Column(String(100), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     full_name = Column(String(100))
-    role = Column(String(50), nullable=False, default=UserRole.VIEWER.value)
+    role = Column(Enum(UserRole, name='user_role', create_type=False, 
+                      values_callable=lambda obj: [e.value for e in obj]), 
+                 nullable=False, 
+                 default=UserRole.VIEWER.value)
     is_active = Column(Boolean, default=True)
     last_login = Column(DateTime)
     created_at = Column(DateTime, default=func.now())
