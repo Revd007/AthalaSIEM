@@ -5,19 +5,31 @@ import logging
 from ..models.model_factory import AIModelFactory
 
 class AIEnsembleManager:
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
+    def __init__(self, model_manager):
+        self.model_manager = model_manager
         self.logger = logging.getLogger(__name__)
-        self.model_factory = AIModelFactory(config)
+        self.model_factory = AIModelFactory(model_manager)
         self.models = self._initialize_models()
         self.weights = self._load_ensemble_weights()
         
     def _initialize_models(self) -> Dict[str, torch.nn.Module]:
         """Initialize all models in ensemble"""
+        enabled_models = self.model_manager.get_enabled_models()
         return {
             model_type: self.model_factory.create_model(model_type)
-            for model_type in self.config['enabled_models']
+            for model_type in enabled_models
         }
+        
+    def _load_ensemble_weights(self) -> Dict[str, float]:
+        """Load weights for ensemble models. Default to equal weights if not configured."""
+        try:
+            enabled_models = self.model_manager.get_enabled_models()
+            # Initialize with equal weights
+            weight_value = 1.0 / len(enabled_models) if enabled_models else 0
+            return {model: weight_value for model in enabled_models}
+        except Exception as e:
+            self.logger.error(f"Error loading ensemble weights: {e}")
+            return {}
         
     async def process_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """Process event through ensemble"""

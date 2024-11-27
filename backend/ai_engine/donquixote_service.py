@@ -118,7 +118,7 @@ class DonquixoteService:
             # Initialize advanced components
             self.knowledge_graph = KnowledgeGraph()
             self.ensemble_manager = AIEnsembleManager(self.model_manager)
-            self.feedback_manager = FeedbackManager()
+            self.feedback_manager = FeedbackManager(self.config)
             
             # Initialize prediction service with enhanced capabilities
             self.prediction_service = PredictionService(self.model_manager, self.config)
@@ -297,8 +297,16 @@ class DonquixoteService:
     async def process_feedback(self, feedback_data: Dict[str, Any]) -> Dict[str, Any]:
         """Process feedback and update models"""
         try:
+            # Process feedback through feedback manager
             feedback_results = await self.feedback_manager.process_feedback(feedback_data)
             
+            # Update knowledge graph with feedback
+            self.knowledge_graph.update(
+                patterns=[],  # Empty patterns list since we're only incorporating feedback
+                feedback=feedback_data
+            )
+            
+            # Apply adaptive learning if enabled
             if self.config['enable_adaptive_learning']:
                 await self.adaptive_learner.adapt(feedback_data)
             
@@ -495,3 +503,51 @@ class DonquixoteService:
             threat_chain.append('command_and_control')
         
         return ' -> '.join(threat_chain) if threat_chain else 'unknown'
+
+    def _update_knowledge_graph(self, event_data: Dict[str, Any], analysis_result: Dict[str, Any]):
+        """Update knowledge graph with new event patterns"""
+        try:
+            # Extract patterns from event analysis
+            patterns = [
+                {
+                    'centroid': torch.tensor(self._extract_pattern_features(event_data), dtype=torch.float32),
+                    'frequency': 1,
+                    'event_type': event_data.get('event_type', 'unknown'),
+                    'severity': analysis_result.get('risk_score', 0),
+                    'timestamp': datetime.now().isoformat()
+                }
+            ]
+            
+            # Update knowledge graph with new patterns
+            self.knowledge_graph.update(patterns)
+            
+        except Exception as e:
+            self.logger.error(f"Error updating knowledge graph: {e}")
+
+    def _extract_pattern_features(self, event_data: Dict[str, Any]) -> np.ndarray:
+        """Extract feature vector for knowledge graph patterns"""
+        features = []
+        
+        # Add temporal features
+        temporal_features = self._extract_temporal_features(event_data)
+        features.extend(temporal_features)
+        
+        # Add behavioral features
+        behavioral_features = self._extract_behavioral_features(event_data)
+        features.extend(behavioral_features)
+        
+        # Add event-specific features
+        event_features = [
+            float(event_data.get('severity', 0)),
+            float(self._calculate_event_risk(event_data)),
+            float(event_data.get('priority', 0))
+        ]
+        features.extend(event_features)
+        
+        return np.array(features, dtype=np.float32)
+
+    def _calculate_event_risk(self, event_data: Dict[str, Any]) -> float:
+        """Calculate basic risk score for an event"""
+        base_risk = event_data.get('severity', 0) * 0.6
+        priority_factor = event_data.get('priority', 0) * 0.4
+        return min(base_risk + priority_factor, 1.0)

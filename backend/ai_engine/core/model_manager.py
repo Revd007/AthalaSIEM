@@ -1,6 +1,6 @@
 import torch
 import logging
-from typing import Dict, Any
+from typing import *
 from ..models.anomaly_detector import VariationalAutoencoder
 from ..models.threat_detector import ThreatDetector
 
@@ -9,6 +9,9 @@ class ModelManager:
         self.config = config
         self.logger = logging.getLogger(__name__)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # Initialize models dictionary
+        self.models = {}
         
         # Initialize models
         self.anomaly_detector = None
@@ -65,3 +68,21 @@ class ModelManager:
     def register_model(self, name, model):
         """Register a model with the manager"""
         self.models[name] = model
+    
+    def get_enabled_models(self) -> List[str]:
+        """Return a list of enabled model types"""
+        enabled_models = []
+        
+        # Add models that are initialized and enabled
+        if self.anomaly_detector is not None:
+            enabled_models.append('anomaly_detector')
+        if self.threat_detector is not None:
+            enabled_models.append('threat_detector')
+            
+        # Add any additional models from the models dictionary
+        enabled_models.extend([
+            model_name for model_name, model in self.models.items()
+            if model is not None
+        ])
+        
+        return list(set(enabled_models))  # Remove any duplicates
