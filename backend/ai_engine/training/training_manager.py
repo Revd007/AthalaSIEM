@@ -11,13 +11,18 @@ import wandb
 
 class TrainingManager:
     def __init__(self, 
-                 model: nn.Module,
                  config: Dict[str, Any],
-                 experiment_name: str):
-        self.model = model
+                 models: Optional[Dict[str, Any]] = None,
+                 experiment_name: Optional[str] = None):
         self.config = config
-        self.experiment_name = experiment_name
+        self.models = models or {}
+        self.experiment_name = experiment_name or "default_experiment"
         self.logger = logging.getLogger(__name__)
+        
+        # Set default experiment name if not provided
+        if 'experiment_name' not in self.config:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.config['experiment_name'] = f"experiment_{timestamp}"
         
         # Initialize training components
         self.criterion = self._initialize_criterion()
@@ -39,7 +44,7 @@ class TrainingManager:
         """Setup experiment tracking with wandb"""
         wandb.init(
             project="ai_model_training",
-            name=self.experiment_name,
+            name=self.config['experiment_name'],
             config=self.config
         )
     
@@ -179,3 +184,60 @@ class TrainingManager:
             checkpoint,
             checkpoint_path / f'checkpoint_epoch_{epoch}.pt'
         )
+    
+    def _initialize_criterion(self) -> nn.Module:
+        """Initialize the loss criterion"""
+        criterion_name = self.config.get('criterion', 'CrossEntropyLoss')
+        if criterion_name == 'CrossEntropyLoss':
+            return nn.CrossEntropyLoss()
+        elif criterion_name == 'BCEWithLogitsLoss':
+            return nn.BCEWithLogitsLoss()
+        elif criterion_name == 'MSELoss':
+            return nn.MSELoss()
+        else:
+            raise ValueError(f"Unsupported criterion: {criterion_name}")
+
+    def _initialize_optimizer(self) -> torch.optim.Optimizer:
+        """Initialize the optimizer"""
+        optimizer_name = self.config.get('optimizer', 'Adam')
+        lr = self.config.get('learning_rate', 1e-4)
+        
+        if optimizer_name == 'Adam':
+            return torch.optim.Adam(
+                self.models['anomaly_detector'].parameters(),
+                lr=lr,
+                weight_decay=self.config.get('weight_decay', 1e-5)
+            )
+        elif optimizer_name == 'AdamW':
+            return torch.optim.AdamW(
+                self.models['anomaly_detector'].parameters(),
+                lr=lr,
+                weight_decay=self.config.get('weight_decay', 1e-5)
+            )
+        elif optimizer_name == 'SGD':
+            return torch.optim.SGD(
+                self.models['anomaly_detector'].parameters(),
+                lr=lr,
+                momentum=self.config.get('momentum', 0.9)
+            )
+        else:
+            raise ValueError(f"Unsupported optimizer: {optimizer_name}")
+
+    def _initialize_scheduler(self) -> torch.optim.lr_scheduler._LRScheduler:
+        """Initialize the learning rate scheduler"""
+        scheduler_name = self.config.get('scheduler', 'ReduceLROnPlateau')
+        
+        if scheduler_name == 'ReduceLROnPlateau':
+            return torch.optim.lr_scheduler.ReduceLROnPlateau(
+                self.optimizer,
+                mode='min',
+                factor=self.config.get('lr_factor', 0.1),
+                patience=self.config.get('lr_patience', 3),
+                verbose=True
+            )
+        elif scheduler_name == 'CosineAnnealingLR':
+            return torch.optim.lr_scheduler.CosineAnnealingLR(
+                self.optimizer,
+                T_max=self.config.get('t_max', 10),
+                eta_min=self.config.get('min_lr', 1e-6)
+            )

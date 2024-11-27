@@ -5,6 +5,7 @@ ENV/
 .env
 .venv
 __pycache__/
+wandb/
 *.py[cod]
 *$py.class
 .next/

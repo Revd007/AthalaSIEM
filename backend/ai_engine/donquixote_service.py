@@ -1,3 +1,4 @@
+from pkgutil import get_data
 from typing import *
 import torch
 from .models.anomaly_detector import AnomalyDetector, VariationalAutoencoder
@@ -78,7 +79,7 @@ class DonquixoteService:
             self._validate_system_requirements()
             
             # Initialize models based on system capabilities
-            self._initialize_base_models()
+            self._initialize_models()
             
             # Initialize existing components
             self.model_manager = ModelManager(self.config)
@@ -89,16 +90,28 @@ class DonquixoteService:
             
             # Initialize training and evaluation components
             self.training_manager = TrainingManager(
-                model=self.model_manager.get_model(),
+                models={
+                    'anomaly_detector': self.anomaly_detector,
+                    'vae': self.variational_autoencoder,
+                    'threat_detector': self.threat_detector
+                },
                 config=self.config,
                 experiment_name="donquixote_training"
             )
             self.adaptive_learner = AdaptiveLearner(
-                model=self.model_manager.get_model(),
+                models={
+                    'anomaly_detector': self.anomaly_detector,
+                    'vae': self.variational_autoencoder,
+                    'threat_detector': self.threat_detector
+                },
                 config=self.config
             )
             self.evaluator = ModelEvaluator(
-                model=self.model_manager.get_model(),
+                models={
+                    'anomaly_detector': self.anomaly_detector,
+                    'vae': self.variational_autoencoder,
+                    'threat_detector': self.threat_detector
+                },
                 config=self.config
             )
             
@@ -154,29 +167,17 @@ class DonquixoteService:
                 if self.system_specs['memory_gb'] >= 8.0:
                     self.variational_autoencoder = VariationalAutoencoder(
                         input_dim=512,
-                        hidden_dim=256,
+                        hidden_dims=[256, 128],  # List of hidden dimensions
                         latent_dim=64
                     ).to(self.device)
+                    self.logger.info("VAE initialized")
 
-                self.anomaly_detector = AnomalyDetector(
-                    input_dim=512,
-                    hidden_dim=256
-                ).to(self.device)
-                self.logger.info("Anomaly Detector initialized")
-
-                self.variational_autoencoder = VariationalAutoencoder(
-                    input_dim=512,
-                    hidden_dim=256,
-                    latent_dim=64
-                ).to(self.device)
-                self.logger.info("VAE initialized")
-                
                 # Initialize Threat Detector
-                self.threat_detector = ThreatDetector(
-                    input_dim=512,
-                    hidden_dim=256,
-                    num_classes=2
-                ).to(self.device)
+                self.threat_detector = ThreatDetector({
+                    'input_dim': 512,
+                    'hidden_dim': 256,
+                    'num_classes': 2
+                }).to(self.device)
                 
                 self.logger.info("All models initialized successfully")
             else:
@@ -362,10 +363,58 @@ class DonquixoteService:
         # Base risk calculation
         base_risk = (analysis_score * 0.4) + (prediction_score * 0.6)
         
-        # Add temporal risk factor
+        # Add temporal risk factors
+        # Calculate time-based risk components
+        hour_risk = self._calculate_hour_risk(temporal_features[0])  # Higher risk during off-hours
+        day_risk = self._calculate_day_risk(temporal_features[1])    # Higher risk on weekends
+        density_risk = temporal_features[3]  # Event density risk from temporal features
+        
+        # Calculate velocity and acceleration of events
+        event_velocity = self._calculate_event_velocity(temporal_features)
+        event_acceleration = self._calculate_event_acceleration(temporal_features)
+        
+        # Analyze periodic patterns
+        periodic_deviation = self._analyze_periodic_deviation(temporal_features)
+        seasonal_factor = self._calculate_seasonal_factor(temporal_features)
+        
+        # Combine temporal risk components with weights
+        temporal_risk = (
+            hour_risk * 0.25 +
+            day_risk * 0.15 +
+            density_risk * 0.2 +
+            event_velocity * 0.15 +
+            event_acceleration * 0.1 +
+            periodic_deviation * 0.1 +
+            seasonal_factor * 0.05
+        )
         temporal_risk = np.mean(temporal_features) * 0.2
         
-        # Add behavioral risk factor
+        # Add behavioral risk factors
+        # Calculate user behavior risk
+        user_risk = self._get_user_risk_score(get_data.get('user_id', 'unknown'))
+        behavior_deviation = self._get_behavior_deviation_score(get_data)
+        sequence_similarity = self._get_sequence_similarity(get_data)
+        
+        # Calculate threat chain probabilities
+        threat_chain_prob = self._calculate_threat_chain_probability(get_data)
+        anomaly_correlation = self._get_anomaly_correlation_score(get_data)
+        
+        # Analyze access patterns
+        access_pattern_risk = self._analyze_access_patterns(behavioral_features)
+        privilege_escalation_risk = self._detect_privilege_escalation(behavioral_features)
+        lateral_movement_risk = self._detect_lateral_movement(behavioral_features)
+        
+        # Combine behavioral risk components with weights
+        behavioral_risk = (
+            user_risk * 0.25 +
+            behavior_deviation * 0.2 + 
+            sequence_similarity * 0.15 +
+            threat_chain_prob * 0.15 +
+            anomaly_correlation * 0.1 +
+            access_pattern_risk * 0.05 +
+            privilege_escalation_risk * 0.05 +
+            lateral_movement_risk * 0.05
+        )
         behavioral_risk = np.mean(behavioral_features) * 0.2
         
         # Combine all risk factors
@@ -412,6 +461,37 @@ class DonquixoteService:
         if event_data.get('ip_address') and self._check_ip_reputation(event_data['ip_address']) > 0.7:
             threat_chain.append('initial_access')
             
-        # Add other threat chain checks from PredictionService
+        # Check for credential access attempts
+        if event_data.get('event_type') in ['failed_login', 'brute_force', 'password_spray']:
+            threat_chain.append('credential_access')
+            
+        # Check for lateral movement indicators
+        if (event_data.get('source_ip') != event_data.get('destination_ip') and
+            self._get_network_movement_score(event_data) > 0.6):
+            threat_chain.append('lateral_movement')
+            
+        # Check for privilege escalation
+        if event_data.get('privilege_level', '').lower() in ['admin', 'system', 'root']:
+            if self._get_privilege_anomaly_score(event_data) > 0.7:
+                threat_chain.append('privilege_escalation')
+                
+        # Check for data exfiltration patterns
+        if (event_data.get('bytes_transferred', 0) > self.config.get('exfil_threshold', 1000000) and
+            self._get_data_transfer_anomaly(event_data) > 0.8):
+            threat_chain.append('data_exfiltration')
+            
+        # Check for persistence mechanisms
+        if event_data.get('event_type') in ['scheduled_task', 'registry_mod', 'startup_mod']:
+            if self._get_persistence_score(event_data) > 0.65:
+                threat_chain.append('persistence')
+                
+        # Check for defense evasion
+        if event_data.get('event_type') in ['log_clear', 'av_disable', 'fw_disable']:
+            threat_chain.append('defense_evasion')
+            
+        # Check for command and control activity
+        if (self._check_c2_patterns(event_data) > 0.75 and
+            self._get_connection_anomaly_score(event_data) > 0.7):
+            threat_chain.append('command_and_control')
         
         return ' -> '.join(threat_chain) if threat_chain else 'unknown'

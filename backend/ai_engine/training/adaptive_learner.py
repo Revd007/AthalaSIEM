@@ -9,8 +9,8 @@ from .difficulty_estimator import DifficultyEstimator
 from ..core.knowledge_graph import KnowledgeGraph
 
 class AdaptiveLearner:
-    def __init__(self, model: nn.Module, config: Dict[str, Any]):
-        self.model = model
+    def __init__(self, models: Dict[str, nn.Module], config: Dict[str, Any]):
+        self.models = models
         self.learning_patterns = defaultdict(list)
         self.pattern_importance = defaultdict(float)
         self.difficulty_estimator = DifficultyEstimator()
@@ -38,7 +38,7 @@ class AdaptiveLearner:
         # Adjust learning strategy
         learning_rate = self._adjust_learning_rate(difficulty)
         
-        # Update model with new knowledge
+        # Update models with new knowledge
         await self._update_model(patterns, learning_rate)
         
         # Prune outdated patterns
@@ -76,17 +76,18 @@ class AdaptiveLearner:
         return patterns
 
     async def _update_model(self, patterns: List[Dict[str, Any]], learning_rate: float):
-        """Update model based on new patterns"""
-        for pattern in patterns:
-            # Generate synthetic examples from pattern
-            synthetic_data = self._generate_synthetic_data(pattern)
-            
-            # Update model weights
-            self.model.optimizer.optimizer.param_groups[0]['lr'] = learning_rate
-            await self.model.optimizer.train_step(synthetic_data)
-            
-            # Update pattern importance
-            self.pattern_importance[hash(pattern['centroid'].tostring())] += 1
+        """Update models based on new patterns"""
+        for model_name, model in self.models.items():
+            for pattern in patterns:
+                # Generate synthetic examples from pattern
+                synthetic_data = self._generate_synthetic_data(pattern)
+                
+                # Update model weights
+                model.optimizer.optimizer.param_groups[0]['lr'] = learning_rate
+                await model.optimizer.train_step(synthetic_data)
+                
+                # Update pattern importance
+                self.pattern_importance[hash(pattern['centroid'].tostring())] += 1
     
     def _adjust_learning_rate(self, difficulty: float) -> float:
         """Adjust learning rate based on task difficulty"""

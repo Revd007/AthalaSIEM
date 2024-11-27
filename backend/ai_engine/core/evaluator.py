@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 class ModelEvaluator:
-    def __init__(self, model, config):
-        self.model = model
+    def __init__(self, model=None, models=None, config=None):
+        self.models = models if models else {'default': model}
         self.config = config
         self.metrics = {}
         

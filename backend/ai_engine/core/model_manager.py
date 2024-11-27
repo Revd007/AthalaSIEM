@@ -55,3 +55,13 @@ class ModelManager:
         except Exception as e:
             self.logger.error(f"Prediction error: {e}")
             return {'error': str(e)}
+    
+    def get_model(self, model_name=None):
+        """Get a specific model or all models if no name is provided"""
+        if model_name:
+            return self.models.get(model_name)
+        return self.models
+    
+    def register_model(self, name, model):
+        """Register a model with the manager"""
+        self.models[name] = model
