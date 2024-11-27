@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from auth.routes import auth
-from api.routes import alerts, events, users, playbooks, system, dashboard
+from api.routes import alerts, events, users, playbooks, system, dashboard, collectors
 from database.connection import init_db
 from database.models.user import UserRole
 from database.settings import settings
@@ -72,6 +72,7 @@ app.include_router(alerts.router, prefix="/alerts", tags=["Alerts"])
 app.include_router(events.router, prefix="/events", tags=["Events"])
 app.include_router(playbooks.router, prefix="/playbooks", tags=["Playbooks"])
 app.include_router(system.router, prefix="/system", tags=["System"])
+app.include_router(collectors.router)
 
 @app.get("/")
 async def root():

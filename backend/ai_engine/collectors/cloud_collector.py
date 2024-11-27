@@ -1,22 +1,55 @@
-import datetime
-import boto3
-from azure.mgmt.monitor import MonitorManagementClient
-from google.cloud import monitoring_v3
-from google.oauth2 import service_account
 import asyncio
-from typing import *
-import digitalocean
+import datetime
 import logging
-from azure.identity import ClientSecretCredential
+from typing import *
+
+# AWS
+try:
+    import boto3
+    HAS_AWS = True
+except ImportError:
+    HAS_AWS = False
+
+# Azure
+try:
+    from azure.mgmt.monitor import MonitorManagementClient
+    from azure.identity import ClientSecretCredential
+    HAS_AZURE = True
+except ImportError:
+    HAS_AZURE = False
+
+# Google Cloud
+try:
+    from google.cloud import monitoring_v3
+    from google.oauth2 import service_account
+    HAS_GCP = True
+except ImportError:
+    HAS_GCP = False
+
+# DigitalOcean
+try:
+    import digitalocean
+    HAS_DO = True
+except ImportError:
+    HAS_DO = False
 
 class CloudCollector:
     def __init__(self, config: Dict):
         self.config = config
-        self.collectors = {
-            'aws': self.collect_aws_logs,
-            'azure': self.collect_azure_logs,
-            'gcp': self.collect_gcp_logs
-        }
+        self.collectors = {}
+        
+        # Only register available collectors
+        if HAS_AWS:
+            self.collectors['aws'] = self.collect_aws_logs
+        if HAS_AZURE:
+            self.collectors['azure'] = self.collect_azure_logs
+        if HAS_GCP:
+            self.collectors['gcp'] = self.collect_gcp_logs
+        if HAS_DO:
+            self.collectors['digitalocean'] = self.collect_digitalocean_logs
+            
+        if not self.collectors:
+            logging.warning("No cloud collectors available. Please install required packages.")
 
     async def start_collection(self):
         tasks = []

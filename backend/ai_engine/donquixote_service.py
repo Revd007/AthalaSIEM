@@ -26,7 +26,6 @@ from .collectors.linux_collector import LinuxLogCollector
 from .collectors.network_collector import NetworkCollector
 from .collectors.cloud_collector import CloudCollector
 from .collectors.macos_collector import MacOSCollector
-from .analytics.forensics.evidence_collector import EvidenceCollector
 
 class DonquixoteService:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
@@ -86,7 +85,6 @@ class DonquixoteService:
             'network': NetworkCollector(),
             'cloud': CloudCollector(self.config.get('cloud_config', {})),
             'macos': MacOSCollector(),
-            'evidence': EvidenceCollector()
         }
         
         # Initialize collection status
