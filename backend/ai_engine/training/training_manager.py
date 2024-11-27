@@ -29,11 +29,16 @@ class TrainingManager:
     
     def setup_experiment_tracking(self):
         """Setup experiment tracking with wandb"""
-        wandb.init(
-            project="ai_model_training",
-            name=self.config['experiment_name'],
-            config=self.config
-        )
+        if self.config.get('wandb', {}).get('enabled', False):
+            wandb.init(
+                project=self.config['wandb']['project'],
+                entity=self.config['wandb']['entity'],
+                name=self.config['wandb']['experiment_name'],
+                tags=self.config['wandb']['tags'],
+                config=self.config['wandb']['config']
+            )
+        else:
+            self.logger.warning("Wandb tracking is disabled in configuration")
     
     async def train(self, train_loader, val_loader, num_epochs: int) -> Dict[str, Any]:
         """Train models using provided data loaders"""

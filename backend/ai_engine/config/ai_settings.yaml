@@ -11,3 +11,32 @@ model_settings:
     input_dim: 512
     hidden_dim: 256
     num_classes: 2
+
+# Tambahkan konfigurasi wandb
+wandb:
+  project: "ai_model_training"
+  entity: "revianravilathala"  # Ganti dengan username wandb Anda
+  experiment_name: "default_experiment"
+  tags: ["security", "anomaly-detection", "threat-detection"]
+  log_interval: 100
+  enabled: true
+  config:
+    learning_rate: 0.001
+    batch_size: 32
+    epochs: 10
+    optimizer: "Adam"
+    architecture: "transformer"
+    dataset: "security_logs"
+
+# Training settings
+training:
+  batch_size: 32
+  learning_rate: 0.001
+  num_epochs: 10
+  validation_split: 0.2
+  early_stopping_patience: 5
+  optimizer: "Adam"
+  criterion: "CrossEntropyLoss"
+  scheduler: "ReduceLROnPlateau"
+  checkpoint_frequency: 5
+  enable_wandb: true

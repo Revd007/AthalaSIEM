@@ -11,6 +11,7 @@ class ModelManager:
         self.logger = logging.getLogger(__name__)
         self.models: Dict[str, torch.nn.Module] = {}
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.model_factory = AIModelFactory(self)
         
         # Initialize model classes
         self.model_classes = {
@@ -46,15 +47,14 @@ class ModelManager:
             self.logger.error(f"Error initializing models: {e}")
             raise
 
+    def get(self, model_type: str) -> Optional[torch.nn.Module]:
+        if model_type not in self.models:
+            self.models[model_type] = self.model_factory.create_model(model_type)
+        return self.models.get(model_type)
+
     def get_model(self, model_type: str) -> Optional[torch.nn.Module]:
         """Get a specific model by type"""
         return self.models.get(model_type)
-
-    def get(self) -> Optional[torch.nn.Module]:
-        """Get default model (first available)"""
-        if not self.models:
-            return None
-        return next(iter(self.models.values()))
 
     def get_default_model(self) -> Optional[torch.nn.Module]:
         """Get the default model (first available)"""

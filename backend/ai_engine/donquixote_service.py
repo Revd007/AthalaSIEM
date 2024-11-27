@@ -26,11 +26,27 @@ from .collectors.linux_collector import LinuxLogCollector
 from .collectors.network_collector import NetworkCollector
 from .collectors.cloud_collector import CloudCollector
 from .collectors.macos_collector import MacOSCollector
+import os
+from pathlib import Path
+import yaml
 
 class DonquixoteService:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.logger = logging.getLogger(__name__)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # Tentukan path absolut ke direktori config
+        config_dir = Path(__file__).parent / 'config'
+        ai_config_path = config_dir / 'ai_settings.yaml'
+
+        # Periksa apakah file ada
+        if not ai_config_path.exists():
+            self.logger.warning(f"AI config file not found at {ai_config_path}, using default settings")
+            # Gunakan default_config atau lakukan tindakan lain
+        else:
+            # Muat konfigurasi dari file
+            with open(ai_config_path, 'r') as f:
+                self.ai_config = yaml.safe_load(f)
         
         # Default config if none provided
         default_config = {

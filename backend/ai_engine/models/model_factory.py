@@ -12,14 +12,14 @@ from .anomaly_detector import AnomalyDetector, VariationalAutoencoder
 from .base_model import BaseModel
 
 class AIModelFactory:
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
+    def __init__(self, model_manager):
+        self.model_manager = model_manager
         self.logger = logging.getLogger(__name__)
         
     def create_model(self, model_type: str) -> Optional[torch.nn.Module]:
         """Create a new model instance"""
         try:
-            model_config = self.config.get(model_type, {})
+            model_config = self.model_manager.config.get(model_type, {})
             
             if model_type == 'threat_detector':
                 if not model_config:
@@ -28,8 +28,7 @@ class AIModelFactory:
                         'hidden_dim': 256,
                         'num_classes': 2
                     }
-                model = ThreatDetector(model_config)
-                return model.to(self.device) if hasattr(self, 'device') else model
+                return ThreatDetector(model_config)
                 
             elif model_type == 'anomaly_detector':
                 if not model_config:
@@ -37,8 +36,7 @@ class AIModelFactory:
                         'input_dim': 512,
                         'hidden_dim': 256
                     }
-                model = AnomalyDetector(**model_config)
-                return model.to(self.device) if hasattr(self, 'device') else model
+                return AnomalyDetector(**model_config)
                 
             elif model_type == 'vae':
                 if not model_config:
@@ -47,8 +45,7 @@ class AIModelFactory:
                         'hidden_dims': [256, 128],
                         'latent_dim': 64
                     }
-                model = VariationalAutoencoder(**model_config)
-                return model.to(self.device) if hasattr(self, 'device') else model
+                return VariationalAutoencoder(**model_config)
                 
             else:
                 self.logger.error(f"Unknown model type: {model_type}")
