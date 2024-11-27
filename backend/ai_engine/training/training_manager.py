@@ -10,36 +10,23 @@ from tqdm import tqdm
 import wandb
 
 class TrainingManager:
-    def __init__(self, 
-                 config: Dict[str, Any],
-                 models: Optional[Dict[str, Any]] = None,
-                 experiment_name: Optional[str] = None):
+    def __init__(self, config: Dict[str, Any], experiment_name: str = "default_experiment"):
         self.config = config
-        self.models = models or {}
-        self.experiment_name = experiment_name or "default_experiment"
         self.logger = logging.getLogger(__name__)
-        
-        # Set default experiment name if not provided
-        if 'experiment_name' not in self.config:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            self.config['experiment_name'] = f"experiment_{timestamp}"
+        self.experiment_name = experiment_name
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
         # Initialize training components
-        self.criterion = self._initialize_criterion()
-        self.optimizer = self._initialize_optimizer()
-        self.scheduler = self._initialize_scheduler()
-        
-        # Setup experiment tracking
-        self.setup_experiment_tracking()
+        self.optimizer = None
+        self.scheduler = None
+        self.criterion = None
         
         # Training metrics
-        self.metrics = {
-            'train_loss': [],
-            'val_loss': [],
-            'accuracy': [],
-            'f1_score': []
-        }
+        self.training_history = []
+        self.best_metrics = {}
         
+        self.model = None  # Akan diset saat training dimulai
+    
     def setup_experiment_tracking(self):
         """Setup experiment tracking with wandb"""
         wandb.init(
@@ -48,45 +35,70 @@ class TrainingManager:
             config=self.config
         )
     
-    async def train(self, 
-                   train_loader: DataLoader,
-                   val_loader: DataLoader,
-                   num_epochs: int):
-        """Main training loop"""
-        best_val_loss = float('inf')
-        patience = self.config.get('patience', 5)
-        patience_counter = 0
-        
-        for epoch in range(num_epochs):
-            try:
+    async def train(self, train_loader, val_loader, num_epochs: int) -> Dict[str, Any]:
+        """Train models using provided data loaders"""
+        try:
+            # Get default model from model manager
+            self.model = self.model_manager.get()  # Tanpa parameter tambahan
+            if not self.model:
+                raise ValueError("No model available for training")
+
+            training_results = {}
+            
+            # Get models from model manager passed through train parameters
+            for epoch in range(num_epochs):
+                epoch_metrics = {
+                    'train_loss': [],
+                    'val_loss': [],
+                    'accuracy': []
+                }
+                
                 # Training phase
+                self.model.train()
                 train_metrics = await self._train_epoch(train_loader, epoch)
-                
+                epoch_metrics['train_loss'].append(train_metrics['loss'])
+
                 # Validation phase
-                val_metrics = await self._validate_epoch(val_loader, epoch)
-                
-                # Update learning rate
-                self.scheduler.step(val_metrics['val_loss'])
-                
+                self.model.eval()
+                with torch.no_grad():
+                    val_metrics = await self._validate_epoch(val_loader)
+                    epoch_metrics['val_loss'].append(val_metrics['loss'])
+                    epoch_metrics['accuracy'].append(val_metrics['accuracy'])
+
                 # Log metrics
-                self._log_metrics(epoch, train_metrics, val_metrics)
-                
-                # Save checkpoint if best model
-                if val_metrics['val_loss'] < best_val_loss:
-                    best_val_loss = val_metrics['val_loss']
-                    self.save_checkpoint(epoch, best_val_loss)
-                    patience_counter = 0
-                else:
-                    patience_counter += 1
-                
-                # Early stopping
-                if patience_counter >= patience:
+                wandb.log({
+                    'epoch': epoch,
+                    'train_loss': train_metrics['loss'],
+                    'val_loss': val_metrics['loss'],
+                    'accuracy': val_metrics['accuracy']
+                })
+
+                # Learning rate scheduling
+                if self.scheduler:
+                    self.scheduler.step(val_metrics['loss'])
+
+                # Save best model
+                if not self.best_metrics or val_metrics['loss'] < self.best_metrics['val_loss']:
+                    self.best_metrics = val_metrics
+                    self.save_model(f'best_model_epoch_{epoch}.pt')
+
+                # Early stopping check
+                if self._should_stop_early(val_metrics['loss']):
                     self.logger.info("Early stopping triggered")
                     break
+                # ...
                 
-            except Exception as e:
-                self.logger.error(f"Error in epoch {epoch}: {e}")
-                raise
+                training_results[f'epoch_{epoch}'] = epoch_metrics
+                
+            return {
+                'status': 'success',
+                'metrics': training_results,
+                'final_loss': epoch_metrics['val_loss'][-1]
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Training error: {e}")
+            return {'error': str(e)}
     
     async def _train_epoch(self, 
                           train_loader: DataLoader,

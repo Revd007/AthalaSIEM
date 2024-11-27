@@ -2,12 +2,13 @@ import asyncio
 import aiodns
 import socket
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 class NetworkCollector:
-    def __init__(self):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        self.config = config or {}
         self.resolver = aiodns.DNSResolver()
-        self.buffer_size = 65535
+        self.buffer_size = self.config.get('buffer_size', 65535)
 
     async def start_collection(self):
         # Create UDP socket for syslog

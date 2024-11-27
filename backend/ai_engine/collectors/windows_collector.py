@@ -5,7 +5,7 @@ import win32security
 import wmi
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, AsyncGenerator, Optional
+from typing import *
 import logging
 from database.models import Event
 from database.connection import AsyncSessionLocal
@@ -13,12 +13,12 @@ from schemas.event import EventCreate
 import win32api
 
 class WindowsEventCollector:
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        self.config = config or {}
         self.logger = logging.getLogger(__name__)
         
         # Define all Windows event log types to collect
-        self.log_types = [
+        self.log_types = self.config.get('log_types', [
             'Application',
             'Security', 
             'System',
@@ -29,7 +29,7 @@ class WindowsEventCollector:
             'Microsoft-Windows-Windows Defender/Operational',
             'Microsoft-Windows-Windows Firewall With Advanced Security/Firewall',
             'Microsoft-Windows-DriverFrameworks-UserMode/Operational'
-        ]
+        ])
         
         self.handlers = {}
         self.last_read_times = {}

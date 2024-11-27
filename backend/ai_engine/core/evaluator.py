@@ -13,11 +13,20 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from ai_engine.core.model_manager import ModelManager
+
 class ModelEvaluator:
-    def __init__(self, model=None, models=None, config=None):
-        self.models = models if models else {'default': model}
+    def __init__(self, model_manager: ModelManager, config: Dict[str, Any]):
+        """Initialize ModelEvaluator
+        
+        Args:
+            model_manager: ModelManager instance containing models
+            config: Configuration dictionary
+        """
+        self.model_manager = model_manager
         self.config = config
         self.metrics = {}
+        self.logger = logging.getLogger(__name__)
         
     async def evaluate(self, test_loader):
         """Comprehensive model evaluation"""

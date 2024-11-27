@@ -34,6 +34,7 @@ class DonquixoteService:
         
         # Default config if none provided
         default_config = {
+            'experiment_name': 'default_experiment',
             'model_version': '1.0.0',
             'batch_size': 32,
             'learning_rate': 1e-4,
@@ -42,110 +43,82 @@ class DonquixoteService:
             'log_dir': 'logs/',
             'data_dir': 'data/',
             'enable_ensemble': True,
-            'enable_adaptive_learning': True
+            'enable_adaptive_learning': True,
+            'anomaly_detector': {
+                'input_dim': 512,
+                'hidden_dim': 256
+            },
+            'vae': {
+                'input_dim': 512,
+                'hidden_dims': [256, 128],
+                'latent_dim': 64
+            },
+            'threat_detector': {
+                'input_dim': 512,
+                'hidden_dim': 256,
+                'num_classes': 2
+            }
         }
         self.config = {**default_config, **(config or {})}
         
-        # Initialize models directly
-        self.anomaly_detector = None
-        self.variational_autoencoder = None
-        self.threat_detector = None
-        
-        # Add advanced ML Components from PredictionService
-        self.isolation_forest = IsolationForest(contamination=0.1, random_state=42)
-        self.scaler = StandardScaler()
-        
-        # Enhanced Temporal Analysis
-        self.temporal_patterns = {
-            'hourly': {},
-            'daily': {},
-            'weekly': {}
-        }
-        self.behavior_sequences = []
-        self.sequence_length = 10
-        
-        # Advanced Behavioral Indicators
-        self.behavior_profiles = {}
-        self.anomaly_patterns = set()
-        self.threat_chains = []
-        
-        # Dynamic Thresholds
-        self.threshold_history = []
-        self.adaptive_threshold = self.config.get('prediction_threshold', 0.75)
-        
-        # Enhanced prediction tracking
-        self.pattern_memory = {}
-        self.behavioral_patterns = []
-        self.threat_signatures = set()
-        
-        # Initialize collectors
-        self.collectors = {
-            'windows': WindowsEventCollector(),
-            'linux': LinuxLogCollector(),
-            'network': NetworkCollector(),
-            'cloud': CloudCollector(self.config.get('cloud_config', {})),
-            'macos': MacOSCollector(),
-        }
-        
-        # Initialize collection status
-        self.collection_status = {
-            collector_name: False for collector_name in self.collectors.keys()
-        }
-        
         try:
-            # Initialize core components with system checks
-            self.system_specs = self._check_system_specs()
-            self._validate_system_requirements()
-            
-            # Initialize models based on system capabilities
-            self._initialize_models()
-            
-            # Initialize existing components
+            # Initialize model manager first
             self.model_manager = ModelManager(self.config)
-            self.dataset_handler = CyberSecurityDataHandler(self.config)
+            
+            # Get models from model manager
+            self.anomaly_detector = self.model_manager.get_model('anomaly_detector')
+            self.variational_autoencoder = self.model_manager.get_model('vae')
+            self.threat_detector = self.model_manager.get_model('threat_detector')
+            
+            if not all([self.anomaly_detector, self.variational_autoencoder, self.threat_detector]):
+                self.logger.warning("Some models failed to initialize")
+            
+            # Initialize other components
+            self.evaluator = ModelEvaluator(self.model_manager, self.config)
+            self.knowledge_graph = KnowledgeGraph()
+            self.ensemble_manager = AIEnsembleManager(self.model_manager)
+            
+            # Initialize data processing components
+            self.data_handler = CyberSecurityDataHandler(self.config)
             self.data_cleaner = DataCleaner()
             self.data_normalizer = DataNormalizer()
             self.feature_engineer = FeatureEngineer()
             
-            # Initialize training and evaluation components
+            # Initialize training and feedback components
             self.training_manager = TrainingManager(
-                models={
-                    'anomaly_detector': self.anomaly_detector,
-                    'vae': self.variational_autoencoder,
-                    'threat_detector': self.threat_detector
-                },
                 config=self.config,
-                experiment_name="donquixote_training"
+                experiment_name=self.config.get('experiment_name', 'default_experiment')
             )
             self.adaptive_learner = AdaptiveLearner(
                 models={
                     'anomaly_detector': self.anomaly_detector,
-                    'vae': self.variational_autoencoder,
                     'threat_detector': self.threat_detector
                 },
                 config=self.config
             )
-            self.evaluator = ModelEvaluator(
-                models={
-                    'anomaly_detector': self.anomaly_detector,
-                    'vae': self.variational_autoencoder,
-                    'threat_detector': self.threat_detector
-                },
-                config=self.config
-            )
-            
-            # Initialize advanced components
-            self.knowledge_graph = KnowledgeGraph()
-            self.ensemble_manager = AIEnsembleManager(self.model_manager)
             self.feedback_manager = FeedbackManager(self.config)
-            
-            # Initialize prediction service with enhanced capabilities
             self.prediction_service = PredictionService(self.model_manager, self.config)
             
-            self.logger.info("Models initialized successfully")
-            self.logger.info("Enhanced prediction capabilities initialized successfully")
+            # Initialize ML components
+            self.isolation_forest = IsolationForest()
+            self.standard_scaler = StandardScaler()
+            
+            # Initialize collectors
+            self.collectors = {
+                'windows': WindowsEventCollector(self.config),
+                'linux': LinuxLogCollector(self.config),
+                'network': NetworkCollector(self.config),
+                'cloud': CloudCollector(self.config),
+                'macos': MacOSCollector()
+            }
+            self.collection_status = {collector: False for collector in self.collectors}
+            
+            # Setup wandb tracking
+            self.training_manager.setup_experiment_tracking()
+            
+            self.logger.info("All components initialized successfully")
         except Exception as e:
-            self.logger.error(f"Error initializing models: {e}")
+            self.logger.error(f"Error in initialization: {e}")
             raise
 
     def _check_system_specs(self) -> Dict[str, Any]:
@@ -174,48 +147,17 @@ class DonquixoteService:
     def _initialize_models(self):
         """Initialize base models with fallback options"""
         try:
-            # Initialize models based on system capabilities
-            if self.system_specs['memory_gb'] >= 4.0:  # Minimum memory requirement
-                # Initialize Anomaly Detector
-                self.anomaly_detector = AnomalyDetector(
-                    input_dim=512,
-                    hidden_dim=256
-                ).to(self.device)
-                
-                # Initialize VAE if more memory available
-                if self.system_specs['memory_gb'] >= 8.0:
-                    self.variational_autoencoder = VariationalAutoencoder(
-                        input_dim=512,
-                        hidden_dims=[256, 128],  # List of hidden dimensions
-                        latent_dim=64
-                    ).to(self.device)
-                    self.logger.info("VAE initialized")
-
-                # Initialize Threat Detector
-                self.threat_detector = ThreatDetector({
-                    'input_dim': 512,
-                    'hidden_dim': 256,
-                    'num_classes': 2
-                }).to(self.device)
-                
-                self.logger.info("All models initialized successfully")
+            self.model_manager = ModelManager(self.config)
+            self.anomaly_detector = self.model_manager.get_model('anomaly_detector')
+            self.variational_autoencoder = self.model_manager.get_model('vae')
+            self.threat_detector = self.model_manager.get_model('threat_detector')
+            
+            if not all([self.anomaly_detector, self.variational_autoencoder, self.threat_detector]):
+                self.logger.warning("Some models failed to initialize")
             else:
-                self.logger.warning("Limited memory available. Running in minimal mode.")
-                # Initialize only essential model
-                self.anomaly_detector = AnomalyDetector(
-                    input_dim=256,  # Reduced dimensions
-                    hidden_dim=128
-                ).to(self.device)
-                
+                self.logger.info("All models initialized successfully")
         except Exception as e:
-            self.logger.error(f"Error initializing base models: {e}")
-            # Set failed models to None but don't stop initialization
-            if not hasattr(self, 'anomaly_detector'):
-                self.anomaly_detector = None
-            if not hasattr(self, 'variational_autoencoder'):
-                self.variational_autoencoder = None
-            if not hasattr(self, 'threat_detector'):
-                self.threat_detector = None
+            self.logger.error(f"Error initializing models: {e}")
             raise
 
     async def get_service_status(self) -> Dict[str, Any]:

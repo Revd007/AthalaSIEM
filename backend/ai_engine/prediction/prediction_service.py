@@ -12,10 +12,11 @@ from ..processors.feature_engineering import FeatureEngineer
 from ..core.knowledge_graph import KnowledgeGraph
 from ..training.adaptive_learner import AdaptiveLearner
 from ..core.evaluator import ModelEvaluator
+from ..core.model_manager import ModelManager
 import logging
 
 class PredictionService:
-    def __init__(self, model_manager, config: Dict[str, Any]):
+    def __init__(self, model_manager: ModelManager, config: Dict[str, Any]):
         self.logger = logging.getLogger(__name__)
         self.model_manager = model_manager
         self.config = config
@@ -29,8 +30,11 @@ class PredictionService:
         self.max_history_size = 1000
 
         # Add advanced components
-        self.adaptive_learner = AdaptiveLearner(model_manager.get_model(), config)
-        self.evaluator = ModelEvaluator(model_manager.get_model(), config)
+        self.adaptive_learner = AdaptiveLearner(
+            models=model_manager.models,  # Pass the models dictionary
+            config=config
+        )
+        self.evaluator = ModelEvaluator(model_manager, config)
         
         # Enhanced prediction tracking
         self.pattern_memory = {}

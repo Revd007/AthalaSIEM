@@ -1,0 +1,13 @@
+# Create this file if it doesn't exist
+model_settings:
+  anomaly_detector:
+    input_dim: 512
+    hidden_dim: 256
+  vae:
+    input_dim: 512
+    hidden_dims: [256, 128]
+    latent_dim: 64
+  threat_detector:
+    input_dim: 512
+    hidden_dim: 256
+    num_classes: 2

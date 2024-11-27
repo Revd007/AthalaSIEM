@@ -1,7 +1,7 @@
 import asyncio
 import re
 from datetime import datetime
-from typing import Dict, AsyncGenerator
+from typing import *
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileModifiedEvent
 import logging
@@ -16,7 +16,11 @@ class LogFileHandler(FileSystemEventHandler):
             self.callback(event.src_path)
 
 class LinuxLogCollector:
-    def __init__(self):
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        self.config = config or {}
+        self.logger = logging.getLogger(__name__)
+        
+        # Default log paths
         self.log_paths = {
             '/var/log/syslog': 'syslog',
             '/var/log/messages': 'messages',
@@ -40,6 +44,11 @@ class LinuxLogCollector:
             '/var/log/maillog': 'mail',
             '/var/log/mail.log': 'mail'
         }
+
+        # Override default paths with config if provided
+        if 'log_paths' in self.config:
+            self.log_paths.update(self.config['log_paths'])
+
         self.observer = Observer()
         self.handler = LogFileHandler(self._handle_file_change)
         self.active_log_paths = {}
