@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 import yaml
 from ai_engine.donquixote_service import DonquixoteService
+from typing import *
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -78,3 +79,23 @@ async def root():
         "message": "AthalaSIEM API is running",
         "ai_service_status": "running" if ai_service else "not initialized"
     }
+
+@app.get("/ai/status")
+async def ai_status():
+    """Get AI service status"""
+    if ai_service:
+        return await ai_service.get_service_status()
+    return {
+        "status": "not_initialized",
+        "error": "AI service not initialized"
+    }
+
+@app.post("/ai/analyze")
+async def analyze_event(event_data: Dict[str, Any]):
+    """Analyze event using AI service"""
+    if not ai_service:
+        return {
+            "status": "error",
+            "error": "AI service not initialized"
+        }
+    return await ai_service.analyze_event(event_data)

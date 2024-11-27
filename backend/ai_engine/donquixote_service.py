@@ -14,6 +14,7 @@ from .core.knowledge_graph import KnowledgeGraph
 from .ensemble.ensemble_manager import AIEnsembleManager
 from .feedback.feedback_manager import FeedbackManager
 import logging
+import psutil
 
 class DonquixoteService:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
@@ -34,8 +35,20 @@ class DonquixoteService:
         }
         self.config = {**default_config, **(config or {})}
         
+        # Initialize models directly
+        self.anomaly_detector = None
+        self.variational_autoencoder = None
+        self.threat_detector = None
+        
         try:
-            # Initialize core components
+            # Initialize core components with system checks
+            self.system_specs = self._check_system_specs()
+            self._validate_system_requirements()
+            
+            # Initialize models based on system capabilities
+            self._initialize_base_models()
+            
+            # Initialize existing components
             self.model_manager = ModelManager(self.config)
             self.dataset_handler = CyberSecurityDataHandler(self.config)
             self.data_cleaner = DataCleaner()
@@ -67,6 +80,68 @@ class DonquixoteService:
             self.logger.error(f"Error initializing models: {e}")
             raise
 
+    def _check_system_specs(self) -> Dict[str, Any]:
+        """Check system specifications"""
+        return {
+            'cpu_count': psutil.cpu_count(),
+            'memory_gb': psutil.virtual_memory().total / (1024**3),
+            'cuda_available': torch.cuda.is_available(),
+            'cuda_devices': torch.cuda.device_count() if torch.cuda.is_available() else 0,
+            'cuda_memory_gb': (torch.cuda.get_device_properties(0).total_memory / (1024**3)
+                             if torch.cuda.is_available() else 0)
+        }
+
+    def _validate_system_requirements(self):
+        """Validate system meets minimum requirements"""
+        minimum_requirements = {
+            'cpu_count': 2,
+            'memory_gb': 4.0
+        }
+        
+        if self.system_specs['cpu_count'] < minimum_requirements['cpu_count']:
+            self.logger.warning("System below minimum CPU requirement. Some features may be disabled.")
+        if self.system_specs['memory_gb'] < minimum_requirements['memory_gb']:
+            self.logger.warning("System below minimum memory requirement. Some features may be disabled.")
+
+    def _initialize_base_models(self):
+        """Initialize base models with fallback options"""
+        try:
+            # Initialize models based on system capabilities
+            if self.system_specs['memory_gb'] >= 4.0:  # Minimum memory requirement
+                # Initialize Anomaly Detector
+                self.anomaly_detector = AnomalyDetector(
+                    input_dim=512,
+                    hidden_dim=256
+                ).to(self.device)
+                
+                # Initialize VAE if more memory available
+                if self.system_specs['memory_gb'] >= 8.0:
+                    self.variational_autoencoder = VariationalAutoencoder(
+                        input_dim=512,
+                        hidden_dim=256,
+                        latent_dim=64
+                    ).to(self.device)
+                
+                # Initialize Threat Detector
+                self.threat_detector = ThreatDetector(
+                    input_dim=512,
+                    hidden_dim=256,
+                    num_classes=2
+                ).to(self.device)
+                
+                self.logger.info("All models initialized successfully")
+            else:
+                self.logger.warning("Limited memory available. Running in minimal mode.")
+                # Initialize only essential model
+                self.anomaly_detector = AnomalyDetector(
+                    input_dim=256,  # Reduced dimensions
+                    hidden_dim=128
+                ).to(self.device)
+                
+        except Exception as e:
+            self.logger.error(f"Error initializing base models: {e}")
+            raise
+
     async def train_model(self, training_data: Dict[str, Any]) -> Dict[str, Any]:
         """Train the model with new data"""
         try:
@@ -93,41 +168,38 @@ class DonquixoteService:
             return {'error': str(e)}
 
     async def analyze_event(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze a single event"""
+        """Analyze a single event using available models"""
         try:
-            # Preprocess event data
-            cleaned_event = self.data_cleaner.clean_event(event_data)
-            normalized_event = self.data_normalizer.normalize_event(cleaned_event)
-            features = self.feature_engineer.extract_features(normalized_event)
-            input_tensor = self._preprocess_data(features)
+            input_tensor = self._preprocess_data(event_data)
+            results = {}
             
-            # Get predictions from ensemble
-            if self.config['enable_ensemble']:
-                predictions = await self.ensemble_manager.get_ensemble_predictions(input_tensor)
-            else:
-                predictions = await self.model_manager.predict(input_tensor)
+            # Use Anomaly Detector if available
+            if self.anomaly_detector is not None:
+                anomaly_score = self.anomaly_detector(input_tensor)
+                results['anomaly_score'] = float(anomaly_score.mean().item())
             
-            # Analyze threats and anomalies
-            threat_analysis = await self._analyze_threats(predictions)
-            anomaly_analysis = await self._analyze_anomalies(predictions)
+            # Use VAE if available
+            if self.variational_autoencoder is not None:
+                recon, mu, log_var = self.variational_autoencoder(input_tensor)
+                vae_score = self.variational_autoencoder.loss_function(
+                    recon, input_tensor, mu, log_var
+                )
+                results['vae_score'] = float(vae_score.mean().item())
             
-            # Update knowledge graph with new patterns
-            self.knowledge_graph.update([{
-                'event': normalized_event,
-                'predictions': predictions,
-                'timestamp': event_data.get('timestamp')
-            }])
+            # Use Threat Detector if available
+            if self.threat_detector is not None:
+                threat_output = self.threat_detector(input_tensor)
+                results['threat_score'] = float(threat_output.mean().item())
             
             return {
-                'threat_analysis': threat_analysis,
-                'anomaly_analysis': anomaly_analysis,
-                'risk_score': self._calculate_risk_score(threat_analysis, anomaly_analysis),
-                'confidence': predictions.get('confidence', 0.0),
-                'recommendations': self._generate_recommendations(
-                    threat_analysis, 
-                    anomaly_analysis
-                )
+                'status': 'success',
+                'results': results,
+                'system_info': {
+                    'active_models': self._get_active_models(),
+                    'system_specs': self.system_specs
+                }
             }
+            
         except Exception as e:
             self.logger.error(f"Analysis error: {e}")
             return {'error': str(e)}
@@ -164,23 +236,16 @@ class DonquixoteService:
             self.logger.error(f"Preprocessing error: {e}")
             return torch.randn(1, 512).to(self.device)
 
-    async def _analyze_threats(self, predictions: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze threat predictions"""
-        return {
-            'is_threat': predictions.get('threat_score', 0.0) > 0.5,
-            'threat_score': predictions.get('threat_score', 0.0),
-            'threat_type': predictions.get('threat_type', 'unknown'),
-            'confidence': predictions.get('threat_confidence', 0.0)
-        }
-
-    async def _analyze_anomalies(self, predictions: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze anomaly predictions"""
-        return {
-            'is_anomaly': predictions.get('anomaly_score', 0.0) > 0.5,
-            'anomaly_score': predictions.get('anomaly_score', 0.0),
-            'anomaly_type': predictions.get('anomaly_type', 'unknown'),
-            'confidence': predictions.get('anomaly_confidence', 0.0)
-        }
+    def _get_active_models(self) -> List[str]:
+        """Get list of currently active models"""
+        active_models = []
+        if self.anomaly_detector is not None:
+            active_models.append('anomaly_detector')
+        if self.variational_autoencoder is not None:
+            active_models.append('variational_autoencoder')
+        if self.threat_detector is not None:
+            active_models.append('threat_detector')
+        return active_models
 
     def _calculate_risk_score(self, threat_analysis: Dict[str, Any], 
                             anomaly_analysis: Dict[str, Any]) -> float:

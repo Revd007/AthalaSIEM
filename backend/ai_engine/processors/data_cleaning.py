@@ -5,8 +5,9 @@ from datetime import datetime
 import re
 import json
 from collections import defaultdict
+import logging
 
-from backend.api.middleware import logging
+logger = logging.getLogger(__name__)
 
 class DataCleaner:
     def __init__(self):
@@ -55,7 +56,7 @@ class DataCleaner:
             return cleaned_event
             
         except Exception as e:
-            logging.error(f"Error cleaning event: {e}")
+            logger.error(f"Error cleaning event: {e}")
             return None
     
     def _handle_missing_values(self, event: Dict) -> Dict:
