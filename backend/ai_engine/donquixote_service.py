@@ -21,6 +21,12 @@ import numpy as np
 from datetime import datetime
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
+from .collectors.windows_collector import WindowsEventCollector
+from .collectors.linux_collector import LinuxLogCollector
+from .collectors.network_collector import NetworkCollector
+from .collectors.cloud_collector import CloudCollector
+from .collectors.macos_collector import MacOSCollector
+from .analytics.forensics.evidence_collector import EvidenceCollector
 
 class DonquixoteService:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
@@ -72,6 +78,21 @@ class DonquixoteService:
         self.pattern_memory = {}
         self.behavioral_patterns = []
         self.threat_signatures = set()
+        
+        # Initialize collectors
+        self.collectors = {
+            'windows': WindowsEventCollector(),
+            'linux': LinuxLogCollector(),
+            'network': NetworkCollector(),
+            'cloud': CloudCollector(self.config.get('cloud_config', {})),
+            'macos': MacOSCollector(),
+            'evidence': EvidenceCollector()
+        }
+        
+        # Initialize collection status
+        self.collection_status = {
+            collector_name: False for collector_name in self.collectors.keys()
+        }
         
         try:
             # Initialize core components with system checks
@@ -551,3 +572,25 @@ class DonquixoteService:
         base_risk = event_data.get('severity', 0) * 0.6
         priority_factor = event_data.get('priority', 0) * 0.4
         return min(base_risk + priority_factor, 1.0)
+
+    async def start_collectors(self, collector_types: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Start specified collectors or all collectors if none specified"""
+        try:
+            if not collector_types:
+                collector_types = list(self.collectors.keys())
+
+            for collector_type in collector_types:
+                if collector_type in self.collectors:
+                    self.collection_status[collector_type] = True
+                    await self.collectors[collector_type].start_collection()
+
+            return {
+                'status': 'success',
+                'active_collectors': [
+                    collector for collector, status in self.collection_status.items()
+                    if status
+                ]
+            }
+        except Exception as e:
+            self.logger.error(f"Error starting collectors: {e}")
+            return {'error': str(e)}

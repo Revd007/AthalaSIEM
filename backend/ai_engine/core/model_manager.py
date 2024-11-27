@@ -1,88 +1,98 @@
+from typing import Dict, Any, Optional
 import torch
 import logging
-from typing import *
-from ..models.anomaly_detector import VariationalAutoencoder
+from ..models.anomaly_detector import AnomalyDetector, VariationalAutoencoder
 from ..models.threat_detector import ThreatDetector
 
 class ModelManager:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
+        self.models: Dict[str, torch.nn.Module] = {}
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        # Initialize models dictionary
-        self.models = {}
-        
-        # Initialize models
-        self.anomaly_detector = None
-        self.threat_detector = None
-        self._initialize_models()
-        
-    def _initialize_models(self):
         try:
-            # Initialize anomaly detector
-            anomaly_config = self.config.get('anomaly_detector', {})
-            self.anomaly_detector = VariationalAutoencoder(
-                input_dim=anomaly_config.get('input_dim', 256),
-                hidden_dims=anomaly_config.get('hidden_dims', [128, 64]),
-                latent_dim=anomaly_config.get('latent_dim', 32)
-            ).to(self.device)
-            
-            # Initialize threat detector
-            threat_config = self.config.get('threat_detector', {})
-            self.threat_detector = ThreatDetector(
-                config=threat_config
-            ).to(self.device)
-            
+            self._initialize_models()
             self.logger.info("Models initialized successfully")
-            
         except Exception as e:
             self.logger.error(f"Error initializing models: {e}")
             raise
-            
-    async def predict(self, features: Dict[str, Any]) -> Dict[str, Any]:
+
+    def _initialize_models(self):
+        """Initialize all required models"""
         try:
-            # Convert inputs to tensors
-            inputs = torch.tensor(features['data'], dtype=torch.float32).to(self.device)
-            
-            # Get predictions from both models
-            with torch.no_grad():
-                anomaly_output = self.anomaly_detector(inputs)
-                threat_output = self.threat_detector(inputs)
-                
-            return {
-                'anomaly_score': anomaly_output[0].cpu().numpy(),
-                'threat_score': threat_output.cpu().numpy()
-            }
-            
+            # Initialize Anomaly Detector
+            self.models['anomaly_detector'] = AnomalyDetector(
+                input_dim=512,
+                hidden_dim=256
+            ).to(self.device)
+
+            # Initialize VAE
+            self.models['vae'] = VariationalAutoencoder(
+                input_dim=512,
+                hidden_dims=[256, 128],
+                latent_dim=64
+            ).to(self.device)
+
+            # Initialize Threat Detector
+            self.models['threat_detector'] = ThreatDetector({
+                'input_dim': 512,
+                'hidden_dim': 256,
+                'num_classes': 2
+            }).to(self.device)
+
         except Exception as e:
-            self.logger.error(f"Prediction error: {e}")
-            return {'error': str(e)}
-    
-    def get_model(self, model_name=None):
-        """Get a specific model or all models if no name is provided"""
-        if model_name:
+            self.logger.error(f"Error in model initialization: {e}")
+            raise
+
+    def get(self, model_name: str) -> Optional[torch.nn.Module]:
+        """Get a model by name"""
+        try:
             return self.models.get(model_name)
-        return self.models
-    
-    def register_model(self, name, model):
-        """Register a model with the manager"""
-        self.models[name] = model
-    
-    def get_enabled_models(self) -> List[str]:
-        """Return a list of enabled model types"""
-        enabled_models = []
+        except Exception as e:
+            self.logger.error(f"Error getting model {model_name}: {e}")
+            return None
+
+    def save_model(self, model_name: str, path: str):
+        """Save a model to disk"""
+        try:
+            model = self.models.get(model_name)
+            if model is not None:
+                torch.save(model.state_dict(), path)
+                self.logger.info(f"Model {model_name} saved successfully")
+            else:
+                self.logger.error(f"Model {model_name} not found")
+        except Exception as e:
+            self.logger.error(f"Error saving model {model_name}: {e}")
+
+    def load_model(self, model_name: str, path: str):
+        """Load a model from disk"""
+        try:
+            model = self.models.get(model_name)
+            if model is not None:
+                model.load_state_dict(torch.load(path))
+                model.eval()
+                self.logger.info(f"Model {model_name} loaded successfully")
+            else:
+                self.logger.error(f"Model {model_name} not found")
+        except Exception as e:
+            self.logger.error(f"Error loading model {model_name}: {e}")
+
+    def get_model_status(self, model_name: str) -> Dict[str, Any]:
+        """Get status of a specific model"""
+        model = self.models.get(model_name)
+        if model is None:
+            return {"status": "not_found"}
         
-        # Add models that are initialized and enabled
-        if self.anomaly_detector is not None:
-            enabled_models.append('anomaly_detector')
-        if self.threat_detector is not None:
-            enabled_models.append('threat_detector')
-            
-        # Add any additional models from the models dictionary
-        enabled_models.extend([
-            model_name for model_name, model in self.models.items()
-            if model is not None
-        ])
-        
-        return list(set(enabled_models))  # Remove any duplicates
+        return {
+            "status": "loaded",
+            "device": str(next(model.parameters()).device),
+            "training": model.training
+        }
+
+    def get_all_models_status(self) -> Dict[str, Dict[str, Any]]:
+        """Get status of all models"""
+        return {
+            name: self.get_model_status(name)
+            for name in self.models
+        }
