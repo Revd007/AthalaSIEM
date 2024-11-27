@@ -103,7 +103,7 @@ class DonquixoteService:
         if self.system_specs['memory_gb'] < minimum_requirements['memory_gb']:
             self.logger.warning("System below minimum memory requirement. Some features may be disabled.")
 
-    def _initialize_base_models(self):
+    def _initialize_models(self):
         """Initialize base models with fallback options"""
         try:
             # Initialize models based on system capabilities
@@ -121,6 +121,19 @@ class DonquixoteService:
                         hidden_dim=256,
                         latent_dim=64
                     ).to(self.device)
+
+                self.anomaly_detector = AnomalyDetector(
+                    input_dim=512,
+                    hidden_dim=256
+                ).to(self.device)
+                self.logger.info("Anomaly Detector initialized")
+
+                self.variational_autoencoder = VariationalAutoencoder(
+                    input_dim=512,
+                    hidden_dim=256,
+                    latent_dim=64
+                ).to(self.device)
+                self.logger.info("VAE initialized")
                 
                 # Initialize Threat Detector
                 self.threat_detector = ThreatDetector(
@@ -140,7 +153,28 @@ class DonquixoteService:
                 
         except Exception as e:
             self.logger.error(f"Error initializing base models: {e}")
+            # Set failed models to None but don't stop initialization
+            if not hasattr(self, 'anomaly_detector'):
+                self.anomaly_detector = None
+            if not hasattr(self, 'variational_autoencoder'):
+                self.variational_autoencoder = None
+            if not hasattr(self, 'threat_detector'):
+                self.threat_detector = None
             raise
+
+    async def get_service_status(self) -> Dict[str, Any]:
+        """Get the status of the service"""
+        return {
+            'status': 'activate',
+            'device': str(self.device),
+            'system_specs': self._check_system_specs(),
+            'active_models': self._get_active_models(),
+            'config': {
+                'model_version': self.config['model_version'],
+                'enable_ensemble': self.config['enable_ensemble'],
+                'enable_adaptive_learning': self.config['enable_adaptive_learning']
+            }
+        }
 
     async def train_model(self, training_data: Dict[str, Any]) -> Dict[str, Any]:
         """Train the model with new data"""
