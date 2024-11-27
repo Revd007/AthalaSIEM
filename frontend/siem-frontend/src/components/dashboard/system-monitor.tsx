@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { StatCard } from '../../components/ui/stat-card'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { Cpu, HardDrive, Activity, MemoryStick } from 'lucide-react'
+import { useAIAnalytics } from '../../hooks/use-ai-analytics'
 
 // Define proper types
 interface SystemMetrics {
@@ -39,6 +40,7 @@ export function SystemMonitor() {
   const [health, setHealth] = useState<SystemHealth | null>(null)
   const [loading, setLoading] = useState(true)
   const [mounted, setMounted] = useState(true)
+  const { data: aiData, isLoading: aiLoading } = useAIAnalytics()
 
   useEffect(() => {
     setMounted(true)
@@ -128,6 +130,19 @@ export function SystemMonitor() {
           icon={<Activity className="h-6 w-6 text-purple-500" />}
           description={`Out: ${(metrics.network.outgoing / 1024 / 1024).toFixed(2)} MB/s`}
         />
+        {aiData && (
+          <StatCard
+            title="Anomaly Score"
+            value={`${(aiData.anomalyDetection.score * 100).toFixed(1)}%`}
+            icon={<Activity className="h-4 w-4" />}
+            description="AI-detected system anomalies"
+            trend={{
+              direction: aiData.anomalyDetection.trend > 0 ? 'up' : 
+                        aiData.anomalyDetection.trend < 0 ? 'down' : 'neutral',
+              value: Math.abs(aiData.anomalyDetection.trend)
+            }}
+          />
+        )}
       </div>
 
       {/* Performance Chart */}
@@ -216,4 +231,17 @@ export function SystemMonitor() {
       </div>
     </div>
   )
+}
+
+export function getPatternSeverityColor(severity: number) {
+  if (severity > 0.8) return 'bg-red-500'
+  if (severity > 0.6) return 'bg-orange-500'
+  if (severity > 0.4) return 'bg-yellow-500'
+  return 'bg-green-500'
+}
+
+export function getThreatSeverityVariant(severity: number) {
+  if (severity > 0.8) return 'destructive'
+  if (severity > 0.6) return 'warning'
+  return 'secondary'
 }

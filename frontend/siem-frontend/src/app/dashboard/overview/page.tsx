@@ -4,19 +4,29 @@ import { Suspense } from 'react'
 import { Card } from '../../../components/ui/card'
 import { SystemMonitor } from '../../../components/dashboard/system-monitor'
 import { EventsOverview } from '../../../components/dashboard/events/events-overview'
-import { AIInsights } from '../../../components/dashboard/ai-insights'
+import { AIInsightsCard } from '../../../components/ai/ai-insights-card'
 import { LoadingSkeleton } from '../../../components/ui/loading-skeleton'
 import { EventsChart } from '../../../components/dashboard/events/events-chart'
 import { useQuery } from '@tanstack/react-query'
+import { dashboardService } from '../../../services/dashboard-service'
 
 export default function DashboardOverview() {
   const { data: systemMetrics, isLoading: metricsLoading } = useQuery({
     queryKey: ['system-metrics'],
-    queryFn: async () => {
-      const response = await fetch('http://localhost:8000/api/system/metrics');
-      if (!response.ok) throw new Error('Failed to fetch metrics');
-      return response.json();
-    }
+    queryFn: () => dashboardService.getSystemMetrics(),
+    refetchInterval: 5000,
+  });
+
+  const { data: eventsData, isLoading: eventsLoading } = useQuery({
+    queryKey: ['events-overview'],
+    queryFn: () => dashboardService.getEventsOverview(),
+    refetchInterval: 30000,
+  });
+
+  const { data: recentEvents, isLoading: eventsRecentLoading } = useQuery({
+    queryKey: ['recent-events'],
+    queryFn: () => dashboardService.getRecentEvents(20),
+    refetchInterval: 30000,
   });
 
   return (
@@ -122,22 +132,9 @@ export default function DashboardOverview() {
             </Suspense>
           </Card>
 
-          <Card className="bg-white p-6 rounded-xl shadow-sm">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900">Traffic Analysis</h3>
-                <p className="text-sm text-gray-500 mt-1">Network traffic patterns</p>
-              </div>
-              <select className="text-sm border rounded-lg px-3 py-2">
-                <option>Real-time</option>
-                <option>Hourly</option>
-                <option>Daily</option>
-              </select>
-            </div>
-            <Suspense fallback={<LoadingSkeleton />}>
-              <EventsChart data={[]} />
-            </Suspense>
-          </Card>
+          <Suspense fallback={<LoadingSkeleton rows={4} />}>
+            <AIInsightsCard />
+          </Suspense>
         </div>
 
         {/* Recent Events Table */}

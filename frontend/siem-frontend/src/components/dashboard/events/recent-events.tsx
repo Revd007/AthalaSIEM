@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../ui/dialog';
 import { Badge } from '../../ui/badge';
+import { useAIAnalytics } from '../../../hooks/use-ai-analytics'
 
 interface Event {
   id: string;
@@ -21,6 +22,7 @@ interface RecentEventsProps {
 
 export function RecentEvents({ events }: RecentEventsProps) {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const { data: aiData } = useAIAnalytics()
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {

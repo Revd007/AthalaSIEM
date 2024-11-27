@@ -42,6 +42,7 @@ export interface EventsOverviewData {
   recent_events: Event[];
 }
 
+
 class DashboardService {
   private getHeaders() {
     const token = localStorage.getItem('token');
@@ -73,6 +74,14 @@ class DashboardService {
     });
     if (!response.ok) throw new Error('Failed to fetch recent events');
     return response.json();
+  }
+
+  async getAIInsights() {
+    const response = await fetch('/api/dashboard/ai/insights')
+    if (!response.ok) {
+      throw new Error('Failed to fetch AI insights')
+    }
+    return response.json()
   }
 }
 
