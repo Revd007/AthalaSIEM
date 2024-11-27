@@ -13,8 +13,13 @@ from .core.evaluator import ModelEvaluator
 from .core.knowledge_graph import KnowledgeGraph
 from .ensemble.ensemble_manager import AIEnsembleManager
 from .feedback.feedback_manager import FeedbackManager
+from .prediction.prediction_service import PredictionService
 import logging
 import psutil
+import numpy as np
+from datetime import datetime
+from sklearn.ensemble import IsolationForest
+from sklearn.preprocessing import StandardScaler
 
 class DonquixoteService:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
@@ -39,6 +44,33 @@ class DonquixoteService:
         self.anomaly_detector = None
         self.variational_autoencoder = None
         self.threat_detector = None
+        
+        # Add advanced ML Components from PredictionService
+        self.isolation_forest = IsolationForest(contamination=0.1, random_state=42)
+        self.scaler = StandardScaler()
+        
+        # Enhanced Temporal Analysis
+        self.temporal_patterns = {
+            'hourly': {},
+            'daily': {},
+            'weekly': {}
+        }
+        self.behavior_sequences = []
+        self.sequence_length = 10
+        
+        # Advanced Behavioral Indicators
+        self.behavior_profiles = {}
+        self.anomaly_patterns = set()
+        self.threat_chains = []
+        
+        # Dynamic Thresholds
+        self.threshold_history = []
+        self.adaptive_threshold = self.config.get('prediction_threshold', 0.75)
+        
+        # Enhanced prediction tracking
+        self.pattern_memory = {}
+        self.behavioral_patterns = []
+        self.threat_signatures = set()
         
         try:
             # Initialize core components with system checks
@@ -75,7 +107,11 @@ class DonquixoteService:
             self.ensemble_manager = AIEnsembleManager(self.model_manager)
             self.feedback_manager = FeedbackManager()
             
+            # Initialize prediction service with enhanced capabilities
+            self.prediction_service = PredictionService(self.model_manager, self.config)
+            
             self.logger.info("Models initialized successfully")
+            self.logger.info("Enhanced prediction capabilities initialized successfully")
         except Exception as e:
             self.logger.error(f"Error initializing models: {e}")
             raise
@@ -202,41 +238,50 @@ class DonquixoteService:
             return {'error': str(e)}
 
     async def analyze_event(self, event_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze a single event using available models"""
+        """Enhanced event analysis with advanced prediction capabilities"""
         try:
-            input_tensor = self._preprocess_data(event_data)
-            results = {}
+            # Get base prediction
+            prediction = await self.prediction_service.predict_threat(event_data)
             
-            # Use Anomaly Detector if available
-            if self.anomaly_detector is not None:
-                anomaly_score = self.anomaly_detector(input_tensor)
-                results['anomaly_score'] = float(anomaly_score.mean().item())
+            # Extract advanced features
+            temporal_features = self._extract_temporal_features(event_data)
+            behavioral_features = self._extract_behavioral_features(event_data)
             
-            # Use VAE if available
-            if self.variational_autoencoder is not None:
-                recon, mu, log_var = self.variational_autoencoder(input_tensor)
-                vae_score = self.variational_autoencoder.loss_function(
-                    recon, input_tensor, mu, log_var
+            # Combine with existing analysis
+            analysis_result = await super().analyze_event(event_data)
+            
+            # Enhanced analysis with advanced predictions
+            enhanced_result = {
+                **analysis_result,
+                'prediction': prediction,
+                'temporal_analysis': {
+                    'features': temporal_features,
+                    'patterns': self.temporal_patterns
+                },
+                'behavioral_analysis': {
+                    'features': behavioral_features,
+                    'profiles': self.behavior_profiles
+                },
+                'threat_chain': self._identify_threat_chain(event_data),
+                'combined_risk_score': self._calculate_enhanced_risk(
+                    analysis_result.get('risk_score', 0),
+                    prediction.get('threat_score', 0),
+                    temporal_features,
+                    behavioral_features
                 )
-                results['vae_score'] = float(vae_score.mean().item())
-            
-            # Use Threat Detector if available
-            if self.threat_detector is not None:
-                threat_output = self.threat_detector(input_tensor)
-                results['threat_score'] = float(threat_output.mean().item())
-            
-            return {
-                'status': 'success',
-                'results': results,
-                'system_info': {
-                    'active_models': self._get_active_models(),
-                    'system_specs': self.system_specs
-                }
             }
+
+            # Update pattern memory and behavioral analysis
+            self._update_pattern_memory(event_data, enhanced_result)
             
+            return enhanced_result
+
         except Exception as e:
-            self.logger.error(f"Analysis error: {e}")
-            return {'error': str(e)}
+            self.logger.error(f"Error in enhanced event analysis: {e}")
+            return {
+                'error': str(e),
+                'status': 'failed'
+            }
 
     async def evaluate_model(self) -> Dict[str, Any]:
         """Evaluate model performance"""
@@ -300,3 +345,73 @@ class DonquixoteService:
             recommendations.append(f"Detected anomaly of type {anomaly_analysis['anomaly_type']}")
             
         return recommendations
+
+    def _calculate_combined_risk(self, analysis_score: float, prediction_score: float) -> float:
+        """Calculate combined risk score from analysis and prediction"""
+        # Weight prediction more heavily for real-time response
+        return (analysis_score * 0.4) + (prediction_score * 0.6)
+
+    def _calculate_enhanced_risk(
+        self,
+        analysis_score: float,
+        prediction_score: float,
+        temporal_features: np.ndarray,
+        behavioral_features: np.ndarray
+    ) -> float:
+        """Calculate enhanced risk score with multiple factors"""
+        # Base risk calculation
+        base_risk = (analysis_score * 0.4) + (prediction_score * 0.6)
+        
+        # Add temporal risk factor
+        temporal_risk = np.mean(temporal_features) * 0.2
+        
+        # Add behavioral risk factor
+        behavioral_risk = np.mean(behavioral_features) * 0.2
+        
+        # Combine all risk factors
+        total_risk = (base_risk * 0.6) + (temporal_risk * 0.2) + (behavioral_risk * 0.2)
+        
+        return min(total_risk * 100, 100.0)
+
+    def _extract_temporal_features(self, event_data: Dict[str, Any]) -> np.ndarray:
+        """Extract temporal features from event data"""
+        timestamp = event_data.get('timestamp', datetime.now())
+        if isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+            
+        features = [
+            timestamp.hour / 24.0,
+            timestamp.weekday() / 7.0,
+            timestamp.day / 31.0,
+            self._get_temporal_density(timestamp),
+            self._get_periodic_score(timestamp),
+            self._calculate_temporal_risk(timestamp)
+        ]
+        
+        return np.array(features)
+
+    def _extract_behavioral_features(self, event_data: Dict[str, Any]) -> np.ndarray:
+        """Extract behavioral features from event data"""
+        user_id = event_data.get('user_id', 'unknown')
+        
+        features = [
+            self._get_user_risk_score(user_id),
+            self._get_behavior_deviation_score(event_data),
+            self._get_sequence_similarity(event_data),
+            self._calculate_threat_chain_probability(event_data),
+            self._get_anomaly_correlation_score(event_data)
+        ]
+        
+        return np.array(features)
+
+    def _identify_threat_chain(self, event_data: Dict[str, Any]) -> str:
+        """Identify threat chain in event"""
+        threat_chain = []
+        
+        # Check various threat indicators
+        if event_data.get('ip_address') and self._check_ip_reputation(event_data['ip_address']) > 0.7:
+            threat_chain.append('initial_access')
+            
+        # Add other threat chain checks from PredictionService
+        
+        return ' -> '.join(threat_chain) if threat_chain else 'unknown'

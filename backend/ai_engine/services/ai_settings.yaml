@@ -75,6 +75,22 @@ feature_toggles:
   threat_detection: true
   adaptive_learning: false
 
+prediction:
+  threshold: 0.75
+  max_history_size: 1000
+  threat_types:
+    - malware
+    - intrusion
+    - data_breach
+    - ddos
+    - unauthorized_access
+    - suspicious_behavior
+    - policy_violation
+  confidence_weights:
+    threat_score: 0.6
+    anomaly_score: 0.2
+    pattern_match: 0.2
+
 paths:
   checkpoints: checkpoints
   logs: logs
