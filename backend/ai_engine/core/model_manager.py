@@ -4,6 +4,9 @@ import logging
 from ..models.anomaly_detector import AnomalyDetector, VariationalAutoencoder
 from ..models.threat_detector import ThreatDetector
 from ..models.model_factory import AIModelFactory
+from ..models.behavior_analyzer import BehaviorAnalyzer
+from ..models.pattern_recognizer import PatternRecognizer
+from ..models.risk_assessor import RiskAssessor
 
 class ModelManager:
     def __init__(self, config: Dict[str, Any]):
@@ -17,7 +20,10 @@ class ModelManager:
         self.model_classes = {
             'anomaly_detector': AnomalyDetector,
             'vae': VariationalAutoencoder,
-            'threat_detector': ThreatDetector
+            'threat_detector': ThreatDetector,
+            'behavior_analyzer': BehaviorAnalyzer,
+            'pattern_recognizer': PatternRecognizer,
+            'risk_assessor': RiskAssessor
         }
         
         self._initialize_models()
@@ -25,22 +31,34 @@ class ModelManager:
     def _initialize_models(self):
         """Initialize all models"""
         try:
-            # Initialize anomaly detector
             if 'anomaly_detector' in self.config:
-                self.models['anomaly_detector'] = AnomalyDetector(
-                    **self.config['anomaly_detector']
-                ).to(self.device)
+                config = {**self.config['anomaly_detector']}
+                self.models['anomaly_detector'] = self.model_factory.create_model('anomaly_detector')
             
-            # Initialize VAE
             if 'vae' in self.config:
-                self.models['vae'] = VariationalAutoencoder(
-                    **self.config['vae']
+                config = {**self.config['vae']}
+                self.models['vae'] = self.model_factory.create_model('vae')
+            
+            if 'threat_detector' in self.config:
+                config = {**self.config['threat_detector']}
+                self.models['threat_detector'] = self.model_factory.create_model('threat_detector')
+            
+            # Initialize behavior analyzer
+            if 'behavior_analyzer' in self.config:
+                self.models['behavior_analyzer'] = BehaviorAnalyzer(
+                    **self.config['behavior_analyzer']
                 ).to(self.device)
             
-            # Initialize threat detector
-            if 'threat_detector' in self.config:
-                self.models['threat_detector'] = ThreatDetector(
-                    self.config['threat_detector']
+            # Initialize pattern recognizer
+            if 'pattern_recognizer' in self.config:
+                self.models['pattern_recognizer'] = PatternRecognizer(
+                    **self.config['pattern_recognizer']
+                ).to(self.device)
+            
+            # Initialize risk assessor
+            if 'risk_assessor' in self.config:
+                self.models['risk_assessor'] = RiskAssessor(
+                    **self.config['risk_assessor']
                 ).to(self.device)
                 
         except Exception as e:

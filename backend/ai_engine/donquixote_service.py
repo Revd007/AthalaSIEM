@@ -30,19 +30,38 @@ import os
 from pathlib import Path
 import yaml
 
+def load_default_config() -> Dict[str, Any]:
+    """Load default configuration from yaml file"""
+    try:
+        config_dir = Path(__file__).parent.parent / 'config'
+        default_config_path = config_dir / 'default_config.yaml'
+        
+        if default_config_path.exists():
+            with open(default_config_path, 'r') as f:
+                return yaml.safe_load(f)
+        return {}
+    except Exception as e:
+        logging.error(f"Error loading default config: {e}")
+        return {}
+
 class DonquixoteService:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.logger = logging.getLogger(__name__)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
+        # Load default config first
+        self.default_config = load_default_config()
+        
         # Tentukan path absolut ke direktori config
-        config_dir = Path(__file__).parent / 'config'
+        config_dir = Path(__file__).parent.parent / 'config'
+        default_config_path = config_dir / 'default_config.yaml'
         ai_config_path = config_dir / 'ai_settings.yaml'
 
         # Periksa apakah file ada
         if not ai_config_path.exists():
             self.logger.warning(f"AI config file not found at {ai_config_path}, using default settings")
             # Gunakan default_config atau lakukan tindakan lain
+            self.ai_config = self.default_config  # Gunakan default_config yang sudah didefinisikan
         else:
             # Muat konfigurasi dari file
             with open(ai_config_path, 'r') as f:
@@ -75,7 +94,7 @@ class DonquixoteService:
                 'num_classes': 2
             }
         }
-        self.config = {**default_config, **(config or {})}
+        self.config = {**default_config, **self.ai_config, **(config or {})}
         
         try:
             # Initialize model manager first
@@ -128,6 +147,28 @@ class DonquixoteService:
                 'macos': MacOSCollector()
             }
             self.collection_status = {collector: False for collector in self.collectors}
+
+             # Initialize model manager with config
+            self.model_manager = ModelManager(self.default_config)
+    
+            # Initialize models
+            self.anomaly_detector = self.model_manager.get_model('anomaly_detector')
+            self.variational_autoencoder = self.model_manager.get_model('vae')
+            self.threat_detector = self.model_manager.get_model('threat_detector')
+    
+            # Verify model initialization
+            if not all([self.anomaly_detector, self.variational_autoencoder, self.threat_detector]):
+                self.logger.warning("Some models failed to initialize")
+            else:
+                self.logger.info("All models initialized successfully")
+        
+            # Move models to appropriate device
+            if self.anomaly_detector:
+                self.anomaly_detector.to(self.device)
+            if self.variational_autoencoder:
+                self.variational_autoencoder.to(self.device)
+            if self.threat_detector:
+                self.threat_detector.to(self.device)
             
             # Setup wandb tracking
             self.training_manager.setup_experiment_tracking()

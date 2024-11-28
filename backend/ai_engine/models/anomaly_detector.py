@@ -1,27 +1,35 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Dict, Any
 
-class AnomalyDetector(nn.Module):
-    def __init__(self, input_dim: int = 512, hidden_dim: int = 256):
-        super().__init__()
+from ai_engine.models.base_model import BaseModel
+
+class AnomalyDetector(BaseModel):
+    def __init__(self, config: Dict[str, Any]):
+        super().__init__(config)
+        self.input_dim = config.get('input_dim', 512)
+        self.hidden_dim = config.get('hidden_dim', 256)
         self.encoder = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
+            nn.Linear(self.input_dim, self.hidden_dim),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.Linear(self.hidden_dim, self.hidden_dim // 2),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(hidden_dim // 2, 1),
+            nn.Linear(self.hidden_dim // 2, 1),
             nn.Sigmoid()
         )
     
     def forward(self, x):
         return self.encoder(x)
 
-class VariationalAutoencoder(nn.Module):
-    def __init__(self, input_dim: int, hidden_dims: list, latent_dim: int):
-        super().__init__()
+class VariationalAutoencoder(BaseModel):
+    def __init__(self, config: Dict[str, Any]):
+        super().__init__(config)
+        input_dim = config['input_dim']
+        hidden_dims = config['hidden_dims']
+        latent_dim = config['latent_dim']
         
         # Encoder
         encoder_layers = []

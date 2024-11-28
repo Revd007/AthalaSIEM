@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
 from typing import Dict, Any
+from .base_model import BaseModel
 
-class ThreatDetector(nn.Module):
+class ThreatDetector(BaseModel):
     def __init__(self, config: Dict[str, Any]):
-        super().__init__()
+        super().__init__(config)
         
         self.input_dim = config.get('input_dim', 512)
         self.hidden_dim = config.get('hidden_dim', 256)
