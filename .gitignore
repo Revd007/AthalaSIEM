@@ -30,7 +30,9 @@ ENV/
 *.psm1
 *.psm1
 *.bin/
-
+*.obj/
+*.lib/
+.obj/
 # Logs and databases
 *.log
 *.sqlite3
