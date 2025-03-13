@@ -1,0 +1,58 @@
+app:
+  name: "SIEM Solution"
+  version: "1.0.0"
+  debug: false
+
+database:
+  url: "postgresql://user:password@localhost:5432/siem_db"
+  pool_size: 20
+  max_overflow: 10
+
+collectors:
+  windows:
+    enabled: true
+    log_types:
+      - System
+      - Security
+      - Application
+  linux:
+    enabled: true
+    log_paths:
+      - /var/log/syslog
+      - /var/log/auth.log
+  network:
+    enabled: true
+    ports:
+      - 514
+      - 1514
+  cloud:
+    enabled: true
+    providers:
+      aws:
+        enabled: true
+        region: "us-east-1"
+      azure:
+        enabled: false
+      gcp:
+        enabled: false
+
+ai_engine:
+  anomaly_detector:
+    model_path: "models/anomaly_detector.pt"
+    threshold: 0.95
+  threat_detector:
+    model_path: "models/threat_detector.pt"
+    confidence_threshold: 0.8
+
+security:
+  jwt_secret: "your-secret-key"
+  token_expire_minutes: 60
+  allowed_origins:
+    - "http://localhost:3000"
+    - "https://your-domain.com"
+
+logging:
+  level: "INFO"
+  file: "logs/siem.log"
+  max_size: 10485760  # 10MB
+  backup_count: 5

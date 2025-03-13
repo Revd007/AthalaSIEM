@@ -1,0 +1,119 @@
+# Model settings
+model_settings:
+  anomaly_detector:
+    input_dim: 128
+    hidden_dim: 64
+    latent_dim: 32
+    
+  threat_detector:
+    input_dim: 256
+    hidden_dim: 128
+    num_classes: 4
+    
+  behavior_analyzer:
+    input_dim: 128
+    hidden_dim: 64
+    
+  pattern_recognizer:
+    input_dim: 256
+    hidden_dim: 128
+    
+  risk_assessor:
+    input_dim: 128
+    hidden_dim: 64
+
+# Wandb configuration
+wandb:
+  enabled: false
+  project: "donquixote_ai"
+  entity: "revianravilathala"
+  experiment_name: "security_analysis"
+  tags: ["security", "anomaly-detection", "threat-detection"]
+  log_interval: 50
+  config:
+    learning_rate: 0.001
+    batch_size: 32
+    epochs: 10
+    optimizer: "Adam"
+    architecture: "transformer"
+    dataset: "security_logs"
+  model_logging:
+    log_gradients: true
+    log_parameters: true
+    log_predictions: true
+    save_model: true
+  metrics:
+    log_system_metrics: true
+    log_prediction_metrics: true
+    log_memory_usage: true
+  settings:
+    _disable_stats: true
+    _disable_meta: true
+    start_method: "thread"
+    console: "wrap"
+    silent: true
+
+# Training settings
+training:
+  batch_size: 32
+  learning_rate: 0.001
+  epochs: 100
+  
+thresholds:
+  anomaly: 0.8
+  threat: 0.7
+  risk: 0.6
+
+dataset_handling:
+  supported_formats:
+    - csv
+    - txt
+    - docx
+    - pdf
+    - html
+  auto_detect: true
+  conversion:
+    enabled: true
+    output_format: dataframe
+
+browser_automation:
+  headless: true
+  timeout: 30
+  max_retries: 3
+  user_agent: "Mozilla/5.0 ..."
+
+clickstream_analytics:
+  session_timeout: 30
+  min_events: 5
+  track_paths: true
+  engagement_metrics:
+    - time_on_page
+    - scroll_depth
+    - click_rate
+
+ai_surfing:
+  max_depth: 3
+  results_per_query: 5
+  analysis_timeout: 300
+  save_results: true
+  data_store: "surfing_results"
+
+data_settings:
+  path: 'E:/AthalaSIEM/AthalaSIEM/backend/ai_engine/dataset'
+  format: ['csv', 'txt', 'docx', 'pdf', 'html', 'json']
+  target_column: 'label'
+
+# AI Service settings
+ai_settings:
+  enabled: false  # Default disabled
+  subscription_type: "development"
+  features:
+    threat_detection: true
+    anomaly_detection: true
+    adaptive_learning: true
+
+# Resource settings
+resource_settings:
+  min_memory_mb: 2048
+  max_cpu_usage: 80
+  max_gpu_memory: 2048

@@ -1,0 +1,18 @@
+model_settings:
+  anomaly_detector:
+    hidden_dim: 256
+    input_dim: 512
+  threat_detector:
+    hidden_dim: 256
+    input_dim: 512
+    num_classes: 2
+  vae:
+    hidden_dims:
+    - 256
+    - 128
+    input_dim: 512
+    latent_dim: 64
+training_settings:
+  batch_size: 32
+  learning_rate: 0.0001
+  num_epochs: 10

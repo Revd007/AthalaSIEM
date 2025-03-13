@@ -1,0 +1,31 @@
+monitoring:
+  enabled: true
+  check_interval_minutes: 60
+  performance_thresholds:
+    accuracy: 0.85
+    f1_score: 0.80
+    false_positive_rate: 0.15
+    response_time_ms: 1000
+  
+  alerts:
+    enabled: true
+    channels:
+      - email
+      - slack
+    thresholds:
+      critical:
+        accuracy_drop: 0.10
+        consecutive_failures: 3
+      warning:
+        accuracy_drop: 0.05
+        consecutive_failures: 2
+
+feedback_loop:
+  enabled: true
+  retraining:
+    min_feedback_samples: 100
+    max_buffer_size: 1000
+    auto_retrain: true
+  validation:
+    split_ratio: 0.2
+    min_improvement: 0.02
