@@ -18,6 +18,7 @@ import {
   Menu,
   X
 } from 'lucide-react'
+import React from 'react'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },

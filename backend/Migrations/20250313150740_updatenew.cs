@@ -4,10 +4,10 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Backend.Migrations
+namespace backend.Migrations
 {
     /// <inheritdoc />
-    public partial class AddSecurityEventTable : Migration
+    public partial class updatenew : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
