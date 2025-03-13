@@ -30,7 +30,7 @@ ENV/
 *.psm1
 *.psm1
 *.bin/
-*.obj/
+*.obj
 *.lib/
 .obj/
 # Logs and databases
