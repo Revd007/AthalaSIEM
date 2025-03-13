@@ -1,0 +1,199 @@
+syntax = "proto3";
+
+option csharp_namespace = "AthalaSIEM.Agent";
+
+package athala.siem;
+
+// SIEM service for agent management and communication
+service SiemService {
+  // Agent registration and management
+  rpc RegisterAgent (RegisterAgentRequest) returns (RegisterAgentResponse);
+  rpc ValidateApiKey (ValidateApiKeyRequest) returns (ValidateApiKeyResponse);
+  rpc RotateApiKey (RotateApiKeyRequest) returns (RotateApiKeyResponse);
+  
+  // Log forwarding
+  rpc ForwardLogs (LogBatchRequest) returns (LogBatchResponse);
+  
+  // Health monitoring
+  rpc SendHeartbeat (HeartbeatRequest) returns (HeartbeatResponse);
+  rpc SendSystemMetrics (SystemMetricsRequest) returns (SystemMetricsResponse);
+  rpc SendHealthReport (HealthReportRequest) returns (HealthReportResponse);
+  
+  // Configuration
+  rpc GetAgentConfiguration (GetAgentConfigurationRequest) returns (GetAgentConfigurationResponse);
+}
+
+// Agent registration and management messages
+message RegisterAgentRequest {
+  string hostname = 1;
+  string ip_address = 2;
+  string operating_system = 3;
+  string agent_version = 4;
+  string agent_type = 5; // Windows or Linux
+  map<string, string> metadata = 6;
+}
+
+message RegisterAgentResponse {
+  bool success = 1;
+  string agent_id = 2;
+  string api_key = 3;
+  string message = 4;
+}
+
+message ValidateApiKeyRequest {
+  string agent_id = 1;
+  string api_key = 2;
+}
+
+message ValidateApiKeyResponse {
+  bool valid = 1;
+  string message = 2;
+}
+
+message RotateApiKeyRequest {
+  string agent_id = 1;
+  string current_api_key = 2;
+}
+
+message RotateApiKeyResponse {
+  bool success = 1;
+  string new_api_key = 2;
+  string message = 3;
+}
+
+// Log forwarding messages
+message LogBatchRequest {
+  string agent_id = 1;
+  string api_key = 2;
+  repeated LogEntry logs = 3;
+  bool encrypted = 4;
+  bool compressed = 5;
+}
+
+message LogEntry {
+  string id = 1;
+  string timestamp = 2; // ISO 8601 format
+  string source = 3;
+  string source_type = 4;
+  string log_level = 5;
+  string message = 6;
+  map<string, string> metadata = 7;
+  string hash = 8; // For integrity verification
+}
+
+message LogBatchResponse {
+  bool success = 1;
+  int32 accepted_count = 2;
+  int32 rejected_count = 3;
+  string message = 4;
+}
+
+// Health monitoring messages
+message HeartbeatRequest {
+  string agent_id = 1;
+  string api_key = 2;
+  string timestamp = 3; // ISO 8601 format
+  string status = 4; // Healthy, Degraded, Unhealthy
+  double uptime_hours = 5;
+  double cpu_usage = 6;
+  double memory_usage = 7;
+  int32 active_collectors = 8;
+  int32 logs_collected = 9;
+  int32 logs_forwarded = 10;
+}
+
+message HeartbeatResponse {
+  bool success = 1;
+  string message = 2;
+  bool configuration_changed = 3;
+}
+
+message SystemMetricsRequest {
+  CpuMetricsData cpu = 1;
+  MemoryMetricsData memory = 2;
+  NetworkMetricsData network = 3;
+  repeated ProcessMetricsData processes = 4;
+  repeated DiskMetricsData disks = 5;
+}
+
+message CpuMetricsData {
+  double usage = 1;
+  int32 number_of_cores = 2;
+}
+
+message MemoryMetricsData {
+  double used_percentage = 1;
+  int64 available_bytes = 2;
+  int64 process_used_bytes = 3;
+  int64 process_private_bytes = 4;
+}
+
+message NetworkMetricsData {
+  repeated NetworkInterfaceMeasurement interfaces = 1;
+  int64 total_bytes_received = 2;
+  int64 total_bytes_sent = 3;
+}
+
+message ProcessMetricsData {
+  string process_name = 1;
+  int64 memory_usage = 2;
+}
+
+message DiskMetricsData {
+  string drive_name = 1;
+  int64 available_bytes = 2;
+  double used_percentage = 3;
+}
+
+message NetworkInterfaceMeasurement {
+  string interface_name = 1;
+  int64 bytes_received = 2;
+  int64 bytes_sent = 3;
+}
+
+message SystemMetricsResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message HealthReportRequest {
+  string agent_id = 1;
+  string api_key = 2;
+  string timestamp = 3; // ISO 8601 format
+  string overall_status = 4; // Healthy, Degraded, Unhealthy
+  double uptime_hours = 5;
+  
+  // Component statuses
+  map<string, ComponentStatus> component_statuses = 6;
+  
+  // System metrics
+  SystemMetricsRequest system_metrics = 7;
+  
+  // Diagnostics
+  repeated string diagnostics = 8;
+}
+
+message ComponentStatus {
+  string status = 1; // Healthy, Degraded, Unhealthy
+  string message = 2;
+}
+
+message HealthReportResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Configuration messages
+message GetAgentConfigurationRequest {
+  string agent_id = 1;
+  string api_key = 2;
+  string current_config_version = 3;
+}
+
+message GetAgentConfigurationResponse {
+  bool success = 1;
+  bool configuration_changed = 2;
+  string config_version = 3;
+  string configuration_json = 4;
+  string message = 5;
+} 
