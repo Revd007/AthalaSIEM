@@ -1,0 +1,26 @@
+@import url('https://fonts.googleapis.com/css?family=Open+Sans:300,400,700');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Pindahkan style lain dari index.css ke sini jika ada */
+
+@layer components {
+  .dashboard-grid {
+    @apply grid gap-8;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 600px), 1fr));
+  }
+  
+  .dashboard-card {
+    @apply bg-white dark:bg-gray-800 rounded-lg shadow-sm overflow-hidden;
+  }
+  
+  .dashboard-card-header {
+    @apply flex items-center justify-between p-6 border-b dark:border-gray-700;
+  }
+  
+  .dashboard-card-body {
+    @apply p-6;
+  }
+}
