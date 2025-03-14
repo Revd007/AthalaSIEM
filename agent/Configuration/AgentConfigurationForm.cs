@@ -10,6 +10,7 @@ using System.Windows.Forms;
 using System.Collections.Generic;
 using AthalaSIEM.Agent.Models;
 using AthalaSIEM.Agent.Security;
+using System.Net.Http;
 
 namespace AthalaSIEM.Agent.Configuration
 {
@@ -23,31 +24,42 @@ namespace AthalaSIEM.Agent.Configuration
         private bool _isRegistered = false;
         private string _agentId = string.Empty;
         private string _apiKey = string.Empty;
+        private string _deploymentToken = string.Empty;
+        private bool _isTokenMode = false;
 
-        // Form controls
-        private Label lblTitle;
-        private Label lblConnectionStatus;
-        private PictureBox pbConnectionStatus;
-        private Label lblStatus;
-        private Label lblStatusValue;
-        private Label lblServerIp;
-        private TextBox txtServerIp;
-        private Label lblServerPort;
-        private NumericUpDown numServerPort;
-        private Label lblAgentName;
-        private TextBox txtAgentName;
-        private Label lblAgentId;
-        private TextBox txtAgentId;
-        private Label lblApiKey;
-        private TextBox txtApiKey;
-        private Button btnTestConnection;
-        private Button btnRegister;
-        private Button btnSave;
+        // Form controls - changed to public to resolve CS9032 errors
+        public required Label lblTitle;
+        public required Label lblServerIp;
+        public required TextBox txtServerIp;
+        public required Label lblServerPort;
+        public required NumericUpDown numServerPort;
+        public required Label lblAgentName;
+        public required TextBox txtAgentName;
+        public required Button btnAddAgent;
+        
+        // Token mode controls
+        public required Label lblTokenMode;
+        public required Label lblToken;
+        public required TextBox txtToken;
+        
+        // Connection and status controls - change from private to public
+        public required Label lblConnectionStatus;
+        public required PictureBox pbConnectionStatus;
+        public required Label lblStatus;
+        public required Label lblStatusValue;
+        public required Label lblAgentId;
+        public required TextBox txtAgentId;
+        public required Label lblApiKey;
+        public required TextBox txtApiKey;
+        public required Button btnTestConnection;
+        public required Button btnSave;
 
-        public AgentConfigurationForm(IAgentIdentityService agentIdentityService, AgentSettings settings)
+        public AgentConfigurationForm(IAgentIdentityService agentIdentityService, AgentSettings settings, string deploymentToken = "")
         {
             _agentIdentityService = agentIdentityService ?? throw new ArgumentNullException(nameof(agentIdentityService));
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+            _deploymentToken = deploymentToken ?? string.Empty;
+            _isTokenMode = !string.IsNullOrEmpty(_deploymentToken);
             InitializeComponent();
         }
 
@@ -59,8 +71,8 @@ namespace AthalaSIEM.Agent.Configuration
             this.SuspendLayout();
             
             // Form settings
-            this.Text = "AthalaSIEM Agent Configuration";
-            this.ClientSize = new Size(400, 400);
+            this.Text = "AthalaSIEM Agent Setup";
+            this.ClientSize = new Size(400, _isTokenMode ? 180 : 220); // Even smaller form in token mode
             this.MaximizeBox = false;
             this.MinimizeBox = true;
             this.StartPosition = FormStartPosition.CenterScreen;
@@ -70,246 +82,212 @@ namespace AthalaSIEM.Agent.Configuration
             // Title
             lblTitle = new Label
             {
-                Text = "AthalaSIEM Agent Configuration",
+                Text = _isTokenMode ? "AthalaSIEM Agent Token Setup" : "AthalaSIEM Agent Setup",
                 Location = new Point(20, 15),
                 Width = 360,
                 TextAlign = ContentAlignment.MiddleCenter,
                 Font = new Font(this.Font.FontFamily, 12, FontStyle.Bold)
             };
             
-            // Connection status
-            lblConnectionStatus = new Label
+            if (_isTokenMode)
             {
-                Text = "Backend Connection:",
-                Location = new Point(20, 50),
-                AutoSize = true
-            };
-            
-            pbConnectionStatus = new PictureBox
+                // Token mode UI
+                lblTokenMode = new Label
+                {
+                    Text = "This agent will be registered with a pre-configured deployment token.",
+                    Location = new Point(20, 50),
+                    Width = 360,
+                    TextAlign = ContentAlignment.MiddleCenter,
+                    Font = new Font(this.Font.FontFamily, 9)
+                };
+                
+                lblToken = new Label
+                {
+                    Text = "Token:",
+                    Location = new Point(20, 80),
+                    AutoSize = true
+                };
+                
+                txtToken = new TextBox
+                {
+                    Location = new Point(80, 80),
+                    Width = 260,
+                    Text = _deploymentToken,
+                    ReadOnly = true
+                };
+                
+                // Add Agent button for token mode
+                btnAddAgent = new Button
+                {
+                    Text = "Register Agent",
+                    Location = new Point(140, 120),
+                    Width = 120,
+                    Height = 30,
+                    BackColor = Color.FromArgb(0, 120, 212),
+                    ForeColor = Color.White,
+                    FlatStyle = FlatStyle.Flat
+                };
+                btnAddAgent.FlatAppearance.BorderSize = 0;
+                btnAddAgent.Click += BtnAddAgent_Click;
+                
+                // Add only the token mode controls
+                this.Controls.Add(lblTitle);
+                this.Controls.Add(lblTokenMode);
+                this.Controls.Add(lblToken);
+                this.Controls.Add(txtToken);
+                this.Controls.Add(btnAddAgent);
+            }
+            else
             {
-                Location = new Point(140, 48),
-                Size = new Size(16, 16),
-                BackColor = Color.Red // Default to red (not connected)
-            };
+                // Regular mode UI
+                // Server IP field
+                lblServerIp = new Label
+                {
+                    Text = "Server IP:",
+                    Location = new Point(20, 60),
+                    AutoSize = true
+                };
+                
+                txtServerIp = new TextBox
+                {
+                    Location = new Point(140, 60),
+                    Width = 200,
+                    Text = "127.0.0.1"
+                };
+                
+                // Server Port field
+                lblServerPort = new Label
+                {
+                    Text = "Server Port:",
+                    Location = new Point(20, 90),
+                    AutoSize = true
+                };
+                
+                numServerPort = new NumericUpDown
+                {
+                    Location = new Point(140, 90),
+                    Width = 80,
+                    Minimum = 1,
+                    Maximum = 65535,
+                    Value = 5135
+                };
+                
+                // Agent Name field
+                lblAgentName = new Label
+                {
+                    Text = "Agent Name:",
+                    Location = new Point(20, 120),
+                    AutoSize = true
+                };
+                
+                txtAgentName = new TextBox
+                {
+                    Location = new Point(140, 120),
+                    Width = 200,
+                    Text = Environment.MachineName
+                };
+                
+                // Add Agent button
+                btnAddAgent = new Button
+                {
+                    Text = "Add Agent",
+                    Location = new Point(140, 160),
+                    Width = 120,
+                    Height = 30,
+                    BackColor = Color.FromArgb(0, 120, 212),
+                    ForeColor = Color.White,
+                    FlatStyle = FlatStyle.Flat
+                };
+                btnAddAgent.FlatAppearance.BorderSize = 0;
+                btnAddAgent.Click += BtnAddAgent_Click;
+                
+                // Add only the needed controls to form for regular mode
+                this.Controls.Add(lblTitle);
+                this.Controls.Add(lblServerIp);
+                this.Controls.Add(txtServerIp);
+                this.Controls.Add(lblServerPort);
+                this.Controls.Add(numServerPort);
+                this.Controls.Add(lblAgentName);
+                this.Controls.Add(txtAgentName);
+                this.Controls.Add(btnAddAgent);
+            }
             
-            // Status section
-            lblStatus = new Label
-            {
-                Text = "Registration Status:",
-                Location = new Point(20, 80),
-                AutoSize = true
-            };
-            
-            lblStatusValue = new Label
-            {
-                Text = "Not Registered",
-                Location = new Point(140, 80),
-                AutoSize = true,
-                ForeColor = Color.Red,
-                Font = new Font(this.Font, FontStyle.Bold)
-            };
-            
-            // Server IP field
-            lblServerIp = new Label
-            {
-                Text = "Server IP:",
-                Location = new Point(20, 120),
-                AutoSize = true
-            };
-            
-            txtServerIp = new TextBox
-            {
-                Location = new Point(140, 120),
-                Width = 200,
-                Text = "127.0.0.1"
-            };
-            
-            // Server Port field
-            lblServerPort = new Label
-            {
-                Text = "Server Port:",
-                Location = new Point(20, 150),
-                AutoSize = true
-            };
-            
-            numServerPort = new NumericUpDown
-            {
-                Location = new Point(140, 150),
-                Width = 80,
-                Minimum = 1,
-                Maximum = 65535,
-                Value = 5001
-            };
-            
-            // Agent Name field
-            lblAgentName = new Label
-            {
-                Text = "Agent Name:",
-                Location = new Point(20, 180),
-                AutoSize = true
-            };
-            
-            txtAgentName = new TextBox
-            {
-                Location = new Point(140, 180),
-                Width = 200,
-                Text = Environment.MachineName
-            };
-            
-            // Agent ID field (read-only)
-            lblAgentId = new Label
-            {
-                Text = "Agent ID:",
-                Location = new Point(20, 210),
-                AutoSize = true
-            };
-            
-            txtAgentId = new TextBox
-            {
-                Location = new Point(140, 210),
-                Width = 200,
-                ReadOnly = true
-            };
-            
-            // API Key field (read-only)
-            lblApiKey = new Label
-            {
-                Text = "API Key:",
-                Location = new Point(20, 240),
-                AutoSize = true
-            };
-            
-            txtApiKey = new TextBox
-            {
-                Location = new Point(140, 240),
-                Width = 200,
-                ReadOnly = true
-            };
-            
-            // Test Connection button
-            btnTestConnection = new Button
-            {
-                Text = "Test Connection",
-                Location = new Point(140, 280),
-                Width = 120,
-                Height = 30,
-                BackColor = Color.FromArgb(0, 122, 204),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand
-            };
-            btnTestConnection.Click += new EventHandler(BtnTestConnection_Click);
-            
-            // Register button
-            btnRegister = new Button
-            {
-                Text = "Register",
-                Location = new Point(140, 320),
-                Width = 120,
-                Height = 40,
-                BackColor = Color.FromArgb(0, 122, 204),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand
-            };
-            btnRegister.Click += new EventHandler(BtnRegister_Click);
-            
-            // Save button
-            btnSave = new Button
-            {
-                Text = "Save",
-                Location = new Point(270, 320),
-                Width = 80,
-                Height = 40,
-                BackColor = Color.FromArgb(0, 122, 204),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand
-            };
-            btnSave.Click += new EventHandler(BtnSave_Click);
-            
-            // Add controls to form
-            this.Controls.Add(lblTitle);
-            this.Controls.Add(lblConnectionStatus);
-            this.Controls.Add(pbConnectionStatus);
-            this.Controls.Add(lblStatus);
-            this.Controls.Add(lblStatusValue);
-            this.Controls.Add(lblServerIp);
-            this.Controls.Add(txtServerIp);
-            this.Controls.Add(lblServerPort);
-            this.Controls.Add(numServerPort);
-            this.Controls.Add(lblAgentName);
-            this.Controls.Add(txtAgentName);
-            this.Controls.Add(lblAgentId);
-            this.Controls.Add(txtAgentId);
-            this.Controls.Add(lblApiKey);
-            this.Controls.Add(txtApiKey);
-            this.Controls.Add(btnTestConnection);
-            this.Controls.Add(btnRegister);
-            this.Controls.Add(btnSave);
-            
-            // Set handlers
-            this.Load += new EventHandler(Form_Load);
+            // Initialize but don't add unused controls
+            lblConnectionStatus = new Label();
+            pbConnectionStatus = new PictureBox();
+            lblStatus = new Label();
+            lblStatusValue = new Label();
+            lblAgentId = new Label();
+            txtAgentId = new TextBox();
+            lblApiKey = new Label();
+            txtApiKey = new TextBox();
+            btnTestConnection = new Button();
+            btnSave = new Button();
             
             this.ResumeLayout(false);
+            this.PerformLayout();
+            
+            // Add event handler for form load
+            this.Load += Form_Load;
         }
 
         /// <summary>
         /// Form load handler
         /// </summary>
-        private async void Form_Load(object sender, EventArgs e)
-        {
-            await LoadAgentStatusAsync();
-            LoadSettingsIntoForm();
-        }
-
-        /// <summary>
-        /// Loads the agent registration status
-        /// </summary>
-        private async Task LoadAgentStatusAsync()
+        private async void Form_Load(object? sender, EventArgs e)
         {
             try
             {
-                _isRegistered = await _agentIdentityService.IsRegisteredAsync();
-                if (_isRegistered)
+                // Check if agent is already registered
+                bool isRegistered = await _agentIdentityService.IsRegisteredAsync();
+                if (isRegistered)
                 {
-                    _agentId = await _agentIdentityService.GetAgentIdAsync();
-                    _apiKey = await _agentIdentityService.GetApiKeyAsync();
-                    UpdateRegistrationStatus(true);
-                    
-                    // If registered, validate connection with the backend
-                    await TestBackendConnection();
+                    // If already registered, show a message and close the form
+                    MessageBox.Show("This agent is already registered and configured. The service is running in the background.",
+                        "Already Registered", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    this.DialogResult = DialogResult.OK;
+                    this.Close();
+                    return;
+                }
+
+                // If using token mode, we don't need to pre-populate fields
+                if (_isTokenMode)
+                {
+                    return;
+                }
+
+                // Pre-populate form fields from settings if available
+                if (_settings != null)
+                {
+                    // Extract server and port from backend URL
+                    if (!string.IsNullOrEmpty(_settings.BackendApiUrl))
+                    {
+                        try
+                        {
+                            var uri = new Uri(_settings.BackendApiUrl);
+                            txtServerIp.Text = uri.Host;
+                            numServerPort.Value = uri.Port;
+                        }
+                        catch
+                        {
+                            // Use defaults if URL parsing fails
+                            txtServerIp.Text = "localhost";
+                            numServerPort.Value = 5135;
+                        }
+                    }
+
+                    // Set agent name
+                    txtAgentName.Text = string.IsNullOrEmpty(_settings.AgentName) ? 
+                        Environment.MachineName : _settings.AgentName;
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error checking agent registration status: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Error loading agent configuration: {ex.Message}", 
+                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        /// <summary>
-        /// Updates the UI based on registration status
-        /// </summary>
-        private void UpdateRegistrationStatus(bool isRegistered)
-        {
-            if (isRegistered)
-            {
-                lblStatusValue.Text = "Registered";
-                lblStatusValue.ForeColor = Color.Green;
-                btnRegister.Text = "Re-Register";
-                txtAgentId.Text = _agentId;
-                txtApiKey.Text = _apiKey;
-            }
-            else
-            {
-                lblStatusValue.Text = "Not Registered";
-                lblStatusValue.ForeColor = Color.Red;
-                btnRegister.Text = "Register";
-                txtAgentId.Clear();
-                txtApiKey.Clear();
-            }
-        }
-        
         /// <summary>
         /// Tests connection to the backend server
         /// </summary>
@@ -355,8 +333,8 @@ namespace AthalaSIEM.Agent.Configuration
                     
                     try
                     {
-                        using var client = new WebClient();
-                        client.Timeout = 5000; // 5 second timeout
+                        using var client = new HttpClient();
+                        client.Timeout = TimeSpan.FromSeconds(5); // 5 second timeout
                         
                         // Try to ping the server
                         bool canPing = await Task.Run(() => 
@@ -417,10 +395,35 @@ namespace AthalaSIEM.Agent.Configuration
         }
         
         /// <summary>
+        /// Updates the UI based on registration status
+        /// </summary>
+        private void UpdateRegistrationStatus(bool isRegistered)
+        {
+            if (isRegistered)
+            {
+                lblStatusValue.Text = "Registered";
+                lblStatusValue.ForeColor = Color.Green;
+                txtAgentId.Text = _agentId;
+                txtApiKey.Text = _apiKey;
+            }
+            else
+            {
+                lblStatusValue.Text = "Not Registered";
+                lblStatusValue.ForeColor = Color.Red;
+                txtAgentId.Clear();
+                txtApiKey.Clear();
+            }
+        }
+        
+        /// <summary>
         /// Loads settings into the form
         /// </summary>
         private void LoadSettingsIntoForm()
         {
+            // Skip in token mode
+            if (_isTokenMode)
+                return;
+                
             // Parse server URL into IP and port
             string serverUrl = _settings.BackendApiUrl;
             if (!string.IsNullOrEmpty(serverUrl))
@@ -462,57 +465,12 @@ namespace AthalaSIEM.Agent.Configuration
         }
 
         /// <summary>
-        /// Register button handler
+        /// Register button handler (redirects to Add Agent)
         /// </summary>
-        private async void BtnRegister_Click(object sender, EventArgs e)
+        private void BtnRegister_Click(object sender, EventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(txtServerIp.Text))
-            {
-                MessageBox.Show("Server IP is required.", "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-            
-            // Update settings with form values
-            SaveFormToSettings();
-            
-            // Disable controls during registration
-            btnRegister.Enabled = false;
-            btnRegister.Text = "Registering...";
-            
-            try
-            {
-                // Save settings first
-                SaveSettingsToFile();
-                
-                // Then register
-                bool result = await _agentIdentityService.RegisterAgentAsync();
-                if (result)
-                {
-                    _isRegistered = true;
-                    _agentId = await _agentIdentityService.GetAgentIdAsync();
-                    _apiKey = await _agentIdentityService.GetApiKeyAsync();
-                    
-                    UpdateRegistrationStatus(true);
-                    UpdateConnectionStatus(true);
-                    MessageBox.Show("Agent registered successfully with the SIEM backend!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-                else
-                {
-                    UpdateConnectionStatus(false);
-                    MessageBox.Show("Failed to register agent. Please check your settings and try again.", 
-                        "Registration Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
-            catch (Exception ex)
-            {
-                UpdateConnectionStatus(false);
-                MessageBox.Show($"Error registering agent: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-            finally
-            {
-                btnRegister.Enabled = true;
-                btnRegister.Text = _isRegistered ? "Re-Register" : "Register";
-            }
+            // Simply redirect to the Add Agent handler
+            BtnAddAgent_Click(sender, e);
         }
 
         /// <summary>
@@ -520,36 +478,55 @@ namespace AthalaSIEM.Agent.Configuration
         /// </summary>
         private void SaveFormToSettings()
         {
+            // Skip in token mode as settings will come from the server
+            if (_isTokenMode)
+                return;
+                
             // Generate API URL from IP and port
             string scheme = (int)numServerPort.Value == 443 ? "https" : "http";
             _settings.BackendApiUrl = $"{scheme}://{txtServerIp.Text}:{numServerPort.Value}";
             
-            // Copy URL to gRPC as well
+            // Copy URL to gRPC as well (they should be the same)
             _settings.BackendGrpcUrl = _settings.BackendApiUrl;
             
             // Save agent name
             _settings.AgentName = txtAgentName.Text;
             
-            // Default values for other settings
-            if (_settings.Collectors == null)
+            // Set up default collectors if they don't exist
+            if (_settings.Collectors == null || _settings.Collectors.Count == 0)
             {
                 _settings.Collectors = new List<CollectorSettings>();
-            }
-            
-            // Set Windows Event Log collector by default if on Windows
-            if (OperatingSystem.IsWindows() && !_settings.Collectors.Exists(c => c.Type == "WindowsEventLog"))
-            {
-                _settings.Collectors.Add(new CollectorSettings
+                
+                // Set Windows Event Log collector by default if on Windows
+                if (OperatingSystem.IsWindows())
                 {
-                    Type = "WindowsEventLog",
-                    Enabled = true,
-                    IntervalSeconds = 30,
-                    Properties = new Dictionary<string, string>
+                    _settings.Collectors.Add(new CollectorSettings
                     {
-                        { "EventLogs", "Application,System,Security" },
-                        { "MaxEvents", "100" }
-                    }
-                });
+                        Type = "WindowsEventLog",
+                        Enabled = true,
+                        IntervalSeconds = 30,
+                        Properties = new Dictionary<string, string>
+                        {
+                            { "EventLogs", "Application,System,Security" },
+                            { "MaxEvents", "100" }
+                        }
+                    });
+                }
+                // Set Linux syslog collector by default if on Linux
+                else if (OperatingSystem.IsLinux())
+                {
+                    _settings.Collectors.Add(new CollectorSettings
+                    {
+                        Type = "LinuxSyslog",
+                        Enabled = true,
+                        IntervalSeconds = 30,
+                        Properties = new Dictionary<string, string>
+                        {
+                            { "LogFiles", "/var/log/syslog,/var/log/auth.log" },
+                            { "MaxLinesPerRead", "1000" }
+                        }
+                    });
+                }
             }
         }
 
@@ -564,20 +541,19 @@ namespace AthalaSIEM.Agent.Configuration
             {
                 // Read existing config
                 string json = File.ReadAllText(configPath);
-                var config = JsonSerializer.Deserialize<Dictionary<string, object>>(json, new JsonSerializerOptions { AllowTrailingCommas = true });
+                var config = JsonSerializer.Deserialize<Dictionary<string, object>>(json, new JsonSerializerOptions { AllowTrailingCommas = true }) 
+                    ?? new Dictionary<string, object>();
                 
                 // Update Agent section with serialized settings
                 string settingsJson = JsonSerializer.Serialize(_settings, new JsonSerializerOptions { WriteIndented = true });
-                var settingsObj = JsonSerializer.Deserialize<Dictionary<string, object>>(settingsJson);
+                var settingsObj = JsonSerializer.Deserialize<Dictionary<string, object>>(settingsJson)
+                    ?? new Dictionary<string, object>();
                 
-                if (config != null)
-                {
-                    config["Agent"] = settingsObj;
-                    
-                    // Write back to file
-                    string updatedJson = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
-                    File.WriteAllText(configPath, updatedJson);
-                }
+                config["Agent"] = settingsObj;
+                
+                // Write back to file
+                string updatedJson = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(configPath, updatedJson);
             }
             catch (Exception ex)
             {
@@ -586,20 +562,99 @@ namespace AthalaSIEM.Agent.Configuration
         }
         
         /// <summary>
-        /// WebClient with timeout support
+        /// HttpClient helper with timeout support
         /// </summary>
-        private class WebClient : System.Net.WebClient
+        private class HttpClientHelper : IDisposable
         {
-            public int Timeout { get; set; } = 10000; // Default 10 seconds
-
-            protected override WebRequest GetWebRequest(Uri address)
+            private readonly HttpClient _client;
+            
+            public HttpClientHelper()
             {
-                var request = base.GetWebRequest(address);
-                if (request != null)
+                _client = new HttpClient();
+                Timeout = TimeSpan.FromSeconds(10); // Default 10 seconds
+            }
+            
+            public TimeSpan Timeout
+            {
+                get => _client.Timeout;
+                set => _client.Timeout = value;
+            }
+            
+            public async Task<string> DownloadStringAsync(Uri address)
+            {
+                try
                 {
-                    request.Timeout = Timeout;
+                    return await _client.GetStringAsync(address);
                 }
-                return request;
+                catch (TaskCanceledException)
+                {
+                    throw new TimeoutException($"The request to {address} timed out.");
+                }
+            }
+            
+            public void Dispose()
+            {
+                _client.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Handler for the Add Agent button - registers the agent and closes the form
+        /// </summary>
+        private async void BtnAddAgent_Click(object? sender, EventArgs e)
+        {
+            // Disable the button during processing
+            btnAddAgent.Enabled = false;
+            btnAddAgent.Text = _isTokenMode ? "Registering..." : "Adding...";
+            
+            try
+            {
+                bool registrationSuccess;
+                
+                // Different flow for token mode vs. regular mode
+                if (_isTokenMode)
+                {
+                    // In token mode, register using the token
+                    registrationSuccess = await _agentIdentityService.RegisterWithTokenAsync(_deploymentToken);
+                }
+                else
+                {
+                    // 1. Save current settings from form
+                    SaveFormToSettings();
+                    
+                    // 2. Save settings to file
+                    SaveSettingsToFile();
+                    
+                    // 3. Attempt standard registration
+                    registrationSuccess = await _agentIdentityService.RegisterAgentAsync();
+                }
+                
+                if (registrationSuccess)
+                {
+                    // Show success message
+                    string agentName = _isTokenMode ? "Agent" : txtAgentName.Text;
+                    MessageBox.Show($"{agentName} has been added successfully. The service will now run in the background.",
+                        "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    
+                    // Close the form immediately to let the service run
+                    this.DialogResult = DialogResult.OK;
+                    this.Close();
+                }
+                else
+                {
+                    string mode = _isTokenMode ? "token-based" : "standard";
+                    MessageBox.Show($"Failed to register agent using {mode} registration. Please check your connection and try again.",
+                        "Registration Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                btnAddAgent.Enabled = true;
+                btnAddAgent.Text = _isTokenMode ? "Register Agent" : "Add Agent";
             }
         }
     }

@@ -101,6 +101,16 @@ namespace Backend.Data
         public DbSet<AlertModels> Alert { get; set; } = null!;
 
         /// <summary>
+        /// Gets or sets the agent deployment tokens
+        /// </summary>
+        public DbSet<AthalaSIEM.Backend.Models.AgentDeploymentToken> AgentDeploymentTokens { get; set; } = null!;
+
+        /// <summary>
+        /// Gets or sets the system configuration
+        /// </summary>
+        public DbSet<AthalaSIEM.Backend.Models.SystemConfiguration> SystemConfiguration { get; set; } = null!;
+
+        /// <summary>
         /// Configures the model
         /// </summary>
         /// <param name="modelBuilder">The model builder</param>

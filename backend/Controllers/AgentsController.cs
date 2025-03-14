@@ -669,6 +669,217 @@ namespace Backend.Controllers
             }
         }
 
+        /// <summary>
+        /// Gets the download link for an agent installer
+        /// </summary>
+        /// <param name="type">The installer type</param>
+        /// <returns>The download link</returns>
+        [HttpGet("download-installer/{type}")]
+        [AllowAnonymous]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult> DownloadInstaller(string type)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(type))
+                {
+                    return BadRequest(new { Error = "Type is required" });
+                }
+                
+                var installer = await _installerService.GenerateInstallerPackage(type);
+                
+                if (installer == null)
+                {
+                    return NotFound(new { Error = $"Installer for type {type} not found" });
+                }
+                
+                // Stream the installer to the client
+                return File(installer.Content, installer.ContentType, installer.FileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error downloading installer for type {Type}", type);
+                return StatusCode(500, new { Error = $"Error downloading installer: {ex.Message}" });
+            }
+        }
+
+        /// <summary>
+        /// Generates a deployment token with pre-configuration
+        /// </summary>
+        /// <param name="request">The token generation request</param>
+        /// <returns>The generated token</returns>
+        [HttpPost("generate-token")]
+        [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<AgentTokenDto>> GenerateDeploymentToken([FromBody] GenerateTokenRequestDto request)
+        {
+            try
+            {
+                if (request == null)
+                {
+                    return BadRequest(new { Error = "Request data is required" });
+                }
+                
+                // Get the current user
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized(new { Error = "User not authenticated" });
+                }
+                
+                // Generate a random token
+                var token = Guid.NewGuid().ToString("N");
+                var expiresAt = DateTime.UtcNow.AddHours(24); // Token valid for 24 hours
+                
+                // Save the pre-configuration with the token
+                if (request.Configuration != null)
+                {
+                    await _agentService.SaveAgentPreConfigurationAsync(token, request.Configuration, userId, expiresAt);
+                }
+                
+                // Construct the download URL
+                var baseUrl = $"{Request.Scheme}://{Request.Host}";
+                var downloadUrl = $"{baseUrl}/api/agents/token-download";
+                
+                return Ok(new AgentTokenDto
+                {
+                    Token = token,
+                    ExpiresAt = expiresAt,
+                    DownloadUrl = downloadUrl
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating deployment token");
+                return StatusCode(500, new { Error = $"Error generating deployment token: {ex.Message}" });
+            }
+        }
+        
+        /// <summary>
+        /// Downloads an agent installer using a deployment token
+        /// </summary>
+        /// <param name="token">The deployment token</param>
+        /// <param name="type">The installer type</param>
+        /// <returns>The installer file</returns>
+        [HttpGet("token-download")]
+        [AllowAnonymous]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult> DownloadInstallerWithToken([FromQuery] string token, [FromQuery] string type = "windows")
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(token))
+                {
+                    return BadRequest(new { Error = "Token is required" });
+                }
+                
+                // Validate the token
+                var preConfig = await _agentService.GetAgentPreConfigurationAsync(token);
+                if (preConfig == null)
+                {
+                    return BadRequest(new { Error = "Invalid or expired token" });
+                }
+                
+                var installer = await _installerService.GenerateInstallerPackage(type);
+                
+                if (installer == null)
+                {
+                    return NotFound(new { Error = $"Installer for type {type} not found" });
+                }
+                
+                // Stream the installer to the client
+                return File(installer.Content, installer.ContentType, installer.FileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error downloading installer with token");
+                return StatusCode(500, new { Error = $"Error downloading installer: {ex.Message}" });
+            }
+        }
+        
+        /// <summary>
+        /// Registers an agent using a deployment token
+        /// </summary>
+        /// <param name="agentDto">The agent registration data</param>
+        /// <returns>The registration result</returns>
+        [HttpPost("token-register")]
+        [AllowAnonymous]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<AgentRegistrationResultDto>> RegisterAgentWithToken([FromBody] AgentRegistrationDto agentDto)
+        {
+            try
+            {
+                if (agentDto == null)
+                {
+                    return BadRequest(new { Error = "Agent data is required" });
+                }
+                
+                if (string.IsNullOrEmpty(agentDto.DeploymentToken))
+                {
+                    return BadRequest(new { Error = "Deployment token is required" });
+                }
+                
+                // Validate the token and get the pre-configuration
+                var preConfig = await _agentService.GetAgentPreConfigurationAsync(agentDto.DeploymentToken);
+                if (preConfig == null)
+                {
+                    return BadRequest(new { Error = "Invalid or expired deployment token" });
+                }
+                
+                // Apply pre-configuration values to the agent registration
+                if (!string.IsNullOrEmpty(preConfig.Name))
+                {
+                    agentDto.Hostname = preConfig.Name;
+                }
+                
+                // Register the agent
+                var result = await _agentService.RegisterAgentAsync(agentDto);
+                if (!result.Success)
+                {
+                    return BadRequest(new { Error = result.ErrorMessage });
+                }
+                
+                // Apply the collectors configuration
+                if (preConfig.Collectors != null && preConfig.Collectors.Count > 0)
+                {
+                    var configDto = new AgentConfigDto
+                    {
+                        Enabled = true,
+                        CollectEventLogs = preConfig.Collectors.Contains("windows"),
+                        CollectSystemMetrics = preConfig.Collectors.Contains("metrics"),
+                        EnableRealTimeMonitoring = preConfig.Collectors.Contains("network"),
+                        IpAddress = preConfig.IpAddress,
+                        UseSSL = preConfig.UseSSL
+                        // Add other properties as needed
+                    };
+                    
+                    await _agentService.UpdateAgentConfigAsync(result.AgentId, configDto);
+                }
+                
+                // Delete the token to prevent reuse
+                await _agentService.DeleteAgentPreConfigurationAsync(agentDto.DeploymentToken);
+                
+                _logger.LogInformation("Successfully registered agent {AgentId} using deployment token", 
+                    result.AgentId);
+                
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error registering agent with token");
+                return StatusCode(500, new { Error = $"Error registering agent: {ex.Message}" });
+            }
+        }
+
         // Note: Log ingestion is now handled by the LogsController
     }
 } 

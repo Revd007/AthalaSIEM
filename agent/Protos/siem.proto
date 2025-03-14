@@ -31,6 +31,7 @@ message RegisterAgentRequest {
   string agent_version = 4;
   string agent_type = 5; // Windows or Linux
   map<string, string> metadata = 6;
+  string deployment_token = 7; // Optional token for pre-configured deployment
 }
 
 message RegisterAgentResponse {

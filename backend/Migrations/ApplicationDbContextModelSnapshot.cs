@@ -24,6 +24,87 @@ namespace backend.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "hstore");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("AthalaSIEM.Backend.Models.AgentDeploymentToken", b =>
+                {
+                    b.Property<string>("Token")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AgentName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CollectorsJson")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedById")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("IpAddress")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<bool>("IsUsed")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Port")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("UseSSL")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("UsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UsedByAgentId")
+                        .HasColumnType("text");
+
+                    b.HasKey("Token");
+
+                    b.ToTable("AgentDeploymentTokens");
+                });
+
+            modelBuilder.Entity("AthalaSIEM.Backend.Models.SystemConfiguration", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AdminEmail")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LastUpdated")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LockoutDurationMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MaxLoginAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("RequireEmailVerification")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("SystemSecret")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("TokenExpirationHours")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("SystemConfiguration");
+                });
+
             modelBuilder.Entity("Backend.Models.AgentConfigModels", b =>
                 {
                     b.Property<string>("Id")

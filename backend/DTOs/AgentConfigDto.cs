@@ -88,7 +88,7 @@ namespace Backend.DTOs
         /// <summary>
         /// Gets or sets the server URL
         /// </summary>
-        public string ServerUrl { get; set; } = string.Empty;
+        public string IpAddress { get; set; } = string.Empty;
         
         /// <summary>
         /// Gets or sets the interval in minutes for refreshing the configuration

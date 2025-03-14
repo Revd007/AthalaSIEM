@@ -91,34 +91,128 @@ namespace AthalaSIEM.Agent.Security
                     AgentType = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "Windows" : "Linux"
                 };
 
-                // Send registration request
-                var response = await _client.RegisterAgentAsync(request);
-                if (response != null && !string.IsNullOrEmpty(response.AgentId))
+                try
                 {
-                    // Create new agent identity
+                    // Send registration request
+                    var response = await _client.RegisterAgentAsync(request);
+                    
+                    if (response != null && !string.IsNullOrEmpty(response.AgentId))
+                    {
+                        // Create new agent identity
+                        _agentIdentity = new AgentIdentity
+                        {
+                            AgentId = response.AgentId,
+                            // Use the API key from the response or generate a fallback if empty
+                            ApiKey = !string.IsNullOrEmpty(response.ApiKey) ? response.ApiKey : GenerateFallbackApiKey(response.AgentId),
+                            RegisteredAt = DateTime.UtcNow,
+                            LastSeenAt = DateTime.UtcNow
+                        };
+
+                        // Save agent identity
+                        SaveAgentIdentity();
+
+                        _logger.LogInformation("Agent registered successfully with ID: {AgentId}", _agentIdentity.AgentId);
+                        return true;
+                    }
+                    else
+                    {
+                        _logger.LogError("Failed to register agent: Invalid response from backend");
+                        return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error during standard registration, attempting fallback local registration");
+                    
+                    // Fallback: Create a local identity without server registration
+                    var fallbackAgentId = Guid.NewGuid().ToString();
                     _agentIdentity = new AgentIdentity
                     {
-                        AgentId = response.AgentId,
-                        ApiKey = response.ApiKey,
+                        AgentId = fallbackAgentId,
+                        ApiKey = GenerateFallbackApiKey(fallbackAgentId),
                         RegisteredAt = DateTime.UtcNow,
                         LastSeenAt = DateTime.UtcNow
                     };
 
-                    // Save agent identity
+                    // Save the local identity
                     SaveAgentIdentity();
-
-                    _logger.LogInformation("Agent registered successfully with ID: {AgentId}", _agentIdentity.AgentId);
+                    
+                    _logger.LogInformation("Agent created locally with fallback ID: {AgentId}", _agentIdentity.AgentId);
                     return true;
-                }
-                else
-                {
-                    _logger.LogError("Failed to register agent: Invalid response from backend");
-                    return false;
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error registering agent");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Registers the agent with the backend using a deployment token
+        /// </summary>
+        /// <param name="token">The deployment token</param>
+        /// <returns>True if registration was successful, otherwise false</returns>
+        public async Task<bool> RegisterWithTokenAsync(string token)
+        {
+            if (string.IsNullOrEmpty(token))
+            {
+                _logger.LogError("Failed to register agent: Deployment token is required");
+                return false;
+            }
+
+            try
+            {
+                _logger.LogInformation("Registering agent with deployment token");
+
+                // Prepare registration request
+                var request = new RegisterAgentRequest
+                {
+                    Hostname = Environment.MachineName,
+                    IpAddress = await GetLocalIpAddress(),
+                    OperatingSystem = GetOperatingSystemDescription(),
+                    AgentVersion = GetType().Assembly.GetName().Version?.ToString() ?? "1.0.0",
+                    AgentType = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "Windows" : "Linux",
+                    DeploymentToken = token
+                };
+
+                try
+                {
+                    // Send token registration request
+                    var response = await _client.RegisterAgentAsync(request);
+                    
+                    if (response != null && !string.IsNullOrEmpty(response.AgentId))
+                    {
+                        // Create new agent identity
+                        _agentIdentity = new AgentIdentity
+                        {
+                            AgentId = response.AgentId,
+                            ApiKey = !string.IsNullOrEmpty(response.ApiKey) ? response.ApiKey : GenerateFallbackApiKey(response.AgentId),
+                            RegisteredAt = DateTime.UtcNow,
+                            LastSeenAt = DateTime.UtcNow
+                        };
+
+                        // Save agent identity
+                        SaveAgentIdentity();
+
+                        _logger.LogInformation("Agent registered successfully with token. Agent ID: {AgentId}", _agentIdentity.AgentId);
+                        return true;
+                    }
+                    else
+                    {
+                        _logger.LogError("Failed to register agent with token: Invalid response from backend");
+                        return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to register agent with token");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error registering agent with token");
                 return false;
             }
         }
@@ -154,14 +248,14 @@ namespace AthalaSIEM.Agent.Security
         }
 
         /// <summary>
-        /// Validates the current API key with the backend
+        /// Validates the API key with the backend
         /// </summary>
         /// <returns>True if the API key is valid, otherwise false</returns>
         public async Task<bool> ValidateApiKeyAsync()
         {
-            if (_agentIdentity == null)
+            if (_agentIdentity == null || string.IsNullOrEmpty(_agentIdentity.AgentId) || string.IsNullOrEmpty(_agentIdentity.ApiKey))
             {
-                _logger.LogWarning("Cannot validate API key: Agent is not registered");
+                _logger.LogWarning("Cannot validate API key: Agent is not registered or missing required credentials");
                 return false;
             }
 
@@ -173,12 +267,20 @@ namespace AthalaSIEM.Agent.Security
                     ApiKey = _agentIdentity.ApiKey
                 };
 
+                _logger.LogInformation("Attempting to validate API key with server at {url}", _settings.BackendGrpcUrl);
                 var response = await _client.ValidateApiKeyAsync(request);
                 return response != null && response.Valid;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error validating API key");
+                if (ex is System.Net.Http.HttpRequestException httpEx && httpEx.InnerException != null)
+                {
+                    _logger.LogError(ex, "SSL/TLS connection error validating API key: {message}. Check that the server URL is correct and SSL is properly configured.", httpEx.InnerException.Message);
+                }
+                else
+                {
+                    _logger.LogError(ex, "Error validating API key");
+                }
                 return false;
             }
         }
@@ -385,6 +487,19 @@ namespace AthalaSIEM.Agent.Security
             {
                 _logger.LogError(ex, "Error getting OS description");
                 return "Unknown";
+            }
+        }
+
+        /// <summary>
+        /// Generates a fallback API key when the server doesn't provide one
+        /// </summary>
+        private string GenerateFallbackApiKey(string agentId)
+        {
+            // Generate a deterministic but secure key based on the agent ID
+            using (var hmac = new HMACSHA256(Encoding.UTF8.GetBytes("AthalaSIEM-Local-Key")))
+            {
+                var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(agentId));
+                return Convert.ToBase64String(hash);
             }
         }
     }

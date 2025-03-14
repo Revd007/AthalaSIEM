@@ -14,6 +14,11 @@ using AthalaSIEM.Agent.Security;
 using AthalaSIEM.Agent.Configuration;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Collections.Generic;
+using Serilog;
+using Polly;
+using Polly.Extensions.Http;
+using Polly.Retry;
 
 namespace AthalaSIEM.Agent
 {
@@ -23,69 +28,188 @@ namespace AthalaSIEM.Agent
     public class Program
     {
         /// <summary>
-        /// Application entry point
+        /// The main entry point for the application.
         /// </summary>
-        /// <param name="args">Command line arguments</param>
         public static async Task Main(string[] args)
         {
-            // Check for configuration command
-            bool showConfig = args.Any(arg => arg.Equals("--configure", StringComparison.OrdinalIgnoreCase) || 
-                                              arg.Equals("-c", StringComparison.OrdinalIgnoreCase));
-            
-            // Skip configuration if running as a service
-            if (showConfig && !Environment.UserInteractive)
+            // Set up configuration
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+                .AddEnvironmentVariables()
+                .AddCommandLine(args)
+                .Build();
+
+            // Initialize logging
+            Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Information()
+                .WriteTo.Console()
+                .WriteTo.File("logs/agent-.log", rollingInterval: Serilog.RollingInterval.Day)
+                .CreateLogger();
+
+            try
             {
-                Console.WriteLine("Cannot show configuration UI when running as a service. Please run with the --configure flag as a regular user.");
-                return;
-            }
-            
-            // Check for help command
-            if (args.Any(arg => arg.Equals("--help", StringComparison.OrdinalIgnoreCase) || 
-                                arg.Equals("-h", StringComparison.OrdinalIgnoreCase)))
-            {
-                ShowHelp();
-                return;
-            }
-            
-            // Build the host
-            var host = CreateHostBuilder(args).Build();
-            
-            // If configuration is requested or this is first run in interactive mode
-            if (showConfig)
-            {
-                await ShowConfigurationUI(host.Services);
-            }
-            else
-            {
-                // Check if this is first run and in interactive mode
-                bool isInteractive = AgentConfigurationLauncher.IsInteractiveMode();
-                if (isInteractive)
+                Log.Information("Starting Athala SIEM Agent");
+                
+                // Parse command line arguments
+                if (args.Length > 0)
                 {
-                    var configLauncher = host.Services.GetRequiredService<AgentConfigurationLauncher>();
-                    bool isFirstRun = configLauncher.IsFirstTimeInstallation();
-                    bool isConfigured = await configLauncher.IsAgentConfiguredAsync();
-                    
-                    if (isFirstRun || !isConfigured)
+                    // Check for silent installation mode with token
+                    if (TryParseCommandLineArgs(args, out var parsedArgs))
                     {
-                        await ShowConfigurationUI(host.Services);
+                        await HandleAutomatedDeployment(parsedArgs, configuration);
+                        return;
                     }
                 }
+                
+                // Normal startup
+                await CreateHostBuilder(args).Build().RunAsync();
             }
-            
-            // Run the host
-            await host.RunAsync();
+            catch (Exception ex)
+            {
+                Log.Fatal(ex, "The agent terminated unexpectedly");
+                throw;
+            }
+            finally
+            {
+                Log.CloseAndFlush();
+            }
         }
         
         /// <summary>
+        /// Handles automated deployment with command line parameters
+        /// </summary>
+        private static async Task HandleAutomatedDeployment(Dictionary<string, string> args, IConfiguration configuration)
+        {
+            Log.Information("Running in automated deployment mode");
+            
+            // Build services manually
+            var serviceCollection = new ServiceCollection();
+            
+            // Add configuration
+            serviceCollection.AddSingleton<IConfiguration>(configuration);
+            
+            // Register required services
+            ConfigureServices(serviceCollection, configuration);
+            
+            // Build service provider
+            var serviceProvider = serviceCollection.BuildServiceProvider();
+            
+            // Get agent identity service
+            var agentIdentityService = serviceProvider.GetRequiredService<IAgentIdentityService>();
+            
+            try
+            {
+                // Check if a deployment token was provided
+                if (args.TryGetValue("token", out var token) && !string.IsNullOrEmpty(token))
+                {
+                    Log.Information("Registering agent with deployment token");
+                    
+                    // Register with token
+                    bool success = await agentIdentityService.RegisterWithTokenAsync(token);
+                    
+                    if (success)
+                    {
+                        Log.Information("Agent registered successfully with deployment token");
+                        
+                        // Start the actual agent as a service
+                        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                        {
+                            // For Windows, we'll often be called from the installer, so just exit
+                            // The Windows service will be managed by the service control manager
+                            Log.Information("Installation completed. Agent service will start automatically.");
+                        }
+                        else
+                        {
+                            // For Linux, we can start the agent now
+                            Log.Information("Starting agent service");
+                            await CreateHostBuilder(Array.Empty<string>()).Build().RunAsync();
+                        }
+                    }
+                    else
+                    {
+                        Log.Error("Failed to register agent with deployment token");
+                        Environment.Exit(1);
+                    }
+                }
+                else
+                {
+                    Log.Information("No deployment token provided, starting normal execution");
+                    await CreateHostBuilder(Array.Empty<string>()).Build().RunAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Automated deployment failed");
+                Environment.Exit(1);
+            }
+        }
+        
+        /// <summary>
+        /// Parses command line arguments into a dictionary
+        /// </summary>
+        private static bool TryParseCommandLineArgs(string[] args, out Dictionary<string, string> parsedArgs)
+        {
+            parsedArgs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            bool isAutomatedMode = false;
+            
+            for (int i = 0; i < args.Length; i++)
+            {
+                string arg = args[i];
+                
+                // Check for automation flags
+                if (arg.Equals("--token", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                {
+                    parsedArgs["token"] = args[i + 1];
+                    i++;
+                    isAutomatedMode = true;
+                }
+                else if (arg.Equals("--silent", StringComparison.OrdinalIgnoreCase))
+                {
+                    parsedArgs["silent"] = "true";
+                    isAutomatedMode = true;
+                }
+                else if (arg.Equals("--register", StringComparison.OrdinalIgnoreCase))
+                {
+                    parsedArgs["register"] = "true";
+                    isAutomatedMode = true;
+                }
+                else if (arg.Equals("--server-url", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                {
+                    parsedArgs["serverUrl"] = args[i + 1];
+                    i++;
+                    isAutomatedMode = true;
+                }
+                else if (arg.Equals("--port", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                {
+                    parsedArgs["port"] = args[i + 1];
+                    i++;
+                    isAutomatedMode = true;
+                }
+                else if (arg.Equals("--agent-name", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                {
+                    parsedArgs["agentName"] = args[i + 1];
+                    i++;
+                    isAutomatedMode = true;
+                }
+            }
+            
+            return isAutomatedMode;
+        }
+
+        /// <summary>
         /// Shows the configuration UI
         /// </summary>
-        private static async Task ShowConfigurationUI(IServiceProvider services)
+        private static async Task ShowConfigurationUI(IServiceProvider services, string token = "")
         {
             var logger = services.GetRequiredService<ILogger<Program>>();
-            logger.LogInformation("Showing configuration UI");
+            logger.LogInformation("Showing configuration UI{0}", 
+                !string.IsNullOrEmpty(token) ? " with deployment token" : "");
             
             var configLauncher = services.GetRequiredService<AgentConfigurationLauncher>();
-            bool isConfigured = await configLauncher.ShowConfigurationFormAsync(true);
+            
+            // Use the token-enabled method if a token is provided
+            bool isConfigured = await configLauncher.ShowConfigurationFormAsync(token, true);
             
             if (isConfigured)
             {
@@ -164,7 +288,7 @@ namespace AthalaSIEM.Agent
                     services.AddGrpcClient<SiemService.SiemServiceClient>((services, options) =>
                     {
                         var settings = hostContext.Configuration.GetSection("Agent").Get<AgentSettings>();
-                        options.Address = new Uri(settings?.BackendGrpcUrl ?? "https://localhost:5002");
+                        options.Address = new Uri(settings?.BackendGrpcUrl ?? "https://localhost:7078");
                     })
                     .ConfigurePrimaryHttpMessageHandler(() =>
                     {
@@ -173,7 +297,8 @@ namespace AthalaSIEM.Agent
                             ServerCertificateCustomValidationCallback = 
                                 HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
                         };
-                    });
+                    })
+                    .AddPolicyHandler(GetRetryPolicy());
 
                     // Register hosted service
                     services.AddHostedService<SiemAgentService>();
@@ -193,5 +318,61 @@ namespace AthalaSIEM.Agent
                     
                     logging.AddFile(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "agent-{Date}.log"));
                 });
+
+        private static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
+        {
+            // Configure settings
+            var agentSettings = configuration.GetSection("Agent").Get<AgentSettings>();
+            services.AddSingleton(agentSettings ?? new AgentSettings());
+
+            // Register agent identity service first since it provides the agent ID
+            services.AddSingleton<IAgentIdentityService, AgentIdentityService>();
+            
+            // Register the agentId string dependency - needed by AgentHealthMonitor
+            services.AddSingleton(serviceProvider =>
+            {
+                var identityService = serviceProvider.GetRequiredService<IAgentIdentityService>();
+                // Get agent ID or use a default if not registered yet
+                string agentId = identityService.GetAgentIdAsync().GetAwaiter().GetResult();
+                return !string.IsNullOrEmpty(agentId) ? agentId : "unregistered-agent";
+            });
+
+            // Register services
+            services.AddSingleton<IAgentHealthMonitor, AgentHealthMonitor>();
+            services.AddSingleton<ILogCollectorFactory, LogCollectorFactory>();
+            services.AddSingleton<ILogNormalizer, LogNormalizer>();
+            services.AddSingleton<IEncryptionService, AesEncryptionService>();
+            services.AddSingleton<ILogForwarder, GrpcLogForwarder>();
+            
+            // Register configuration UI services
+            services.AddSingleton<AgentConfigurationLauncher>();
+
+            // Register gRPC client
+            services.AddGrpcClient<SiemService.SiemServiceClient>((services, options) =>
+            {
+                var settings = configuration.GetSection("Agent").Get<AgentSettings>();
+                options.Address = new Uri(settings?.BackendGrpcUrl ?? "https://localhost:7078");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() =>
+            {
+                return new HttpClientHandler
+                {
+                    ServerCertificateCustomValidationCallback = 
+                        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+                };
+            })
+            .AddPolicyHandler(GetRetryPolicy());
+        }
+
+        /// <summary>
+        /// Creates a retry policy for gRPC client
+        /// </summary>
+        private static IAsyncPolicy<HttpResponseMessage> GetRetryPolicy()
+        {
+            return HttpPolicyExtensions
+                .HandleTransientHttpError()
+                .OrResult(msg => msg.StatusCode == System.Net.HttpStatusCode.NotFound)
+                .WaitAndRetryAsync(3, retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)));
+        }
     }
 }
