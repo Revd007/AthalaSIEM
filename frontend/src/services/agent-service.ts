@@ -46,6 +46,28 @@ interface SecureDownloadResponse {
   downloadUrl: string;
 }
 
+// Definition for the agent pre-configuration
+interface AgentPreConfig {
+  serverUrl: string;
+  port: number;
+  name: string;
+  useSSL: boolean;
+  collectors: string[];
+}
+
+// Definition for the token generation request
+interface GenerateTokenRequest {
+  installerType: string;
+  configuration: AgentPreConfig;
+}
+
+// Definition for the token response
+interface DeploymentTokenResponse {
+  token: string;
+  expiresAt: string;
+  downloadUrl: string;
+}
+
 export const agentService = {
   // Method to register a new agent with the backend
   async registerAgent(registrationData: AgentRegistrationDto): Promise<AgentRegistrationResultDto> {
@@ -259,6 +281,55 @@ export const agentService = {
       return true;
     } catch (error) {
       console.error('Failed to delete agent:', error);
+      throw error;
+    }
+  },
+
+  // Method to generate a deployment token
+  async generateDeploymentToken(
+    type: string = 'windows',
+    config: AgentPreConfig
+  ): Promise<DeploymentTokenResponse> {
+    try {
+      const request: GenerateTokenRequest = {
+        installerType: type,
+        configuration: config
+      };
+      
+      const response = await api.post<DeploymentTokenResponse>('/api/agents/generate-token', request);
+      
+      if (!response.data) throw new Error('Failed to generate deployment token');
+      return response.data;
+    } catch (error) {
+      console.error('Error generating deployment token:', error);
+      throw error;
+    }
+  },
+  
+  // Method to register an agent using a deployment token
+  async registerWithToken(
+    hostname: string,
+    ipAddress: string,
+    operatingSystem: string,
+    token: string
+  ): Promise<AgentRegistrationResultDto> {
+    try {
+      const registrationData = {
+        hostname,
+        ipAddress,
+        operatingSystem,
+        deploymentToken: token
+      };
+      
+      const response = await api.post<AgentRegistrationResultDto>(
+        '/api/agents/token-register',
+        registrationData
+      );
+      
+      if (!response.data) throw new Error('Failed to register agent with token');
+      return response.data;
+    } catch (error) {
+      console.error('Error registering agent with token:', error);
       throw error;
     }
   }

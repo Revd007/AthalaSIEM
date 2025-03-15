@@ -153,5 +153,35 @@ namespace Backend.Services
         /// <param name="agentId">The agent ID</param>
         /// <returns>The new API key</returns>
         Task<string> UpdateAgentApiKeyAsync(string agentId);
+
+        /// <summary>
+        /// Generates a new API key for an agent
+        /// </summary>
+        /// <returns>The new API key</returns>
+        string GenerateApiKey();
+        
+        /// <summary>
+        /// Saves agent pre-configuration with a deployment token
+        /// </summary>
+        /// <param name="token">The deployment token</param>
+        /// <param name="preConfig">The agent pre-configuration</param>
+        /// <param name="userId">The user ID of the creator</param>
+        /// <param name="expiresAt">When the token expires</param>
+        /// <returns>A task representing the asynchronous operation</returns>
+        Task SaveAgentPreConfigurationAsync(string token, AgentPreConfigDto preConfig, string userId, DateTime expiresAt);
+        
+        /// <summary>
+        /// Gets agent pre-configuration by token
+        /// </summary>
+        /// <param name="token">The deployment token</param>
+        /// <returns>The agent pre-configuration or null if the token is invalid or expired</returns>
+        Task<AgentPreConfigDto?> GetAgentPreConfigurationAsync(string token);
+        
+        /// <summary>
+        /// Deletes agent pre-configuration by token
+        /// </summary>
+        /// <param name="token">The deployment token</param>
+        /// <returns>A task representing the asynchronous operation</returns>
+        Task DeleteAgentPreConfigurationAsync(string token);
     }
 } 

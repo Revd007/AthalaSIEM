@@ -27,6 +27,9 @@ namespace Backend.DTOs
         
         // Registration key can be provided in the body (optional as it can also be in headers)
         public string? RegistrationKey { get; set; }
+        
+        // Token-based registration
+        public string? DeploymentToken { get; set; }
     }
 
     /// <summary>
@@ -383,5 +386,100 @@ namespace Backend.DTOs
     {
         [Required]
         public string ApiKey { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// DTO for agent pre-configuration for deployment
+    /// </summary>
+    public class AgentPreConfigDto
+    {
+        /// <summary>
+        /// Gets or sets the server URL for the agent to connect to
+        /// </summary>
+        public string IpAddress { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// Gets or sets the server port
+        /// </summary>
+        public int Port { get; set; } = 443;
+        
+        /// <summary>
+        /// Gets or sets the agent name
+        /// </summary>
+        public string Name { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// Gets or sets whether to use SSL for communication
+        /// </summary>
+        public bool UseSSL { get; set; } = true;
+        
+        /// <summary>
+        /// Gets or sets the collectors to enable
+        /// </summary>
+        public List<string> Collectors { get; set; } = new List<string>();
+    }
+    
+    /// <summary>
+    /// DTO for generating a deployment token
+    /// </summary>
+    public class GenerateTokenRequestDto
+    {
+        /// <summary>
+        /// Gets or sets the installer type
+        /// </summary>
+        [Required]
+        public string InstallerType { get; set; } = "windows";
+        
+        /// <summary>
+        /// Gets or sets the agent pre-configuration
+        /// </summary>
+        public AgentPreConfigDto? Configuration { get; set; }
+    }
+    
+    /// <summary>
+    /// DTO for deployment token response
+    /// </summary>
+    public class AgentTokenDto
+    {
+        /// <summary>
+        /// Gets or sets the token
+        /// </summary>
+        public string Token { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// Gets or sets the token expiration time
+        /// </summary>
+        public DateTime ExpiresAt { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the download URL
+        /// </summary>
+        public string DownloadUrl { get; set; } = string.Empty;
+    }
+    
+    /// <summary>
+    /// DTO for agent collectors configuration
+    /// </summary>
+    public class CollectorsConfigDto
+    {
+        /// <summary>
+        /// Gets or sets whether to collect event logs
+        /// </summary>
+        public bool CollectEventLogs { get; set; } = true;
+        
+        /// <summary>
+        /// Gets or sets whether to collect system metrics
+        /// </summary>
+        public bool CollectSystemMetrics { get; set; } = true;
+        
+        /// <summary>
+        /// Gets or sets whether to enable file integrity monitoring
+        /// </summary>
+        public bool EnableFileIntegrityMonitoring { get; set; } = false;
+        
+        /// <summary>
+        /// Gets or sets whether to enable network monitoring
+        /// </summary>
+        public bool EnableNetworkMonitoring { get; set; } = false;
     }
 } 

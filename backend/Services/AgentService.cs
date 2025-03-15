@@ -9,6 +9,8 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using System.Linq;
 using Backend.Data;
+using AthalaSIEM.Backend.Models;
+using AthalaSIEM.Backend.Repositories;
 
 namespace Backend.Services
 {
@@ -20,6 +22,7 @@ namespace Backend.Services
         private readonly IAgentRepository _agentRepository;
         private readonly ILogger<AgentService> _logger;
         private readonly ApplicationDbContext _dbContext;
+        private readonly IAgentDeploymentTokenRepository _tokenRepository;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AgentService"/> class
@@ -27,11 +30,17 @@ namespace Backend.Services
         /// <param name="agentRepository">The agent repository</param>
         /// <param name="logger">The logger</param>
         /// <param name="dbContext">The database context</param>
-        public AgentService(IAgentRepository agentRepository, ILogger<AgentService> logger, ApplicationDbContext dbContext)
+        /// <param name="tokenRepository">The deployment token repository</param>
+        public AgentService(
+            IAgentRepository agentRepository, 
+            ILogger<AgentService> logger, 
+            ApplicationDbContext dbContext,
+            IAgentDeploymentTokenRepository tokenRepository)
         {
             _agentRepository = agentRepository ?? throw new ArgumentNullException(nameof(agentRepository));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+            _tokenRepository = tokenRepository ?? throw new ArgumentNullException(nameof(tokenRepository));
         }
 
         /// <inheritdoc/>
@@ -459,9 +468,9 @@ namespace Backend.Services
         /// Generates a random API key
         /// </summary>
         /// <returns>The generated API key</returns>
-        private string GenerateApiKey()
+        public string GenerateApiKey()
         {
-            return Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+            return Guid.NewGuid().ToString("N");
         }
         
         /// <summary>
@@ -559,6 +568,94 @@ namespace Backend.Services
             await _dbContext.SaveChangesAsync();
             
             return newApiKey;
+        }
+
+        /// <summary>
+        /// Saves agent pre-configuration with a deployment token
+        /// </summary>
+        /// <param name="token">The deployment token</param>
+        /// <param name="preConfig">The agent pre-configuration</param>
+        /// <param name="userId">The user ID of the creator</param>
+        /// <param name="expiresAt">When the token expires</param>
+        /// <returns>A task representing the asynchronous operation</returns>
+        public async Task SaveAgentPreConfigurationAsync(string token, AgentPreConfigDto preConfig, string userId, DateTime expiresAt)
+        {
+            try
+            {
+                var deploymentToken = new AgentDeploymentToken
+                {
+                    Token = token,
+                    CreatedById = userId,
+                    ExpiresAt = expiresAt,
+                    IpAddress = preConfig.IpAddress,
+                    Port = preConfig.Port,
+                    AgentName = preConfig.Name,
+                    UseSSL = preConfig.UseSSL
+                };
+
+                deploymentToken.SetCollectors(preConfig.Collectors.ToArray());
+                
+                await _tokenRepository.CreateTokenAsync(deploymentToken);
+                
+                _logger.LogInformation("Saved agent pre-configuration for token {Token}", token);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error saving agent pre-configuration for token {Token}", token);
+                throw;
+            }
+        }
+        
+        /// <summary>
+        /// Gets agent pre-configuration by token
+        /// </summary>
+        /// <param name="token">The deployment token</param>
+        /// <returns>The agent pre-configuration or null if the token is invalid or expired</returns>
+        public async Task<AgentPreConfigDto?> GetAgentPreConfigurationAsync(string token)
+        {
+            try
+            {
+                var deploymentToken = await _tokenRepository.GetTokenAsync(token);
+                
+                if (deploymentToken == null)
+                {
+                    _logger.LogWarning("No pre-configuration found for token {Token}", token);
+                    return null;
+                }
+
+                return new AgentPreConfigDto
+                {
+                    IpAddress = deploymentToken.IpAddress,
+                    Port = deploymentToken.Port,
+                    Name = deploymentToken.AgentName ?? string.Empty,
+                    UseSSL = deploymentToken.UseSSL,
+                    Collectors = deploymentToken.GetCollectors().ToList()
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving agent pre-configuration for token {Token}", token);
+                return null;
+            }
+        }
+        
+        /// <summary>
+        /// Deletes agent pre-configuration by token
+        /// </summary>
+        /// <param name="token">The deployment token</param>
+        /// <returns>A task representing the asynchronous operation</returns>
+        public async Task DeleteAgentPreConfigurationAsync(string token)
+        {
+            try
+            {
+                await _tokenRepository.DeleteTokenAsync(token);
+                _logger.LogInformation("Deleted agent pre-configuration for token {Token}", token);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting agent pre-configuration for token {Token}", token);
+                throw;
+            }
         }
     }
 } 

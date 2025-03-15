@@ -18,7 +18,7 @@ namespace AthalaSIEM.Agent.Configuration
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<AgentConfigurationLauncher> _logger;
-        private readonly SynchronizationContext _syncContext;
+        private readonly SynchronizationContext? _syncContext;
         
         public AgentConfigurationLauncher(IServiceProvider serviceProvider, ILogger<AgentConfigurationLauncher> logger)
         {
@@ -26,6 +26,7 @@ namespace AthalaSIEM.Agent.Configuration
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             
             // Store the synchronization context from the calling thread (if running UI thread)
+            // This might be null when running from a non-UI thread
             _syncContext = SynchronizationContext.Current;
         }
         
@@ -36,9 +37,21 @@ namespace AthalaSIEM.Agent.Configuration
         /// <returns>True if the agent is fully configured and registered, false otherwise</returns>
         public async Task<bool> ShowConfigurationFormAsync(bool modal = true)
         {
+            return await ShowConfigurationFormAsync(string.Empty, modal);
+        }
+
+        /// <summary>
+        /// Shows the agent configuration form with a deployment token
+        /// </summary>
+        /// <param name="token">Deployment token for pre-configuration</param>
+        /// <param name="modal">Whether to show the form modally</param>
+        /// <returns>True if the agent is fully configured and registered, false otherwise</returns>
+        public async Task<bool> ShowConfigurationFormAsync(string token, bool modal = true)
+        {
             try
             {
-                _logger.LogInformation("Launching agent configuration UI");
+                _logger.LogInformation("Launching agent configuration UI{0}", 
+                    !string.IsNullOrEmpty(token) ? " with deployment token" : "");
                 
                 // Get required services from DI container
                 var agentIdentityService = _serviceProvider.GetRequiredService<IAgentIdentityService>();
@@ -54,8 +67,31 @@ namespace AthalaSIEM.Agent.Configuration
                         Application.EnableVisualStyles();
                         Application.SetCompatibleTextRenderingDefault(false);
                         
-                        // Create and show the form
-                        var form = new AgentConfigurationForm(agentIdentityService, settings);
+                        // Create and show the form with token if provided
+                        var form = new AgentConfigurationForm(agentIdentityService, settings, token)
+                        {
+                            lblTitle = new Label(),
+                            lblServerIp = new Label(),
+                            txtServerIp = new TextBox(),
+                            lblServerPort = new Label(),
+                            numServerPort = new NumericUpDown(),
+                            lblAgentName = new Label(),
+                            txtAgentName = new TextBox(),
+                            btnAddAgent = new Button(),
+                            lblTokenMode = new Label(),
+                            lblToken = new Label(),
+                            txtToken = new TextBox(),
+                            lblConnectionStatus = new Label(),
+                            pbConnectionStatus = new PictureBox(),
+                            lblStatus = new Label(),
+                            lblStatusValue = new Label(),
+                            lblAgentId = new Label(),
+                            txtAgentId = new TextBox(),
+                            lblApiKey = new Label(),
+                            txtApiKey = new TextBox(),
+                            btnTestConnection = new Button(),
+                            btnSave = new Button()
+                        };
                         
                         if (modal)
                         {
@@ -95,6 +131,47 @@ namespace AthalaSIEM.Agent.Configuration
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to launch configuration UI");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Registers the agent using a deployment token without showing the UI
+        /// </summary>
+        /// <param name="token">The deployment token for silent registration</param>
+        /// <returns>True if registration was successful, false otherwise</returns>
+        public async Task<bool> RegisterWithTokenSilentlyAsync(string token)
+        {
+            if (string.IsNullOrEmpty(token))
+            {
+                _logger.LogError("Cannot register silently: Token is empty");
+                return false;
+            }
+
+            try
+            {
+                _logger.LogInformation("Registering agent silently with deployment token");
+
+                // Get required service
+                var agentIdentityService = _serviceProvider.GetRequiredService<IAgentIdentityService>();
+
+                // Attempt to register with the token
+                bool success = await agentIdentityService.RegisterWithTokenAsync(token);
+
+                if (success)
+                {
+                    _logger.LogInformation("Silent token registration successful");
+                    return true;
+                }
+                else
+                {
+                    _logger.LogError("Silent token registration failed");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during silent token registration");
                 return false;
             }
         }

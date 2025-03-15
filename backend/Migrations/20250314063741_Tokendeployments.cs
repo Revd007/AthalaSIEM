@@ -1,19 +1,42 @@
 ﻿using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
 namespace backend.Migrations
 {
     /// <inheritdoc />
-    public partial class updatenew : Migration
+    public partial class Tokendeployments : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AlterDatabase()
                 .Annotation("Npgsql:PostgresExtension:hstore", ",,");
+
+            migrationBuilder.CreateTable(
+                name: "AgentDeploymentTokens",
+                columns: table => new
+                {
+                    Token = table.Column<string>(type: "text", nullable: false),
+                    CreatedById = table.Column<string>(type: "text", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    ExpiresAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    IsUsed = table.Column<bool>(type: "boolean", nullable: false),
+                    UsedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
+                    UsedByAgentId = table.Column<string>(type: "text", nullable: true),
+                    IpAddress = table.Column<string>(type: "text", nullable: false),
+                    Port = table.Column<int>(type: "integer", nullable: false),
+                    AgentName = table.Column<string>(type: "text", nullable: true),
+                    UseSSL = table.Column<bool>(type: "boolean", nullable: false),
+                    CollectorsJson = table.Column<string>(type: "text", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AgentDeploymentTokens", x => x.Token);
+                });
 
             migrationBuilder.CreateTable(
                 name: "alert_rules",
@@ -50,6 +73,25 @@ namespace backend.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_roles", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "SystemConfiguration",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    SystemSecret = table.Column<string>(type: "text", nullable: false),
+                    LastUpdated = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    AdminEmail = table.Column<string>(type: "text", nullable: true),
+                    RequireEmailVerification = table.Column<bool>(type: "boolean", nullable: false),
+                    TokenExpirationHours = table.Column<int>(type: "integer", nullable: false),
+                    MaxLoginAttempts = table.Column<int>(type: "integer", nullable: false),
+                    LockoutDurationMinutes = table.Column<int>(type: "integer", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SystemConfiguration", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -573,6 +615,9 @@ namespace backend.Migrations
                 name: "AgentConfigs");
 
             migrationBuilder.DropTable(
+                name: "AgentDeploymentTokens");
+
+            migrationBuilder.DropTable(
                 name: "alert_rules");
 
             migrationBuilder.DropTable(
@@ -592,6 +637,9 @@ namespace backend.Migrations
 
             migrationBuilder.DropTable(
                 name: "security_events");
+
+            migrationBuilder.DropTable(
+                name: "SystemConfiguration");
 
             migrationBuilder.DropTable(
                 name: "user_roles");

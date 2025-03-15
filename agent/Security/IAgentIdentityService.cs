@@ -21,6 +21,13 @@ namespace AthalaSIEM.Agent.Security
         Task<bool> RegisterAgentAsync();
         
         /// <summary>
+        /// Registers the agent with the backend using a deployment token
+        /// </summary>
+        /// <param name="token">The deployment token</param>
+        /// <returns>True if registration was successful, false otherwise</returns>
+        Task<bool> RegisterWithTokenAsync(string token);
+        
+        /// <summary>
         /// Gets the agent's API key
         /// </summary>
         /// <returns>The agent's API key or null if not registered</returns>
