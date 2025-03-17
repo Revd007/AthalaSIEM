@@ -58,7 +58,7 @@ namespace AthalaSIEM.Agent
                     if (TryParseCommandLineArgs(args, out var parsedArgs))
                     {
                         await HandleAutomatedDeployment(parsedArgs, configuration);
-                        return;
+                return;
                     }
                 }
                 
@@ -106,9 +106,9 @@ namespace AthalaSIEM.Agent
                     Log.Information("Registering agent with deployment token");
                     
                     // Register with token
-                    bool success = await agentIdentityService.RegisterWithTokenAsync(token);
+                    var result = await agentIdentityService.RegisterWithTokenAsync(token);
                     
-                    if (success)
+                    if (result.Success)
                     {
                         Log.Information("Agent registered successfully with deployment token");
                         
@@ -118,6 +118,7 @@ namespace AthalaSIEM.Agent
                             // For Windows, we'll often be called from the installer, so just exit
                             // The Windows service will be managed by the service control manager
                             Log.Information("Installation completed. Agent service will start automatically.");
+                            return;
                         }
                         else
                         {
@@ -128,7 +129,7 @@ namespace AthalaSIEM.Agent
                     }
                     else
                     {
-                        Log.Error("Failed to register agent with deployment token");
+                        Log.Error("Failed to register agent with token: {ErrorMessage}", result.Message);
                         Environment.Exit(1);
                     }
                 }
@@ -196,7 +197,7 @@ namespace AthalaSIEM.Agent
             
             return isAutomatedMode;
         }
-
+        
         /// <summary>
         /// Shows the configuration UI
         /// </summary>

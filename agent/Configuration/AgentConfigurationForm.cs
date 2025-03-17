@@ -95,7 +95,7 @@ namespace AthalaSIEM.Agent.Configuration
                 lblTokenMode = new Label
                 {
                     Text = "This agent will be registered with a pre-configured deployment token.",
-                    Location = new Point(20, 50),
+                Location = new Point(20, 50),
                     Width = 360,
                     TextAlign = ContentAlignment.MiddleCenter,
                     Font = new Font(this.Font.FontFamily, 9)
@@ -104,10 +104,10 @@ namespace AthalaSIEM.Agent.Configuration
                 lblToken = new Label
                 {
                     Text = "Token:",
-                    Location = new Point(20, 80),
-                    AutoSize = true
-                };
-                
+                Location = new Point(20, 80),
+                AutoSize = true
+            };
+            
                 txtToken = new TextBox
                 {
                     Location = new Point(80, 80),
@@ -140,75 +140,75 @@ namespace AthalaSIEM.Agent.Configuration
             else
             {
                 // Regular mode UI
-                // Server IP field
-                lblServerIp = new Label
-                {
-                    Text = "Server IP:",
+            // Server IP field
+            lblServerIp = new Label
+            {
+                Text = "Server IP:",
                     Location = new Point(20, 60),
-                    AutoSize = true
-                };
-                
-                txtServerIp = new TextBox
-                {
+                AutoSize = true
+            };
+            
+            txtServerIp = new TextBox
+            {
                     Location = new Point(140, 60),
-                    Width = 200,
-                    Text = "127.0.0.1"
-                };
-                
-                // Server Port field
-                lblServerPort = new Label
-                {
-                    Text = "Server Port:",
+                Width = 200,
+                Text = "127.0.0.1"
+            };
+            
+            // Server Port field
+            lblServerPort = new Label
+            {
+                Text = "Server Port:",
                     Location = new Point(20, 90),
-                    AutoSize = true
-                };
-                
-                numServerPort = new NumericUpDown
-                {
+                AutoSize = true
+            };
+            
+            numServerPort = new NumericUpDown
+            {
                     Location = new Point(140, 90),
-                    Width = 80,
-                    Minimum = 1,
-                    Maximum = 65535,
+                Width = 80,
+                Minimum = 1,
+                Maximum = 65535,
                     Value = 5135
-                };
-                
-                // Agent Name field
-                lblAgentName = new Label
-                {
-                    Text = "Agent Name:",
+            };
+            
+            // Agent Name field
+            lblAgentName = new Label
+            {
+                Text = "Agent Name:",
                     Location = new Point(20, 120),
-                    AutoSize = true
-                };
-                
-                txtAgentName = new TextBox
-                {
+                AutoSize = true
+            };
+            
+            txtAgentName = new TextBox
+            {
                     Location = new Point(140, 120),
-                    Width = 200,
-                    Text = Environment.MachineName
-                };
-                
+                Width = 200,
+                Text = Environment.MachineName
+            };
+            
                 // Add Agent button
                 btnAddAgent = new Button
                 {
                     Text = "Add Agent",
                     Location = new Point(140, 160),
-                    Width = 120,
-                    Height = 30,
+                Width = 120,
+                Height = 30,
                     BackColor = Color.FromArgb(0, 120, 212),
-                    ForeColor = Color.White,
+                ForeColor = Color.White,
                     FlatStyle = FlatStyle.Flat
                 };
                 btnAddAgent.FlatAppearance.BorderSize = 0;
                 btnAddAgent.Click += BtnAddAgent_Click;
                 
                 // Add only the needed controls to form for regular mode
-                this.Controls.Add(lblTitle);
-                this.Controls.Add(lblServerIp);
-                this.Controls.Add(txtServerIp);
-                this.Controls.Add(lblServerPort);
-                this.Controls.Add(numServerPort);
-                this.Controls.Add(lblAgentName);
-                this.Controls.Add(txtAgentName);
+            this.Controls.Add(lblTitle);
+            this.Controls.Add(lblServerIp);
+            this.Controls.Add(txtServerIp);
+            this.Controls.Add(lblServerPort);
+            this.Controls.Add(numServerPort);
+            this.Controls.Add(lblAgentName);
+            this.Controls.Add(txtAgentName);
                 this.Controls.Add(btnAddAgent);
             }
             
@@ -287,7 +287,7 @@ namespace AthalaSIEM.Agent.Configuration
                     "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
+        
         /// <summary>
         /// Tests connection to the backend server
         /// </summary>
@@ -496,21 +496,21 @@ namespace AthalaSIEM.Agent.Configuration
             if (_settings.Collectors == null || _settings.Collectors.Count == 0)
             {
                 _settings.Collectors = new List<CollectorSettings>();
-                
-                // Set Windows Event Log collector by default if on Windows
+            
+            // Set Windows Event Log collector by default if on Windows
                 if (OperatingSystem.IsWindows())
+            {
+                _settings.Collectors.Add(new CollectorSettings
                 {
-                    _settings.Collectors.Add(new CollectorSettings
+                    Type = "WindowsEventLog",
+                    Enabled = true,
+                    IntervalSeconds = 30,
+                    Properties = new Dictionary<string, string>
                     {
-                        Type = "WindowsEventLog",
-                        Enabled = true,
-                        IntervalSeconds = 30,
-                        Properties = new Dictionary<string, string>
-                        {
-                            { "EventLogs", "Application,System,Security" },
-                            { "MaxEvents", "100" }
-                        }
-                    });
+                        { "EventLogs", "Application,System,Security" },
+                        { "MaxEvents", "100" }
+                    }
+                });
                 }
                 // Set Linux syslog collector by default if on Linux
                 else if (OperatingSystem.IsLinux())
@@ -549,11 +549,11 @@ namespace AthalaSIEM.Agent.Configuration
                 var settingsObj = JsonSerializer.Deserialize<Dictionary<string, object>>(settingsJson)
                     ?? new Dictionary<string, object>();
                 
-                config["Agent"] = settingsObj;
-                
-                // Write back to file
-                string updatedJson = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(configPath, updatedJson);
+                    config["Agent"] = settingsObj;
+                    
+                    // Write back to file
+                    string updatedJson = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
+                    File.WriteAllText(configPath, updatedJson);
             }
             catch (Exception ex)
             {
@@ -603,58 +603,123 @@ namespace AthalaSIEM.Agent.Configuration
         /// </summary>
         private async void BtnAddAgent_Click(object? sender, EventArgs e)
         {
-            // Disable the button during processing
+            if (_isTokenMode && !string.IsNullOrWhiteSpace(txtToken.Text))
+            {
+                _deploymentToken = txtToken.Text.Trim();
+                await RegisterWithTokenAsync();
+                return;
+            }
+
+            // Mode konfigurasi manual - gunakan implementasi yang ada
+            if (string.IsNullOrWhiteSpace(txtServerIp.Text))
+            {
+                MessageBox.Show("Server URL harus diisi!", "Validasi", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                txtServerIp.Focus();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(txtAgentName.Text))
+            {
+                MessageBox.Show("Nama Agent harus diisi!", "Validasi", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                txtAgentName.Focus();
+                return;
+            }
+
             btnAddAgent.Enabled = false;
-            btnAddAgent.Text = _isTokenMode ? "Registering..." : "Adding...";
-            
+            lblStatus.Text = "Mendaftarkan agent...";
+
             try
             {
-                bool registrationSuccess;
-                
-                // Different flow for token mode vs. regular mode
-                if (_isTokenMode)
+                // Simpan pengaturan dari form
+                SaveFormToSettings();
+
+                // Daftarkan agent
+                var result = await _agentIdentityService.RegisterAgentAsync(
+                    txtAgentName.Text.Trim(),
+                    txtServerIp.Text.Trim(),
+                    (int)numServerPort.Value);
+
+                if (result.Success)
                 {
-                    // In token mode, register using the token
-                    registrationSuccess = await _agentIdentityService.RegisterWithTokenAsync(_deploymentToken);
-                }
-                else
-                {
-                    // 1. Save current settings from form
-                    SaveFormToSettings();
-                    
-                    // 2. Save settings to file
+                    _isRegistered = true;
+                    _agentId = result.AgentId;
+                    _apiKey = result.ApiKey;
+
+                    MessageBox.Show("Agent berhasil didaftarkan ke server SIEM!", 
+                        "Registrasi Berhasil", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                    // Update status registrasi di UI
+                    UpdateRegistrationStatus(true);
+
+                    // Simpan pengaturan ke file
                     SaveSettingsToFile();
-                    
-                    // 3. Attempt standard registration
-                    registrationSuccess = await _agentIdentityService.RegisterAgentAsync();
-                }
-                
-                if (registrationSuccess)
-                {
-                    // Show success message
-                    string agentName = _isTokenMode ? "Agent" : txtAgentName.Text;
-                    MessageBox.Show($"{agentName} has been added successfully. The service will now run in the background.",
-                        "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    
-                    // Close the form immediately to let the service run
-                    this.DialogResult = DialogResult.OK;
-                    this.Close();
                 }
                 else
                 {
-                    string mode = _isTokenMode ? "token-based" : "standard";
-                    MessageBox.Show($"Failed to register agent using {mode} registration. Please check your connection and try again.",
-                        "Registration Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    MessageBox.Show($"Gagal mendaftarkan agent: {result.Message}", 
+                        "Registrasi Gagal", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show($"Terjadi kesalahan saat mendaftarkan agent: {ex.Message}", 
+                    "Kesalahan", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             finally
             {
                 btnAddAgent.Enabled = true;
-                btnAddAgent.Text = _isTokenMode ? "Register Agent" : "Add Agent";
+            }
+        }
+
+        private async Task RegisterWithTokenAsync()
+        {
+            if (string.IsNullOrWhiteSpace(_deploymentToken))
+            {
+                MessageBox.Show("Token deployment tidak valid. Silakan masukkan token yang valid atau gunakan konfigurasi manual.",
+                    "Token Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            lblStatus.Text = "Mendaftarkan menggunakan token...";
+            txtToken.Enabled = false;
+            btnAddAgent.Enabled = false;
+            
+            try
+            {
+                // Panggil API untuk mendaftarkan dengan token
+                var result = await _agentIdentityService.RegisterWithTokenAsync(_deploymentToken);
+                
+                if (result.Success)
+                {
+                    _isRegistered = true;
+                    _agentId = result.AgentId;
+                    _apiKey = result.ApiKey;
+                    
+                    // Update UI untuk menunjukkan status registrasi
+                    UpdateRegistrationStatus(true);
+                    
+                    MessageBox.Show("Registrasi berhasil! Agent telah terdaftar menggunakan token deployment.",
+                        "Registrasi Berhasil", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    
+                    // Simpan pengaturan baru
+                    SaveFormToSettings();
+                    SaveSettingsToFile();
+                }
+                else
+                {
+                    MessageBox.Show($"Gagal mendaftarkan agent: {result.Message}",
+                        "Registrasi Gagal", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Terjadi kesalahan saat mendaftarkan agent: {ex.Message}",
+                    "Kesalahan", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                txtToken.Enabled = true;
+                btnAddAgent.Enabled = true;
             }
         }
     }

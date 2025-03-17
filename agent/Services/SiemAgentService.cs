@@ -70,15 +70,18 @@ namespace AthalaSIEM.Agent.Services
                 if (!_isRegistered)
                 {
                     _logger.LogInformation("Agent not registered. Attempting registration...");
-                    _isRegistered = await _identityService.RegisterAgentAsync();
+                    var registrationResult = await _identityService.RegisterAgentAsync();
+                    
+                    _isRegistered = registrationResult.Success;
                     
                     if (!_isRegistered)
                     {
-                        _logger.LogWarning("Agent registration failed. Will retry on next startup.");
+                        _logger.LogWarning("Agent registration failed: {ErrorMessage}", registrationResult.Message);
+                        _logger.LogWarning("Will retry on next startup.");
                     }
                     else
                     {
-                        _logger.LogInformation("Agent registered successfully.");
+                        _logger.LogInformation("Agent registered successfully with ID: {AgentId}", registrationResult.AgentId);
                     }
                 }
                 else

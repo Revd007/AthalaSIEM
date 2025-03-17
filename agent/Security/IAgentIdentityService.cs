@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Threading.Tasks;
+using AthalaSIEM.Agent.Models;
 
 namespace AthalaSIEM.Agent.Security
 {
@@ -15,17 +16,32 @@ namespace AthalaSIEM.Agent.Security
         Task<bool> IsRegisteredAsync();
         
         /// <summary>
+        /// Checks if the agent has a valid identity
+        /// </summary>
+        /// <returns>True if the agent has a valid identity, false otherwise</returns>
+        Task<bool> HasValidIdentityAsync();
+        
+        /// <summary>
         /// Registers the agent with the backend
         /// </summary>
-        /// <returns>True if registration was successful, false otherwise</returns>
-        Task<bool> RegisterAgentAsync();
+        /// <returns>Registration result</returns>
+        Task<AgentRegistrationResult> RegisterAgentAsync();
+        
+        /// <summary>
+        /// Registers the agent with the backend with explicit parameters
+        /// </summary>
+        /// <param name="agentName">The agent name</param>
+        /// <param name="serverUrl">The server URL</param>
+        /// <param name="serverPort">The server port</param>
+        /// <returns>Registration result</returns>
+        Task<AgentRegistrationResult> RegisterAgentAsync(string agentName, string serverUrl, int serverPort);
         
         /// <summary>
         /// Registers the agent with the backend using a deployment token
         /// </summary>
         /// <param name="token">The deployment token</param>
-        /// <returns>True if registration was successful, false otherwise</returns>
-        Task<bool> RegisterWithTokenAsync(string token);
+        /// <returns>Registration result</returns>
+        Task<AgentRegistrationResult> RegisterWithTokenAsync(string token);
         
         /// <summary>
         /// Gets the agent's API key

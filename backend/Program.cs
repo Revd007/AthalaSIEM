@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Npgsql.EntityFrameworkCore.PostgreSQL;
+using Grpc.Net.Client;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -55,6 +56,14 @@ builder.Services.AddSwaggerGen(c =>
             Array.Empty<string>()
         }
     });
+});
+
+// Add gRPC services
+builder.Services.AddGrpc(options =>
+{
+    options.EnableDetailedErrors = true;
+    options.MaxReceiveMessageSize = 16 * 1024 * 1024; // 16 MB
+    options.MaxSendMessageSize = 16 * 1024 * 1024; // 16 MB
 });
 
 // Configure CORS
@@ -142,6 +151,13 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+// Map gRPC services
+app.MapGrpcService<AthalaSIEM.Backend.Services.SiemService>();
+app.MapGet("/proto/siem.proto", async context =>
+{
+    await context.Response.WriteAsync(File.ReadAllText("Protos/siem.proto"));
+});
 
 // Initialize the database
 using (var scope = app.Services.CreateScope())

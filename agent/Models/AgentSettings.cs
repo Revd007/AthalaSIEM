@@ -17,12 +17,12 @@ namespace AthalaSIEM.Agent.Models
         /// <summary>
         /// Backend API URL
         /// </summary>
-        public string BackendApiUrl { get; set; } = "https://localhost:5135";
+        public string BackendApiUrl { get; set; } = "https://localhost:7078";
 
         /// <summary>
         /// Backend gRPC URL
         /// </summary>
-        public string BackendGrpcUrl { get; set; } = "https://localhost:5135";
+        public string BackendGrpcUrl { get; set; } = "https://localhost:7078";
 
         /// <summary>
         /// Backend URL (for backward compatibility)

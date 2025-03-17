@@ -72,10 +72,17 @@ namespace AthalaSIEM.Agent.Security
         }
 
         /// <summary>
-        /// Registers the agent with the backend
+        /// Checks if the agent has a valid identity
         /// </summary>
-        /// <returns>True if registration was successful, otherwise false</returns>
-        public async Task<bool> RegisterAgentAsync()
+        /// <returns>True if the agent has a valid identity, false otherwise</returns>
+        public Task<bool> HasValidIdentityAsync()
+        {
+            LoadAgentIdentity();
+            return Task.FromResult(!string.IsNullOrEmpty(_agentIdentity.AgentId) && !string.IsNullOrEmpty(_agentIdentity.ApiKey));
+        }
+
+        /// <inheritdoc/>
+        public async Task<AgentRegistrationResult> RegisterAgentAsync()
         {
             try
             {
@@ -112,12 +119,12 @@ namespace AthalaSIEM.Agent.Security
                         SaveAgentIdentity();
 
                         _logger.LogInformation("Agent registered successfully with ID: {AgentId}", _agentIdentity.AgentId);
-                        return true;
+                        return AgentRegistrationResult.CreateSuccess(_agentIdentity.AgentId, _agentIdentity.ApiKey);
                     }
                     else
                     {
                         _logger.LogError("Failed to register agent: Invalid response from backend");
-                        return false;
+                        return AgentRegistrationResult.CreateFailure("Invalid response from backend");
                     }
                 }
                 catch (Exception ex)
@@ -138,27 +145,45 @@ namespace AthalaSIEM.Agent.Security
                     SaveAgentIdentity();
                     
                     _logger.LogInformation("Agent created locally with fallback ID: {AgentId}", _agentIdentity.AgentId);
-                    return true;
+                    return AgentRegistrationResult.CreateSuccess(_agentIdentity.AgentId, _agentIdentity.ApiKey);
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error registering agent");
-                return false;
+                return AgentRegistrationResult.CreateFailure($"Error registering agent: {ex.Message}");
             }
         }
 
-        /// <summary>
-        /// Registers the agent with the backend using a deployment token
-        /// </summary>
-        /// <param name="token">The deployment token</param>
-        /// <returns>True if registration was successful, otherwise false</returns>
-        public async Task<bool> RegisterWithTokenAsync(string token)
+        /// <inheritdoc/>
+        public async Task<AgentRegistrationResult> RegisterAgentAsync(string agentName, string serverUrl, int serverPort)
+        {
+            try
+            {
+                _logger.LogInformation("Registering agent with backend at {ServerUrl}:{ServerPort}", serverUrl, serverPort);
+                
+                // Update settings
+                _settings.BackendApiUrl = $"{(serverPort == 443 ? "https" : "http")}://{serverUrl}:{serverPort}";
+                _settings.BackendGrpcUrl = _settings.BackendApiUrl;
+                _settings.AgentName = agentName;
+                
+                // Then proceed with standard registration
+                return await RegisterAgentAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error registering agent with custom parameters");
+                return AgentRegistrationResult.CreateFailure($"Error registering agent: {ex.Message}");
+            }
+        }
+
+        /// <inheritdoc/>
+        public async Task<AgentRegistrationResult> RegisterWithTokenAsync(string token)
         {
             if (string.IsNullOrEmpty(token))
             {
                 _logger.LogError("Failed to register agent: Deployment token is required");
-                return false;
+                return AgentRegistrationResult.CreateFailure("Deployment token is required");
             }
 
             try
@@ -196,24 +221,25 @@ namespace AthalaSIEM.Agent.Security
                         SaveAgentIdentity();
 
                         _logger.LogInformation("Agent registered successfully with token. Agent ID: {AgentId}", _agentIdentity.AgentId);
-                        return true;
+                        return AgentRegistrationResult.CreateSuccess(_agentIdentity.AgentId, _agentIdentity.ApiKey);
                     }
                     else
                     {
-                        _logger.LogError("Failed to register agent with token: Invalid response from backend");
-                        return false;
+                        string errorMessage = response?.Message ?? "Invalid response from backend";
+                        _logger.LogError("Failed to register agent with token: {ErrorMessage}", errorMessage);
+                        return AgentRegistrationResult.CreateFailure(errorMessage);
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Failed to register agent with token");
-                    return false;
+                    return AgentRegistrationResult.CreateFailure($"Failed to register agent with token: {ex.Message}");
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error registering agent with token");
-                return false;
+                return AgentRegistrationResult.CreateFailure($"Error registering agent with token: {ex.Message}");
             }
         }
 

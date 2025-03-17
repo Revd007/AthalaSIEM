@@ -17,6 +17,9 @@
     <DisableWixBuild>true</DisableWixBuild>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <UseWindowsForms>true</UseWindowsForms>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <SelfContained>true</SelfContained>
   </PropertyGroup>
 
   <ItemGroup>

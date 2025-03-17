@@ -136,42 +136,49 @@ namespace AthalaSIEM.Agent.Configuration
         }
 
         /// <summary>
-        /// Registers the agent using a deployment token without showing the UI
+        /// Registers agent without showing UI when a valid token is provided
         /// </summary>
-        /// <param name="token">The deployment token for silent registration</param>
-        /// <returns>True if registration was successful, false otherwise</returns>
+        /// <param name="token">Deployment token</param>
+        /// <returns>True if registration succeeds, false otherwise</returns>
         public async Task<bool> RegisterWithTokenSilentlyAsync(string token)
         {
-            if (string.IsNullOrEmpty(token))
+            if (string.IsNullOrWhiteSpace(token))
             {
-                _logger.LogError("Cannot register silently: Token is empty");
+                _logger.LogError("No deployment token provided for silent registration");
                 return false;
             }
 
+            _logger.LogInformation("Attempting silent registration with token");
+            
             try
             {
-                _logger.LogInformation("Registering agent silently with deployment token");
-
-                // Get required service
+                // Get the identity service
                 var agentIdentityService = _serviceProvider.GetRequiredService<IAgentIdentityService>();
-
-                // Attempt to register with the token
-                bool success = await agentIdentityService.RegisterWithTokenAsync(token);
-
-                if (success)
+                
+                // Check if we already have an identity
+                if (await agentIdentityService.HasValidIdentityAsync())
                 {
-                    _logger.LogInformation("Silent token registration successful");
+                    _logger.LogInformation("Agent already has a valid identity, skipping registration");
+                    return true;
+                }
+                
+                // Register with token
+                var result = await agentIdentityService.RegisterWithTokenAsync(token);
+                
+                if (result.Success)
+                {
+                    _logger.LogInformation("Silent registration successful");
                     return true;
                 }
                 else
                 {
-                    _logger.LogError("Silent token registration failed");
+                    _logger.LogError($"Silent registration failed: {result.Message}");
                     return false;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during silent token registration");
+                _logger.LogError(ex, "Error during silent registration");
                 return false;
             }
         }
