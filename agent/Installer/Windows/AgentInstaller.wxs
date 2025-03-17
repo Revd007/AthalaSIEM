@@ -185,5 +185,5 @@
       <ComponentGroupRef Id="ConfigComponents" />
       <ComponentGroupRef Id="StartMenuShortcuts" />
     </Feature>
-  </Package>
-</Wix>
+  </Product>
+</Wix> 
