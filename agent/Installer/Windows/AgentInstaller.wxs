@@ -14,8 +14,8 @@
     <!-- Define installer properties -->
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
     <Property Id="DEPLOYMENT_TOKEN" Secure="yes" />
-    <Property Id="SERVER_URL" Value="https://localhost:7078" />
-    <Property Id="SERVER_PORT" Value="7078" />
+    <Property Id="SERVER_URL" Value="https://localhost" />
+    <Property Id="SERVER_PORT" Value="9596" />
     <Property Id="AGENT_NAME" Value="AthalaSIEM Agent" />
     <Property Id="USE_SSL" Value="1" />
     <Property Id="SILENT_REGISTRATION" Value="0" />
@@ -44,6 +44,31 @@
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <Component Id="AgentExecutable" Guid="0d615a60-cf57-40e2-bce5-6ef5327db491">
         <File Id="AgentEXE" Source="$(var.SourceDir)\AthalaSIEM.Agent.exe" KeyPath="yes" />
+        
+        <!-- Create Windows Service but don't start it -->
+        <ServiceInstall Id="ServiceInstaller"
+                        Type="ownProcess"
+                        Name="AthalaSIEMAgent"
+                        DisplayName="Athala SIEM Agent"
+                        Description="Collects and forwards security events to Athala SIEM"
+                        Start="demand"
+                        Account="LocalSystem"
+                        ErrorControl="normal">
+          <!-- Service recovery settings -->
+          <util:ServiceConfig 
+            FirstFailureActionType="restart"
+            SecondFailureActionType="restart"
+            ThirdFailureActionType="restart"
+            RestartServiceDelayInSeconds="60"
+            ResetPeriodInDays="1" />
+        </ServiceInstall>
+        
+        <!-- ServiceControl without Start -->
+        <ServiceControl Id="StopService"
+                        Name="AthalaSIEMAgent"
+                        Stop="both"
+                        Remove="uninstall"
+                        Wait="yes" />
       </Component>
       
       <Component Id="AgentConfig" Guid="0d615a60-cf57-40e2-bce5-6ef5327db492">
@@ -185,5 +210,5 @@
       <ComponentGroupRef Id="ConfigComponents" />
       <ComponentGroupRef Id="StartMenuShortcuts" />
     </Feature>
-  </Product>
+  </Package>
 </Wix> 
