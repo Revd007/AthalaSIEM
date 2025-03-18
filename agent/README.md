@@ -458,16 +458,6 @@ dotnet test agent.sln
    - Check that the agent has permissions to read log sources
    - Review agent logs for any collection errors
 
-## Contributing
-
-We welcome contributions to the AthalaSIEM Agent. To contribute:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Write tests for your changes
-5. Submit a pull request
-
 Please follow the existing code style and add appropriate documentation.
 
 ## License
