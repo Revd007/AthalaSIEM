@@ -1,8 +1,9 @@
 import { QueryClient } from '@tanstack/react-query'
 import type { ApiResponse } from '../types/api'
+import { ENV } from '../config/env'
 
-// Use environment variable with fallback
-const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9595'
+// Use environment configuration for base URL
+const baseURL = ENV.API_URL
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,8 +35,12 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
   const token = localStorage.getItem('token');
   const { skipAuth, ...restOptions } = options;
 
+  // For authentication endpoints, use specific CORS settings to avoid preflight issues
+  const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register');
+  
   const defaultOptions: RequestOptions = {
     mode: 'cors',
+    // Always include credentials to ensure cookies are sent
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
@@ -47,12 +52,21 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
   };
 
   try {
+    // Log the request for debugging
+    console.debug(`Making API request to: ${baseURL}${url}`, {
+      method: defaultOptions.method || 'GET',
+      headers: defaultOptions.headers,
+      credentials: defaultOptions.credentials,
+    });
+    
     const response = await fetch(`${baseURL}${url}`, defaultOptions);
     
     // Network error handling
     if (!response) {
       throw new Error('Network error - Failed to connect to the server');
     }
+
+    console.debug(`Response status: ${response.status} ${response.statusText}`);
 
     // Handle 401 errors
     if (!skipAuth && response.status === 401) {
@@ -113,11 +127,21 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
 
     if (!response.ok) {
       try {
-        const errorData = await response.json();
-        const errorMessage = errorData.message || errorData.title || errorData.detail || `Request failed with status ${response.status}`;
-        console.error('API Error:', errorData);
-        throw new Error(errorMessage);
+        // Check if response can be parsed as JSON
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          const errorMessage = errorData.message || errorData.title || errorData.detail || `Request failed with status ${response.status}`;
+          console.error('API Error:', errorData);
+          throw new Error(errorMessage);
+        } else {
+          // Handle non-JSON responses
+          const text = await response.text();
+          console.error('API Error (non-JSON):', text);
+          throw new Error(`Request failed with status ${response.status}: ${text.substring(0, 100)}`);
+        }
       } catch (e) {
+        console.error('Error parsing error response:', e);
         throw new Error(`Request failed with status ${response.status}`);
       }
     }
@@ -126,8 +150,21 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
       return { data: await response.blob() } as ApiResponse<T>;
     }
 
-    const data = await response.json();
-    return { data } as ApiResponse<T>;
+    try {
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const data = await response.json();
+        return { data } as ApiResponse<T>;
+      } else {
+        // Handle non-JSON responses
+        const text = await response.text();
+        console.warn('Received non-JSON response:', text.substring(0, 100));
+        return { data: text as any } as ApiResponse<T>;
+      }
+    } catch (e) {
+      console.error('Error parsing success response:', e);
+      throw new Error('Failed to parse response data');
+    }
   } catch (error) {
     console.error('API Request failed:', error);
     if (error instanceof Error) {

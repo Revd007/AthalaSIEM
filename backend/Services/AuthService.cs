@@ -369,7 +369,7 @@ namespace Backend.Services
         
         private string GetJwtKey()
         {
-            string key = _configuration["JwtSettings:Secret"];
+            string? key = _configuration["JwtSettings:Secret"];
             if (string.IsNullOrEmpty(key))
             {
                 key = _configuration["Jwt:Key"];

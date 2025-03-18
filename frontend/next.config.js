@@ -1,15 +1,26 @@
 /** @type {import('next').NextConfig} */
+
+// Load environment variables from .env.local
+const { env } = require('./src/scripts/load-env');
+
 const nextConfig = {
   reactStrictMode: true,
+  
+  // Pass environment variables to the client
+  env: env,
+  
   async rewrites() {
+    // Ensure we have a valid API URL, falling back to the default HTTP port
+    const apiUrl = env.NEXT_PUBLIC_API_URL || 'http://localhost:9595';
+    
     return [
       {
         source: '/api/auth/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL}/auth/:path*`
+        destination: `${apiUrl}/auth/:path*`
       },
       {
         source: '/auth/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL}/auth/:path*`
+        destination: `${apiUrl}/auth/:path*`
       }
     ]
   },
@@ -26,7 +37,9 @@ const nextConfig = {
         ]
       }
     ]
-  }
+  },
+  // Security enhancement - disable X-Powered-By header
+  poweredByHeader: false
 }
 
 module.exports = nextConfig

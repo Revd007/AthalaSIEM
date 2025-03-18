@@ -131,7 +131,8 @@ export const agentService = {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Accept': 'application/octet-stream'
         },
-        credentials: 'include'
+        // Don't use credentials for cross-origin requests to avoid CORS issues
+        credentials: 'same-origin'
       });
 
       if (!downloadResponse.ok) {

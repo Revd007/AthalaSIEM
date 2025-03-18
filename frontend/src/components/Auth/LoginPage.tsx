@@ -19,13 +19,23 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [shouldNavigate, setShouldNavigate] = useState(false)
 
+  // Check if user is already logged in
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
       router.replace('/dashboard');
     }
   }, [router]);
+
+  // Handle navigation after successful login
+  useEffect(() => {
+    if (shouldNavigate) {
+      router.replace('/dashboard');
+      setShouldNavigate(false);
+    }
+  }, [shouldNavigate, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -47,10 +57,8 @@ export function LoginPage() {
         localStorage.setItem('token', response.data.token)
         toast.success('Login successful')
         
-        // Small delay to ensure token is stored
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        router.replace('/dashboard')
+        // Trigger navigation via state change instead of direct router call
+        setShouldNavigate(true);
       } else {
         throw new Error('Invalid response from server - no token received')
       }

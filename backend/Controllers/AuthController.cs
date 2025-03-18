@@ -13,6 +13,8 @@ using System;
 using System.Threading.Tasks;
 using Backend.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Cors;
 
 namespace Backend.Controllers
 {
@@ -21,6 +23,7 @@ namespace Backend.Controllers
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
+    [EnableCors("AllowFrontend")]  // Enable CORS for this controller
     public class AuthController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -41,6 +44,14 @@ namespace Backend.Controllers
             _config = config;
             _authService = authService ?? throw new ArgumentNullException(nameof(authService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
+
+        // Special endpoint just for CORS preflight
+        [HttpOptions]
+        [Route("{*url}")]
+        public IActionResult HandleOptions()
+        {
+            return Ok();
         }
 
         [HttpPost("register")]
@@ -91,26 +102,49 @@ namespace Backend.Controllers
         /// <summary>
         /// Authenticates a user
         /// </summary>
-        /// <param name="request">The login request</param>
+        /// <param name="loginDto">The login request</param>
         /// <returns>The authentication result</returns>
         [HttpPost("login")]
-        public async Task<ActionResult> Login([FromBody] LoginRequest request)
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
         {
             try
             {
-                var result = await _authService.AuthenticateAsync(request.Username, request.Password);
+                // Ensure CORS headers are added for this response
+                var origin = Request.Headers["Origin"].ToString();
+                if (!string.IsNullOrEmpty(origin))
+                {
+                    Response.Headers["Access-Control-Allow-Origin"] = origin;
+                    Response.Headers["Access-Control-Allow-Credentials"] = "true";
+                }
+                
+                _logger.LogInformation("Login attempt for user: {Username}", loginDto.Username);
+                
+                // Basic validation
+                if (string.IsNullOrEmpty(loginDto.Username) || string.IsNullOrEmpty(loginDto.Password))
+                {
+                    _logger.LogWarning("Login failed: Missing username or password");
+                    return BadRequest(new { message = "Username and password are required" });
+                }
+                
+                var result = await _authService.AuthenticateAsync(loginDto.Username, loginDto.Password);
                 
                 if (!result.Success)
                 {
+                    _logger.LogWarning("Login failed for user {Username}: {Error}", loginDto.Username, result.ErrorMessage);
                     return Unauthorized(new { message = result.ErrorMessage });
                 }
                 
                 var user = await _authService.GetUserFromTokenAsync(result.Token);
                 if (user == null)
                 {
-                    return StatusCode(500, "Failed to get user information");
+                    _logger.LogError("Failed to get user information after successful authentication for {Username}", loginDto.Username);
+                    return StatusCode(500, new { message = "Failed to get user information" });
                 }
 
+                _logger.LogInformation("Login successful for user {Username}", loginDto.Username);
                 return Ok(new
                 {
                     Token = result.Token,
@@ -127,8 +161,8 @@ namespace Backend.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during login for user {Username}", request.Username);
-                return StatusCode(500, "An error occurred during login");
+                _logger.LogError(ex, "Error during login for user {Username}", loginDto.Username);
+                return StatusCode(500, new { message = "An error occurred during login", error = ex.Message });
             }
         }
 
@@ -297,7 +331,7 @@ namespace Backend.Controllers
     /// <summary>
     /// Login request
     /// </summary>
-    public class LoginRequest
+    public class LoginDto
     {
         /// <summary>
         /// Gets or sets the username

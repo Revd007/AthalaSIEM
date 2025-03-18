@@ -71,19 +71,29 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", builder =>
     {
-        builder.WithOrigins("http://localhost:3000")
-               .AllowAnyMethod()
-               .AllowAnyHeader()
-               .AllowCredentials()
-               .WithExposedHeaders("Content-Disposition"); // For file downloads
+        builder.WithOrigins(
+                "http://localhost:7654",  // Development
+                "http://localhost:7655",  // Production
+                "https://localhost:7656", // Secure Production
+                "http://localhost:7657"   // Test
+            )
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials()
+            .WithExposedHeaders("Content-Disposition"); // For file downloads
     });
     
-    // Add a more permissive CORS policy for gRPC clients
+    // Add a more permissive CORS policy for gRPC clients that doesn't use credentials
     options.AddPolicy("AllowAll", builder =>
     {
-        builder.AllowAnyOrigin()
-               .AllowAnyMethod()
-               .AllowAnyHeader();
+        builder.WithOrigins(
+                "http://localhost:7654",
+                "http://localhost:7655",
+                "https://localhost:7656",
+                "http://localhost:7657"
+            )
+            .AllowAnyMethod()
+            .AllowAnyHeader();
     });
 });
 
@@ -154,10 +164,34 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Configure middleware in correct order
-app.UseHttpsRedirection();
+// Configure middleware in correct order - IMPORTANT: Routing must come before CORS
 app.UseRouting();
+
+// Special handling for OPTIONS requests (preflight)
+app.Use(async (context, next) =>
+{
+    // If it's a preflight request, handle it directly
+    if (context.Request.Method == "OPTIONS")
+    {
+        // Apply CORS directly for OPTIONS requests
+        context.Response.Headers["Access-Control-Allow-Origin"] = context.Request.Headers["Origin"];
+        context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
+        context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With";
+        context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+        context.Response.StatusCode = 200;
+        return;
+    }
+
+    // For non-OPTIONS requests, continue with middleware pipeline
+    await next();
+});
+
+// Apply CORS middleware first for handling standard requests
 app.UseCors("AllowFrontend");
+
+// Apply HTTPS redirection AFTER handling OPTIONS requests - only for non-OPTIONS requests
+app.UseHttpsRedirection();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
