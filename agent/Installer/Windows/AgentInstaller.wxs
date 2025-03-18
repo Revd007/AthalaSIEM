@@ -19,6 +19,7 @@
     <Property Id="AGENT_NAME" Value="AthalaSIEM Agent" />
     <Property Id="USE_SSL" Value="1" />
     <Property Id="SILENT_REGISTRATION" Value="0" />
+    <Property Id="MSIUSEREALADMINDETECTION" Value="1" />
     
     <!-- Allow passing properties from command line -->
     <SetProperty Id="DEPLOYMENT_TOKEN" Value="[TOKEN]" After="AppSearch" Condition="TOKEN" />
@@ -53,7 +54,8 @@
                         Description="Collects and forwards security events to Athala SIEM"
                         Start="demand"
                         Account="LocalSystem"
-                        ErrorControl="normal">
+                        ErrorControl="normal"
+                        Vital="yes">
           <!-- Service recovery settings -->
           <util:ServiceConfig 
             FirstFailureActionType="restart"
@@ -69,6 +71,27 @@
                         Stop="both"
                         Remove="uninstall"
                         Wait="yes" />
+      </Component>
+      
+      <!-- Service registry configuration -->
+      <Component Id="ServiceRegistry" Guid="0d615a60-cf57-40e2-bce5-6ef5327db497">
+        <!-- Service Parameters registry keys -->
+        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\AthalaSIEMAgent\Parameters" 
+                      Name="WorkingDirectory" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\AthalaSIEMAgent\Parameters" 
+                      Name="ConfigPath" Value="[INSTALLFOLDER]appsettings.json" Type="string" />
+        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\AthalaSIEMAgent\Parameters" 
+                      Name="ApplicationBase" Value="[INSTALLFOLDER]" Type="string" />
+        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\AthalaSIEMAgent\Parameters" 
+                      Name="LogPath" Value="[INSTALLFOLDER]Logs" Type="string" />
+      </Component>
+      
+      <!-- Application path registry -->
+      <Component Id="AppPathRegistry" Guid="0d615a60-cf57-40e2-bce5-6ef5327db498">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\AthalaSIEM.Agent.exe" 
+                      Value="[INSTALLFOLDER]AthalaSIEM.Agent.exe" Type="string" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\AthalaSIEM.Agent.exe" 
+                      Name="Path" Value="[INSTALLFOLDER]" Type="string" />
       </Component>
       
       <Component Id="AgentConfig" Guid="0d615a60-cf57-40e2-bce5-6ef5327db492">
@@ -90,6 +113,13 @@
                   Target="[INSTALLFOLDER]AthalaSIEM.Agent.exe"
                   Arguments="--config"
                   WorkingDirectory="INSTALLFOLDER" />
+        
+        <!-- Add shortcut to manage service -->
+        <Shortcut Id="ManageServiceShortcut" 
+                  Name="Manage Athala SIEM Agent Service"
+                  Description="Manage the Athala SIEM Agent service"
+                  Target="[System64Folder]services.msc"
+                  WorkingDirectory="System64Folder" />
                   
         <RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall" />
         <RegistryValue Root="HKCU" Key="Software\AthalaSecurity\AthalaSIEMAgent" Name="installed" Type="integer" Value="1" KeyPath="yes" />

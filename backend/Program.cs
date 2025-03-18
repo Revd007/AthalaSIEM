@@ -91,8 +91,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 });
 
 // Configure JWT Authentication
-var jwtSettings = builder.Configuration.GetSection("JwtSettings");
-var key = Encoding.ASCII.GetBytes(jwtSettings["Secret"] ?? throw new InvalidOperationException("JWT secret not configured"));
+var jwtSettings = builder.Configuration.GetSection("Jwt");
+var key = Encoding.ASCII.GetBytes(jwtSettings["Key"] ?? throw new InvalidOperationException("JWT secret not configured"));
 
 builder.Services.AddAuthentication(x =>
 {

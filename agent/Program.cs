@@ -32,24 +32,280 @@ namespace AthalaSIEM.Agent
         /// </summary>
         public static async Task Main(string[] args)
         {
-            // Set up configuration
-            var configuration = new ConfigurationBuilder()
-                .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
-                .AddEnvironmentVariables()
-                .AddCommandLine(args)
-                .Build();
+            // Get the directory of the executable - this is always correct
+            string executablePath = AppContext.BaseDirectory;
+            
+            // Force working directory to be the same as executable path
+            try
+            {
+                Directory.SetCurrentDirectory(executablePath);
+            }
+            catch
+            {
+                // Non-critical if it fails
+            }
+            
+            // These will be used by Microsoft.Extensions.Configuration.FileConfigurationExtensions
+            Environment.SetEnvironmentVariable("DOTNET_CONTENTROOT", executablePath);
+            Environment.SetEnvironmentVariable("ASPNETCORE_CONTENTROOT", executablePath);
+            
+            // Define standard application data folder for emergency fallback
+            string appDataFolderPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "Athala SIEM Agent");
+            
+            // Create it if it doesn't exist
+            if (!Directory.Exists(appDataFolderPath))
+            {
+                try
+                {
+                    Directory.CreateDirectory(appDataFolderPath);
+                }
+                catch { /* Ignore creation errors */ }
+            }
+            
+            // Log startup information to help debug
+            try
+            {
+                string startupLogPath = Path.Combine(appDataFolderPath, "startup.log");
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] Starting from directory: {executablePath}\n");
+                File.AppendAllText(startupLogPath, $"[{DateTime.Now}] Current directory: {Directory.GetCurrentDirectory()}\n");
+            }
+            catch { /* Ignore errors writing startup log */ }
+            
+            // Build a list of potential configuration file paths
+            var configFiles = new List<string>
+            {
+                // First priority - executable directory (most reliable)
+                Path.Combine(executablePath, "appsettings.json"),
+            };
+            
+            // Add current working directory if different
+            string currentDir = Directory.GetCurrentDirectory();
+            if (currentDir != executablePath)
+            {
+                configFiles.Add(Path.Combine(currentDir, "appsettings.json"));
+            }
+            
+            // Add standard installation paths
+            configFiles.Add(@"C:\Program Files (x86)\Athala SIEM Agent\appsettings.json");
+            configFiles.Add(@"C:\Program Files\Athala SIEM Agent\appsettings.json");
+                
+            // ProgramData fallback (last resort)
+            configFiles.Add(Path.Combine(appDataFolderPath, "appsettings.json"));
+            
+            // Check all possible paths and use the first one that exists
+            string? primaryConfigPath = null;
+            foreach (var path in configFiles)
+            {
+                if (File.Exists(path))
+                {
+                    primaryConfigPath = path;
+                    break;
+                }
+            }
+            
+            // If no configuration file found anywhere, create a default one in ProgramData
+            if (primaryConfigPath == null)
+            {
+                try
+                {
+                    // Create a default config in ProgramData as a safe location accessible to services
+                    string fallbackConfigPath = Path.Combine(appDataFolderPath, "appsettings.json");
+                    string minimalConfig = @"{
+""Logging"": {
+  ""LogLevel"": {
+    ""Default"": ""Information"",
+    ""Microsoft"": ""Warning"",
+    ""Microsoft.Hosting.Lifetime"": ""Information""
+  }
+},
+""Agent"": {
+  ""AgentName"": ""AthalaSIEM Agent"",
+  ""BackendApiUrl"": ""https://localhost:9596"",
+  ""BackendGrpcUrl"": ""https://localhost:50051""
+}
+}";
+                    File.WriteAllText(fallbackConfigPath, minimalConfig);
+                    primaryConfigPath = fallbackConfigPath;
+                    
+                    // Log this emergency fallback
+                    File.AppendAllText(
+                        Path.Combine(appDataFolderPath, "startup.log"),
+                        $"[{DateTime.Now}] Created emergency fallback configuration at: {fallbackConfigPath}\n");
+                }
+                catch (Exception) // Use proper discard without declaring a variable
+                {
+                    // Last resort - use temp directory
+                    try
+                    {
+                        string tempPath = Path.Combine(Path.GetTempPath(), "AthalaSIEM");
+                        if (!Directory.Exists(tempPath))
+                        {
+                            Directory.CreateDirectory(tempPath);
+                        }
+                        
+                        string fallbackPath = Path.Combine(tempPath, "appsettings.json");
+                        if (!File.Exists(fallbackPath))
+                        {
+                            string minimalConfig = @"{
+  ""Logging"": {
+    ""LogLevel"": {
+      ""Default"": ""Information"",
+      ""Microsoft"": ""Warning"",
+      ""Microsoft.Hosting.Lifetime"": ""Information""
+    }
+  },
+  ""Agent"": {
+    ""AgentName"": ""AthalaSIEM Agent"",
+    ""BackendApiUrl"": ""https://localhost:9596"",
+    ""BackendGrpcUrl"": ""https://localhost:50051""
+  }
+}";
+                            File.WriteAllText(fallbackPath, minimalConfig);
+                        }
+                        
+                        primaryConfigPath = fallbackPath;
+                        Console.WriteLine($"Using temporary fallback configuration at: {primaryConfigPath}");
+                    }
+                    catch
+                    {
+                        // Absolute last resort, just use temp path
+                        primaryConfigPath = Path.GetTempPath();
+                        Console.WriteLine($"Using temp path for configuration: {primaryConfigPath}");
+                    }
+                }
+            }
+            
+            // If we found a config path, log it
+            if (primaryConfigPath != null)
+            {
+                try
+                {
+                    File.AppendAllText(
+                        Path.Combine(appDataFolderPath, "startup.log"),
+                        $"[{DateTime.Now}] Using configuration file: {primaryConfigPath}\n");
+                }
+                catch { /* Ignore logging errors */ }
+            }
+            
+            // Create a configuration builder
+            var configBuilder = new ConfigurationBuilder();
+            
+            if (primaryConfigPath != null)
+            {
+                // Set base path to the directory containing the config file
+                string configDirectory = Path.GetDirectoryName(primaryConfigPath) ?? executablePath;
+                configBuilder.SetBasePath(configDirectory);
+                
+                // Add the configuration file
+                configBuilder.AddJsonFile(Path.GetFileName(primaryConfigPath), optional: false, reloadOnChange: true);
+                
+                Console.WriteLine($"Loading configuration from: {primaryConfigPath}");
+                
+                // Store the config file path for later reference by other parts of the application
+                configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    { "ConfigFilePath", primaryConfigPath }
+                });
+            }
+            else
+            {
+                // No configuration file found - use the executable directory as base
+                configBuilder.SetBasePath(executablePath);
+                
+                // Add optional config file - will likely fail but at least we tried
+                configBuilder.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+                
+                Console.WriteLine($"WARNING: No configuration file found in any of the expected locations!");
+            }
+            
+            // Add environment variables and command line args
+            configBuilder.AddEnvironmentVariables().AddCommandLine(args);
+            
+            // Build the configuration
+            var configuration = configBuilder.Build();
 
+            // Ensure logs and config directories exist
+            string logPath = Path.Combine(executablePath, "logs");
+            string configPath = Path.Combine(executablePath, "config");
+            
+            try
+            {
+                // Create logs directory
+                if (!Directory.Exists(logPath))
+                {
+                    Directory.CreateDirectory(logPath);
+                }
+                
+                // Create config directory
+                if (!Directory.Exists(configPath))
+                {
+                    Directory.CreateDirectory(configPath);
+                }
+            }
+            catch (Exception) // Use proper discard without declaring a variable
+            {
+                // If we can't create directories in the application path, 
+                // fall back to a default location in CommonApplicationData
+                string appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Athala SIEM Agent");
+                
+                try
+                {
+                    // Ensure parent directory exists
+                    if (!Directory.Exists(appDataPath))
+                    {
+                        Directory.CreateDirectory(appDataPath);
+                    }
+                    
+                    // Create logs directory in appdata
+                    logPath = Path.Combine(appDataPath, "logs");
+                    if (!Directory.Exists(logPath))
+                    {
+                        Directory.CreateDirectory(logPath);
+                    }
+                    
+                    // Create config directory in appdata
+                    configPath = Path.Combine(appDataPath, "config");
+                    if (!Directory.Exists(configPath))
+                    {
+                        Directory.CreateDirectory(configPath);
+                    }
+                }
+                catch
+                {
+                    // Last resort - use temp directory
+                    string tempPath = Path.Combine(Path.GetTempPath(), "AthalaSIEM");
+                    if (!Directory.Exists(tempPath))
+                    {
+                        Directory.CreateDirectory(tempPath);
+                    }
+                    
+                    logPath = Path.Combine(tempPath, "logs");
+                    if (!Directory.Exists(logPath))
+                    {
+                        Directory.CreateDirectory(logPath);
+                    }
+                    
+                    configPath = Path.Combine(tempPath, "config");
+                    if (!Directory.Exists(configPath))
+                    {
+                        Directory.CreateDirectory(configPath);
+                    }
+                }
+            }
+            
             // Initialize logging
             Log.Logger = new LoggerConfiguration()
                 .MinimumLevel.Information()
                 .WriteTo.Console()
-                .WriteTo.File("logs/agent-.log", rollingInterval: Serilog.RollingInterval.Day)
+                .WriteTo.File(Path.Combine(logPath, "agent-.log"), rollingInterval: Serilog.RollingInterval.Day)
                 .CreateLogger();
 
             try
             {
-                Log.Information("Starting Athala SIEM Agent");
+                Log.Information("Starting Athala SIEM Agent from directory: {0}", executablePath);
+                Log.Information("Logs directory: {0}", logPath);
                 
                 // Parse command line arguments
                 if (args.Length > 0)
@@ -245,15 +501,166 @@ namespace AthalaSIEM.Agent
         /// <returns>Host builder</returns>
         public static IHostBuilder CreateHostBuilder(string[] args) =>
             Host.CreateDefaultBuilder(args)
+                .UseContentRoot(AppContext.BaseDirectory) // Force content root to be the executable directory
                 .UseWindowsService(options =>
                 {
                     options.ServiceName = "AthalaSIEM Agent";
                 })
+                .ConfigureHostConfiguration(config => 
+                {
+                    // Set content root path explicitly in host configuration
+                    config.AddInMemoryCollection(new Dictionary<string, string?>
+                    {
+                        { HostDefaults.ContentRootKey, AppContext.BaseDirectory }
+                    });
+                })
                 .ConfigureAppConfiguration((hostContext, config) =>
                 {
-                    config.SetBasePath(Directory.GetCurrentDirectory());
-                    config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-                    config.AddJsonFile($"appsettings.{hostContext.HostingEnvironment.EnvironmentName}.json", optional: true, reloadOnChange: true);
+                    // Clear any existing configuration sources added by CreateDefaultBuilder
+                    // This is important to prevent it from looking in the wrong locations
+                    ((IConfigurationBuilder)config).Sources.Clear();
+                    
+                    // We define multiple possible locations for configuration
+                    string executablePath = AppContext.BaseDirectory;
+                    string currentDirectory = Directory.GetCurrentDirectory();
+                    string appDataPath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                        "Athala SIEM Agent");
+                        
+                    // Check if the service has registry parameters set
+                    string? registryConfigPath = null;
+                    try 
+                    {
+                        using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                            @"SYSTEM\CurrentControlSet\Services\AthalaSIEMAgent\Parameters");
+                        if (key != null)
+                        {
+                            registryConfigPath = key.GetValue("ConfigPath") as string;
+                            
+                            if (!string.IsNullOrEmpty(registryConfigPath))
+                            {
+                                Console.WriteLine($"Found registry-defined config path: {registryConfigPath}");
+                            }
+                        }
+                    }
+                    catch (Exception regEx)
+                    {
+                        Console.WriteLine($"Error reading registry: {regEx.Message}");
+                    }
+                    
+                    // Build a list of potential configuration file paths
+                    var configFiles = new List<string>();
+                    
+                    // First priority - registry defined path (if it exists)
+                    if (!string.IsNullOrEmpty(registryConfigPath))
+                    {
+                        configFiles.Add(registryConfigPath);
+                    }
+                    
+                    // Add standard locations
+                    var locations = new List<string>();
+                    
+                    // Executable directory (most reliable)
+                    locations.Add(Path.Combine(executablePath, "appsettings.json"));
+                    
+                    // Current directory (if different)
+                    if (!currentDirectory.Equals(executablePath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        locations.Add(Path.Combine(currentDirectory, "appsettings.json"));
+                    }
+                    
+                    // Standard installation paths
+                    locations.Add(@"C:\Program Files (x86)\Athala SIEM Agent\appsettings.json");
+                    locations.Add(@"C:\Program Files\Athala SIEM Agent\appsettings.json");
+                    
+                    // ProgramData fallback
+                    locations.Add(Path.Combine(appDataPath, "appsettings.json"));
+                    
+                    // Add all locations
+                    configFiles.AddRange(locations);
+                    
+                    // Check for existing configuration files
+                    string? foundConfigPath = null;
+                    foreach (var path in configFiles)
+                    {
+                        if (File.Exists(path))
+                        {
+                            foundConfigPath = path;
+                            Console.WriteLine($"Found configuration at: {path}");
+                            break;
+                        }
+                    }
+                    
+                    if (foundConfigPath != null)
+                    {
+                        // Get the directory containing the config file
+                        string configDirectory = Path.GetDirectoryName(foundConfigPath) ?? executablePath;
+                        
+                        // Set base path to the directory containing the config file
+                        config.SetBasePath(configDirectory);
+                        
+                        // Add the configuration file
+                        config.AddJsonFile(Path.GetFileName(foundConfigPath), optional: false, reloadOnChange: true);
+                        
+                        // Add the config file path as a configuration value
+                        config.AddInMemoryCollection(new Dictionary<string, string?>
+                        {
+                            { "ConfigFilePath", foundConfigPath }
+                        });
+                    }
+                    else
+                    {
+                        // No configuration file found, create a fallback in ProgramData
+                        try
+                        {
+                            Directory.CreateDirectory(appDataPath);
+                            string fallbackPath = Path.Combine(appDataPath, "appsettings.json");
+                            
+                            if (!File.Exists(fallbackPath))
+                            {
+                                string minimalConfig = @"{
+  ""Logging"": {
+    ""LogLevel"": {
+      ""Default"": ""Information"",
+      ""Microsoft"": ""Warning"",
+      ""Microsoft.Hosting.Lifetime"": ""Information""
+    }
+  },
+  ""Agent"": {
+    ""AgentName"": ""AthalaSIEM Agent"",
+    ""BackendApiUrl"": ""https://localhost:9596"",
+    ""BackendGrpcUrl"": ""https://localhost:50051""
+  }
+}";
+                                File.WriteAllText(fallbackPath, minimalConfig);
+                            }
+                            
+                            config.SetBasePath(appDataPath);
+                            config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                            
+                            config.AddInMemoryCollection(new Dictionary<string, string?>
+                            {
+                                { "ConfigFilePath", fallbackPath },
+                                { "IsEmergencyConfig", "true" }
+                            });
+                            
+                            Console.WriteLine($"Using emergency fallback configuration at: {fallbackPath}");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"ERROR: Could not create fallback configuration: {ex.Message}");
+                            
+                            // Last resort - use the executable directory as base
+                            config.SetBasePath(executablePath);
+                            
+                            // Add optional config file
+                            config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+                            
+                            Console.WriteLine("WARNING: Using executable directory as fallback for configuration!");
+                        }
+                    }
+                    
+                    // Add environment variables and command line args
                     config.AddEnvironmentVariables();
                     config.AddCommandLine(args);
                 })
@@ -289,7 +696,7 @@ namespace AthalaSIEM.Agent
                     services.AddGrpcClient<SiemService.SiemServiceClient>((services, options) =>
                     {
                         var settings = hostContext.Configuration.GetSection("Agent").Get<AgentSettings>();
-                        options.Address = new Uri(settings?.BackendGrpcUrl ?? "https://localhost:7078");
+                        options.Address = new Uri(settings?.BackendGrpcUrl ?? "https://localhost:50051");
                     })
                     .ConfigurePrimaryHttpMessageHandler(() =>
                     {
@@ -314,10 +721,118 @@ namespace AthalaSIEM.Agent
                     // Only add EventLog logging on Windows
                     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                     {
-                        logging.AddEventLog();
+                        logging.AddEventLog(options =>
+                        {
+                            options.SourceName = "AthalaSIEM Agent";
+                            options.LogName = "Application";
+                        });
                     }
                     
-                    logging.AddFile(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "agent-{Date}.log"));
+                    // Get the application data folder for logs
+                    string appDataPath = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                        "Athala SIEM Agent");
+                        
+                    // Try to find the config file path from the host context
+                    string? configFilePath = hostContext.Configuration["ConfigFilePath"];
+                    bool isEmergencyConfig = hostContext.Configuration["IsEmergencyConfig"] == "true";
+                    
+                    // Get the log path from various sources
+                    string? logPath = null;
+                    
+                    // First, check if the registry specifies a working directory
+                    try
+                    {
+                        using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                            @"SYSTEM\CurrentControlSet\Services\AthalaSIEMAgent\Parameters");
+                        if (key != null)
+                        {
+                            string? workingDir = key.GetValue("WorkingDirectory") as string;
+                            if (!string.IsNullOrEmpty(workingDir) && Directory.Exists(workingDir))
+                            {
+                                // Try to use a logs subfolder in the working directory
+                                string potentialLogPath = Path.Combine(workingDir, "logs");
+                                try
+                                {
+                                    if (!Directory.Exists(potentialLogPath))
+                                    {
+                                        Directory.CreateDirectory(potentialLogPath);
+                                    }
+                                    logPath = potentialLogPath;
+                                    Console.WriteLine($"Using registry-defined log path: {logPath}");
+                                }
+                                catch
+                                {
+                                    // If we can't create the logs directory in the working directory,
+                                    // just use the working directory itself
+                                    logPath = workingDir;
+                                    Console.WriteLine($"Using registry-defined working directory for logs: {logPath}");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception regEx)
+                    {
+                        Console.WriteLine($"Error reading registry for logs path: {regEx.Message}");
+                    }
+                    
+                    // If we have a valid config file and couldn't find a registry path, try to use its directory
+                    if (logPath == null && !string.IsNullOrEmpty(configFilePath) && !isEmergencyConfig)
+                    {
+                        try
+                        {
+                            string? configDir = Path.GetDirectoryName(configFilePath);
+                            if (!string.IsNullOrEmpty(configDir) && Directory.Exists(configDir))
+                            {
+                                // Try to use a logs subfolder in the config directory
+                                string potentialLogPath = Path.Combine(configDir, "logs");
+                                if (!Directory.Exists(potentialLogPath))
+                                {
+                                    Directory.CreateDirectory(potentialLogPath);
+                                }
+                                logPath = potentialLogPath;
+                                Console.WriteLine($"Using config directory for logs: {logPath}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error creating logs directory near config file: {ex.Message}");
+                        }
+                    }
+                    
+                    // If we still don't have a log path, use the ProgramData folder
+                    if (logPath == null)
+                    {
+                        try
+                        {
+                            string potentialLogPath = Path.Combine(appDataPath, "logs");
+                            if (!Directory.Exists(potentialLogPath))
+                            {
+                                Directory.CreateDirectory(potentialLogPath);
+                            }
+                            logPath = potentialLogPath;
+                            Console.WriteLine($"Using ProgramData for logs: {logPath}");
+                        }
+                        catch (Exception) // Properly discard unused exception variable
+                        {
+                            // Last resort - use temp directory
+                            try
+                            {
+                                logPath = Path.Combine(Path.GetTempPath(), "AthalaSIEM", "logs");
+                                Directory.CreateDirectory(logPath);
+                                Console.WriteLine($"Using temp directory for logs: {logPath}");
+                            }
+                            catch
+                            {
+                                // Absolute last resort, just use temp path
+                                logPath = Path.GetTempPath();
+                                Console.WriteLine($"Using temp path for logs: {logPath}");
+                            }
+                        }
+                    }
+                    
+                    // Add file logging with the determined path
+                    logging.AddFile(Path.Combine(logPath, "agent-{Date}.log"));
                 });
 
         private static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
@@ -352,7 +867,7 @@ namespace AthalaSIEM.Agent
             services.AddGrpcClient<SiemService.SiemServiceClient>((services, options) =>
             {
                 var settings = configuration.GetSection("Agent").Get<AgentSettings>();
-                options.Address = new Uri(settings?.BackendGrpcUrl ?? "https://localhost:7078");
+                options.Address = new Uri(settings?.BackendGrpcUrl ?? "https://localhost:50051");
             })
             .ConfigurePrimaryHttpMessageHandler(() =>
             {

@@ -100,30 +100,30 @@ namespace AthalaSIEM.Agent.Security
 
                 try
                 {
-                    // Send registration request
-                    var response = await _client.RegisterAgentAsync(request);
+                // Send registration request
+                var response = await _client.RegisterAgentAsync(request);
                     
-                    if (response != null && !string.IsNullOrEmpty(response.AgentId))
+                if (response != null && !string.IsNullOrEmpty(response.AgentId))
+                {
+                    // Create new agent identity
+                    _agentIdentity = new AgentIdentity
                     {
-                        // Create new agent identity
-                        _agentIdentity = new AgentIdentity
-                        {
-                            AgentId = response.AgentId,
+                        AgentId = response.AgentId,
                             // Use the API key from the response or generate a fallback if empty
                             ApiKey = !string.IsNullOrEmpty(response.ApiKey) ? response.ApiKey : GenerateFallbackApiKey(response.AgentId),
-                            RegisteredAt = DateTime.UtcNow,
-                            LastSeenAt = DateTime.UtcNow
-                        };
+                        RegisteredAt = DateTime.UtcNow,
+                        LastSeenAt = DateTime.UtcNow
+                    };
 
-                        // Save agent identity
-                        SaveAgentIdentity();
+                    // Save agent identity
+                    SaveAgentIdentity();
 
-                        _logger.LogInformation("Agent registered successfully with ID: {AgentId}", _agentIdentity.AgentId);
+                    _logger.LogInformation("Agent registered successfully with ID: {AgentId}", _agentIdentity.AgentId);
                         return AgentRegistrationResult.CreateSuccess(_agentIdentity.AgentId, _agentIdentity.ApiKey);
-                    }
-                    else
-                    {
-                        _logger.LogError("Failed to register agent: Invalid response from backend");
+                }
+                else
+                {
+                    _logger.LogError("Failed to register agent: Invalid response from backend");
                         return AgentRegistrationResult.CreateFailure("Invalid response from backend");
                     }
                 }
@@ -304,8 +304,8 @@ namespace AthalaSIEM.Agent.Security
                     _logger.LogError(ex, "SSL/TLS connection error validating API key: {message}. Check that the server URL is correct and SSL is properly configured.", httpEx.InnerException.Message);
                 }
                 else
-                {
-                    _logger.LogError(ex, "Error validating API key");
+            {
+                _logger.LogError(ex, "Error validating API key");
                 }
                 return false;
             }
