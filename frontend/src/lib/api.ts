@@ -2,7 +2,7 @@ import { QueryClient } from '@tanstack/react-query'
 import type { ApiResponse } from '../types/api'
 
 // Use environment variable with fallback
-const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5135'
+const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9595'
 
 export const queryClient = new QueryClient({
   defaultOptions: {

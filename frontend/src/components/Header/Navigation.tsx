@@ -16,9 +16,9 @@ import {
   Network,
   Settings,
   Menu,
-  X
+  X,
+  Terminal
 } from 'lucide-react'
-import React from 'react'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },

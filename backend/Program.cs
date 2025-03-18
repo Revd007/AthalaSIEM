@@ -66,7 +66,7 @@ builder.Services.AddGrpc(options =>
     options.MaxSendMessageSize = 16 * 1024 * 1024; // 16 MB
 });
 
-// Configure CORS
+// Configure CORS - updated to properly handle preflight requests
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", builder =>
@@ -76,6 +76,14 @@ builder.Services.AddCors(options =>
                .AllowAnyHeader()
                .AllowCredentials()
                .WithExposedHeaders("Content-Disposition"); // For file downloads
+    });
+    
+    // Add a more permissive CORS policy for gRPC clients
+    options.AddPolicy("AllowAll", builder =>
+    {
+        builder.AllowAnyOrigin()
+               .AllowAnyMethod()
+               .AllowAnyHeader();
     });
 });
 
@@ -146,14 +154,18 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Configure middleware in correct order
 app.UseHttpsRedirection();
+app.UseRouting();
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Map controllers
 app.MapControllers();
 
 // Map gRPC services
-app.MapGrpcService<AthalaSIEM.Backend.Services.SiemService>();
+app.MapGrpcService<AthalaSIEM.Backend.Services.SiemService>().RequireCors("AllowAll");
 app.MapGet("/proto/siem.proto", async context =>
 {
     await context.Response.WriteAsync(File.ReadAllText("Protos/siem.proto"));

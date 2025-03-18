@@ -182,11 +182,15 @@ namespace Backend.Controllers
                 // Get the installer type from the request or use default
                 string type = request?.Type ?? "windows";
 
-                // Get JWT secret key from configuration
-                var jwtKey = _config["JwtSettings:SecretKey"];
+                // Get JWT secret key from configuration - use either JwtSettings:Secret or Jwt:Key
+                var jwtKey = _config["JwtSettings:Secret"];
                 if (string.IsNullOrEmpty(jwtKey))
                 {
-                    return StatusCode(500, "Server configuration error");
+                    jwtKey = _config["Jwt:Key"];
+                    if (string.IsNullOrEmpty(jwtKey))
+                    {
+                        return StatusCode(500, "JWT secret configuration error");
+                    }
                 }
 
                 // Create token handler and get signing credentials

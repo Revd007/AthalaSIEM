@@ -105,7 +105,7 @@ namespace Backend.Services
             try
             {
                 var tokenHandler = new JwtSecurityTokenHandler();
-                var key = Encoding.ASCII.GetBytes(_configuration["JwtSettings:Secret"] ?? throw new InvalidOperationException("JWT Secret is not configured"));
+                var key = Encoding.ASCII.GetBytes(GetJwtKey());
                 
                 tokenHandler.ValidateToken(token, new TokenValidationParameters
                 {
@@ -138,7 +138,7 @@ namespace Backend.Services
             {
                 _logger.LogInformation("GetUserFromTokenAsync: Starting to parse token");
                 var tokenHandler = new JwtSecurityTokenHandler();
-                var key = Encoding.ASCII.GetBytes(_configuration["JwtSettings:Secret"] ?? throw new InvalidOperationException("JWT Secret is not configured"));
+                var key = Encoding.ASCII.GetBytes(GetJwtKey());
                 
                 var tokenValidationParameters = new TokenValidationParameters
                 {
@@ -191,7 +191,7 @@ namespace Backend.Services
             _logger.LogInformation("GenerateJwtToken: Generating token for user {Username}", user.Username);
             
             var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.ASCII.GetBytes(_configuration["JwtSettings:Secret"] ?? throw new InvalidOperationException("JWT Secret is not configured"));
+            var key = Encoding.ASCII.GetBytes(GetJwtKey());
             
             _logger.LogInformation("GenerateJwtToken: Getting roles for user {Username}", user.Username);
             var roles = _userRepository.GetUserRolesAsync(user.Id).Result;
@@ -365,6 +365,21 @@ namespace Backend.Services
                 _logger.LogError(ex, "VerifyPasswordHash: Error during password verification");
                 return false;
             }
+        }
+        
+        private string GetJwtKey()
+        {
+            string key = _configuration["JwtSettings:Secret"];
+            if (string.IsNullOrEmpty(key))
+            {
+                key = _configuration["Jwt:Key"];
+                if (string.IsNullOrEmpty(key))
+                {
+                    throw new InvalidOperationException("JWT Secret is not configured in either JwtSettings:Secret or Jwt:Key");
+                }
+            }
+            _logger.LogInformation("Using JWT key from configuration");
+            return key;
         }
     }
 } 
