@@ -73,9 +73,11 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend", builder =>
     {
         builder.WithOrigins(
+                "http://localhost:3000",  // Development
+                "http://localhost:9595",  // Backend
                 "http://localhost:7654",  // Development
                 "http://localhost:7655",  // Production
-                "https://localhost:7656", // Secure Production
+                "https://localhost:9596", // Secure Production
                 "http://localhost:7657"   // Test
             )
             .AllowAnyMethod()
@@ -88,9 +90,11 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", builder =>
     {
         builder.WithOrigins(
+                "http://localhost:3000",
+                "http://localhost:9595",
                 "http://localhost:7654",
                 "http://localhost:7655",
-                "https://localhost:7656",
+                "https://localhost:9596",
                 "http://localhost:7657"
             )
             .AllowAnyMethod()

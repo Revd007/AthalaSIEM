@@ -410,26 +410,23 @@ namespace Backend.Controllers
         [AllowAnonymous]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public ActionResult<string> GetAgentDownloadLink(string os, [FromQuery] string version = "latest")
+        public async Task<IActionResult> GetAgentDownloadLink(string os, [FromQuery] string version = "latest")
         {
-            string downloadUrl;
-            
-            switch (os.ToLowerInvariant())
+            try
             {
-                case "windows":
-                    downloadUrl = $"/downloads/agent/{version}/athala-siem-agent-{version}.msi";
-                    break;
-                case "linux-deb":
-                    downloadUrl = $"/downloads/agent/{version}/athala-siem-agent-{version}.deb";
-                    break;
-                case "linux-rpm":
-                    downloadUrl = $"/downloads/agent/{version}/athala-siem-agent-{version}.rpm";
-                    break;
-                default:
-                    return BadRequest(new { Error = $"Unsupported OS: {os}" });
+                var installer = await _installerService.GenerateInstallerPackage(os.ToLowerInvariant());
+                if (installer == null)
+                {
+                    return NotFound(new { Error = $"Installer for {os} not found" });
+                }
+
+                return File(installer.Content, installer.ContentType, installer.FileName);
             }
-            
-            return Ok(new { DownloadUrl = downloadUrl });
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error generating installer for {os}", os);
+                return StatusCode(500, new { Error = $"Error generating installer: {ex.Message}" });
+            }
         }
 
         /// <summary>

@@ -149,33 +149,7 @@ export function AgentSettings() {
   const handleDownloadInstaller = async () => {
     try {
       setIsLoading(true);
-      
-      // First, get a secure download URL
-      const response = await agentService.getSecureDownloadUrl();
-      
-      // Use the secure URL to download the installer
-      const downloadResponse = await fetch(response, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
-      });
-
-      if (!downloadResponse.ok) {
-        throw new Error('Failed to download installer');
-      }
-
-      // Create a blob from the response and trigger download
-      const blob = await downloadResponse.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'AthalaSIEMAgent.msi';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
+      await agentService.downloadAgentInstaller(selectedOS);
       toast.success('Installer downloaded successfully');
     } catch (error) {
       console.error('Download error:', error);
@@ -316,7 +290,7 @@ export function AgentSettings() {
             <h3 className="flex items-center text-lg font-semibold">
               <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-sm mr-2">1</span>
               Select the package to download and install on your system:
-            </h3>
+                      </h3>
             <div className="grid grid-cols-3 gap-4">
               {/* Linux Options */}
               <div className="p-4 border rounded-lg">
@@ -338,7 +312,7 @@ export function AgentSettings() {
                       className="mr-2"
                     />
                     <label htmlFor="rpm-amd64">RPM amd64</label>
-                  </div>
+                    </div>
                   <div className="flex items-center">
                     <input
                       type="radio"
@@ -350,18 +324,18 @@ export function AgentSettings() {
                       className="mr-2"
                     />
                     <label htmlFor="deb-amd64">DEB amd64</label>
-                  </div>
-                </div>
-              </div>
-
+                    </div>
+                      </div>
+                    </div>
+                    
               {/* Windows Options */}
               <div className="p-4 border rounded-lg">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center">
                     <Monitor className="h-6 w-6 mr-2" />
                     <span className="font-medium">WINDOWS</span>
-                  </div>
-                </div>
+                      </div>
+                    </div>
                 <div className="space-y-2">
                   <div className="flex items-center">
                     <input
@@ -374,18 +348,18 @@ export function AgentSettings() {
                       className="mr-2"
                     />
                     <label htmlFor="windows">MSI 32/64 bits</label>
-                  </div>
-                </div>
-              </div>
-
+                    </div>
+                      </div>
+                    </div>
+                    
               {/* macOS Options */}
               <div className="p-4 border rounded-lg">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center">
                     <AppleIcon className="h-6 w-6 mr-2" />
                     <span className="font-medium">macOS</span>
-                  </div>
-                </div>
+                        </div>
+                        </div>
                 <div className="space-y-2">
                   <div className="flex items-center">
                     <input
@@ -398,10 +372,10 @@ export function AgentSettings() {
                       className="mr-2"
                     />
                     <label htmlFor="macos-intel">Intel</label>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </div>
             <div className="bg-blue-50 p-4 rounded-lg flex items-start">
               <AlertCircle className="h-5 w-5 text-blue-500 mr-2 mt-0.5" />
               <p className="text-sm text-blue-700">
@@ -410,7 +384,7 @@ export function AgentSettings() {
               </p>
             </div>
           </div>
-
+          
           {/* Step 2: Download Button */}
           <div className="space-y-4">
             <h3 className="flex items-center text-lg font-semibold">
@@ -457,84 +431,84 @@ export function AgentSettings() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Add New Agent</CardTitle>
-          <CardDescription>Register a new agent in your SIEM system</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleAddAgent} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Agent Name</Label>
-                <Input
-                  id="name"
-                  value={newAgent.name}
-                  onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
-                  required
+        <Card>
+          <CardHeader>
+            <CardTitle>Add New Agent</CardTitle>
+            <CardDescription>Register a new agent in your SIEM system</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAddAgent} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Agent Name</Label>
+                  <Input
+                    id="name"
+                    value={newAgent.name}
+                    onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
+                    required
                   placeholder="Enter agent name"
-                />
-              </div>
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="hostname">Hostname</Label>
-                <Input
-                  id="hostname"
-                  value={newAgent.hostname}
-                  onChange={(e) => setNewAgent({ ...newAgent, hostname: e.target.value })}
-                  required
+                <div className="space-y-2">
+                  <Label htmlFor="hostname">Hostname</Label>
+                  <Input
+                    id="hostname"
+                    value={newAgent.hostname}
+                    onChange={(e) => setNewAgent({ ...newAgent, hostname: e.target.value })}
+                    required
                   placeholder="Enter hostname"
-                />
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="ipAddress">IP Address</Label>
-                <Input
-                  id="ipAddress"
-                  type="text"
-                  value={newAgent.ipAddress}
-                  onChange={(e) => setNewAgent({ ...newAgent, ipAddress: e.target.value })}
-                  required
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="ipAddress">IP Address</Label>
+                  <Input
+                    id="ipAddress"
+                    type="text"
+                    value={newAgent.ipAddress}
+                    onChange={(e) => setNewAgent({ ...newAgent, ipAddress: e.target.value })}
+                    required
                   placeholder="Enter IP address"
-                />
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="port">Port</Label>
+                  <Input
+                    id="port"
+                    type="number"
+                    value={newAgent.port}
+                    onChange={(e) => setNewAgent({ ...newAgent, port: Number(e.target.value) })}
+                    required
+                  placeholder="Enter port"
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="port">Port</Label>
-                <Input
-                  id="port"
-                  type="number"
-                  value={newAgent.port}
-                  onChange={(e) => setNewAgent({ ...newAgent, port: Number(e.target.value) })}
-                  required
-                  placeholder="Enter port"
-                />
+                <Label htmlFor="os">Operating System</Label>
+                <Select
+                  value={newAgent.os}
+                  onValueChange={(value) => setNewAgent({ ...newAgent, os: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select OS" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Windows">Windows</SelectItem>
+                    <SelectItem value="Linux">Linux</SelectItem>
+                    <SelectItem value="MacOS">MacOS</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="os">Operating System</Label>
-              <Select
-                value={newAgent.os}
-                onValueChange={(value) => setNewAgent({ ...newAgent, os: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select OS" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Windows">Windows</SelectItem>
-                  <SelectItem value="Linux">Linux</SelectItem>
-                  <SelectItem value="MacOS">MacOS</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
 
             <Button type="submit" className="w-full">Add Agent</Button>
-          </form>
-        </CardContent>
-      </Card>
+            </form>
+          </CardContent>
+        </Card>
 
       <Card>
         <CardHeader>

@@ -1,5 +1,5 @@
 import { ApiResponse } from '@/types/api';
-import { api, endpoints } from '../lib/api';
+import { api, endpoints, queryClient } from '../lib/api';
 import type { NewAgentConfig } from '../types/agent';
 import type { Agent, AgentStatus, AgentHealthReport, LogQueryParams, PaginatedResult, LogEntry } from '../types/agent';
 import { authService } from './auth-service';
@@ -49,63 +49,22 @@ interface DeploymentTokenConfig {
 
 export const agentService = {
   async addAgent(agentConfig: NewAgentConfig): Promise<AgentResponse> {
-    try {
-      const response = await api.post<AgentResponse>('/api/agents/add-agent', agentConfig);
-      if (!response.data) throw new Error('Failed to register agent');
-      return response.data;
-    } catch (error) {
-      console.error('Agent registration error:', error);
-      throw error;
-    }
+    const response = await api.post<AgentResponse>(endpoints.agents.add, agentConfig);
+    return response.data;
   },
 
   async getAgents(): Promise<Agent[]> {
-    try {
-      // Make sure we have a token before making this request
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.error('No authentication token found. User needs to log in first.');
-        return [];
-      }
-
-      console.debug('Attempting to fetch agents with token:', token.substring(0, 10) + '...');
-      
-      const response = await api.get<Agent[]>('/api/agents');
-      console.debug('Agents fetch successful:', response.data?.length || 0, 'agents retrieved');
-      return response.data ?? [];
-    } catch (error) {
-      console.error('Error fetching agents:', error);
-      
-      // Detailed error logging for debugging
-      if (error instanceof Error) {
-        // Check for authentication errors
-        if (error.message.includes('403') || error.message.toLowerCase().includes('forbidden')) {
-          console.error('Authorization error: The current user lacks the required permissions (Admin or Operator role)');
-          alert('You do not have permission to access agent information. Please contact your administrator.');
-        } else if (error.message.includes('401') || error.message.toLowerCase().includes('unauthorized')) {
-          console.error('Authentication error: Token may be invalid or expired');
-          // Handle auth error - redirect to login
-          await authService.logout();
-          window.location.href = '/login';
-        } else if (error.message.includes('Failed to fetch')) {
-          console.error('Network error: Unable to connect to the backend server');
-        }
-      }
-      
-      // Return empty array on error to avoid UI crashes
-      return [];
-    }
+    const response = await api.get<Agent[]>(endpoints.agents.list);
+    return response.data ?? [];
   },
 
   async getAgentStatus(agentId: string): Promise<Agent> {
-    const response = await api.get<Agent>(`/api/agents/${agentId}/status`);
-    if (!response.data) throw new Error('Failed to get agent status');
+    const response = await api.get<Agent>(`${endpoints.agents.details(agentId)}/status`);
     return response.data;
   },
 
   async configureAgent(agentId: string, config: Partial<Agent>): Promise<Agent> {
-    const response = await api.put<Agent>(`/api/agents/${agentId}`, config);
-    if (!response.data) throw new Error('Failed to configure agent');
+    const response = await api.put<Agent>(endpoints.agents.update(agentId), config);
     return response.data;
   },
 
@@ -156,16 +115,27 @@ export const agentService = {
     }
   },
 
-  async downloadAgentInstaller(os: string = 'windows'): Promise<Blob> {
+  async downloadAgentInstaller(os: string = 'windows'): Promise<void> {
     try {
-      const response = await api.get<Blob>(`/api/agents/download/${os}`, {
+      const response = await api.get(endpoints.agents.download(os), {
         responseType: 'blob'
       });
-      return response.data;
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      console.error('Error downloading installer:', errorMessage);
-      throw error;
+
+      // Create a blob from the response and trigger download
+      const blob = new Blob([response.data as BlobPart], { type: 'application/octet-stream' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `athala-agent.${os === 'windows' ? 'msi' : os.includes('deb') ? 'deb' : 'rpm'}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to download installer: ${error.message}`);
+      }
+      throw new Error('Failed to download installer');
     }
   },
 
@@ -181,7 +151,7 @@ export const agentService = {
   },
 
   async getAgentHealth(agentId: string): Promise<AgentHealthReport> {
-    const response = await api.get<AgentHealthReport>(`/api/agents/${agentId}/health`);
+    const response = await api.get<AgentHealthReport>(`${endpoints.agents.details(agentId)}/health`);
     return response.data;
   },
 
@@ -200,22 +170,12 @@ export const agentService = {
   },
 
   async restartAgent(agentId: string): Promise<boolean> {
-    try {
-      await api.post(`/api/agents/${agentId}/restart`);
-      return true;
-    } catch (error) {
-      console.error('Failed to restart agent:', error);
-      return false;
-    }
+    await api.post(`${endpoints.agents.details(agentId)}/restart`);
+    return true;
   },
 
   async deleteAgent(agentId: string): Promise<boolean> {
-    try {
-      await api.delete(`/api/agents/${agentId}`);
-      return true;
-    } catch (error) {
-      console.error('Failed to delete agent:', error);
-      throw error;
-    }
+    await api.delete(endpoints.agents.delete(agentId));
+    return true;
   }
 }; 

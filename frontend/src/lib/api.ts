@@ -48,7 +48,6 @@ const refreshToken = async () => {
     const data = await response.json();
     if (data.token) {
       localStorage.setItem('token', data.token);
-      document.cookie = `token=${data.token}; path=/;`;
       return data.token;
     }
     throw new Error('No token in refresh response');
@@ -60,78 +59,30 @@ const refreshToken = async () => {
 
 const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promise<ApiResponse<T>> => {
   const token = localStorage.getItem('token');
-  const { skipAuth, ...restOptions } = options;
+  const { skipAuth, responseType, ...restOptions } = options;
 
-  // Debug token information
-  if (token) {
-    console.debug('Token found in localStorage:', token.substring(0, 15) + '...');
-    
-    try {
-      // Basic JWT token structure check
-      const parts = token.split('.');
-      if (parts.length !== 3) {
-        console.warn('Token does not appear to be in valid JWT format (needs 3 parts)');
-      } else {
-        // Try to decode the payload (middle part) to check claims
-        const payload = JSON.parse(atob(parts[1]));
-        console.debug('Token payload:', payload);
-        
-        // Check for role claims - these are critical for authorization
-        const roles = payload[Object.keys(payload).find(k => k.includes('role') || k.includes('Role')) || 'role'] || [];
-        console.debug('Roles in token:', roles);
-        
-        // Check token expiration
-        const exp = payload.exp;
-        const now = Math.floor(Date.now() / 1000);
-        if (exp && exp < now) {
-          console.warn('Token appears to be expired:', new Date(exp * 1000));
-        } else if (exp) {
-          console.debug('Token expires at:', new Date(exp * 1000));
-        }
-      }
-    } catch (e) {
-      console.warn('Failed to decode or parse token:', e);
-    }
-  } else {
-    console.warn('No token found in localStorage for authenticated request to:', url);
-  }
-
-  // For authentication endpoints, use specific CORS settings to avoid preflight issues
-  const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register');
-  
-  const defaultOptions: RequestOptions = {
+  const defaultOptions: RequestInit = {
     mode: 'cors',
-    // Always include credentials to ensure cookies are sent
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      'Accept': responseType === 'blob' ? '*/*' : 'application/json',
       ...(!skipAuth && token ? { 'Authorization': `Bearer ${token}` } : {}),
-      ...options.headers,
+      ...(options.headers || {}),
     },
     ...restOptions,
   };
 
   try {
-    // Log the request for debugging
-    console.debug(`Making API request to: ${baseURL}${url}`, {
-      method: defaultOptions.method || 'GET',
-      headers: defaultOptions.headers,
-      credentials: defaultOptions.credentials,
-    });
-    
     const response = await fetch(`${baseURL}${url}`, defaultOptions);
-    
-    // Network error handling
+
     if (!response) {
       throw new Error('Network error - Failed to connect to the server');
     }
 
-    console.debug(`Response status: ${response.status} ${response.statusText}`);
-
     // Handle 401 errors
     if (!skipAuth && response.status === 401) {
-      if (isAuthEndpoint) {
+      if (url.includes('/auth/login') || url.includes('/auth/register')) {
         throw new Error('Authentication failed');
       }
       
@@ -153,11 +104,10 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
             },
           });
         } catch (error) {
-          // If refresh failed, redirect to login
+          // If refresh failed, clear token and throw error
           localStorage.removeItem('token');
-          document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-          window.location.href = '/login';
-          throw new Error('Session expired. Please login again.');
+          queryClient.clear();
+          throw new Error('Session expired');
         } finally {
           isRefreshingToken = false;
         }
@@ -172,51 +122,32 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
     }
 
     if (!response.ok) {
-      try {
-        // Check if response can be parsed as JSON
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const errorData = await response.json();
-          const errorMessage = errorData.message || errorData.title || errorData.detail || `Request failed with status ${response.status}`;
-          console.error('API Error:', errorData);
-          throw new Error(errorMessage);
-        } else {
-          // Handle non-JSON responses
-          const text = await response.text();
-          console.error('API Error (non-JSON):', text);
-          throw new Error(`Request failed with status ${response.status}: ${text.substring(0, 100)}`);
-        }
-      } catch (e) {
-        console.error('Error parsing error response:', e);
-        throw new Error(`Request failed with status ${response.status}`);
-      }
-    }
-
-    if (options.responseType === 'blob') {
-      return { data: await response.blob() } as ApiResponse<T>;
-    }
-
-    try {
       const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        const data = await response.json();
-        return { data } as ApiResponse<T>;
-      } else {
-        // Handle non-JSON responses
-        const text = await response.text();
-        console.warn('Received non-JSON response:', text.substring(0, 100));
-        return { data: text as any } as ApiResponse<T>;
+      if (contentType?.includes('application/json')) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Request failed with status ${response.status}`);
       }
-    } catch (e) {
-      console.error('Error parsing success response:', e);
-      throw new Error('Failed to parse response data');
+      throw new Error(`Request failed with status ${response.status}`);
     }
+
+    if (responseType === 'blob') {
+      const blob = await response.blob();
+      return { data: blob } as ApiResponse<T>;
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (contentType?.includes('application/json')) {
+      const data = await response.json();
+      return { data } as ApiResponse<T>;
+    }
+
+    const text = await response.text();
+    return { data: text as any } as ApiResponse<T>;
   } catch (error) {
-    console.error('API Request failed:', error);
     if (error instanceof Error) {
       throw error;
     }
-    throw new Error('Failed to connect to the server. Please check your connection.');
+    throw new Error('Failed to connect to the server');
   }
 };
 
@@ -239,7 +170,11 @@ export const api = {
    * @param options - Optional fetch options
    * @returns Promise with the response data
    */
-  post: <T>(url: string, body?: any, options?: RequestOptions) => makeRequest<T>(url, { method: 'POST', body: JSON.stringify(body), ...options }),
+  post: <T>(url: string, body?: any, options?: RequestOptions) => makeRequest<T>(url, { 
+    method: 'POST', 
+    body: body ? JSON.stringify(body) : undefined,
+    ...options 
+  }),
 
   /**
    * Make a PUT request to the API
@@ -248,7 +183,11 @@ export const api = {
    * @param options - Optional fetch options
    * @returns Promise with the response data
    */
-  put: <T>(url: string, body?: any, options?: RequestOptions) => makeRequest<T>(url, { method: 'PUT', body: JSON.stringify(body), ...options }),
+  put: <T>(url: string, body?: any, options?: RequestOptions) => makeRequest<T>(url, { 
+    method: 'PUT', 
+    body: body ? JSON.stringify(body) : undefined,
+    ...options 
+  }),
 
   /**
    * Make a DELETE request to the API
@@ -283,7 +222,7 @@ export const endpoints = {
     details: (id: string) => `/api/agents/${id}`,
     update: (id: string) => `/api/agents/${id}`,
     delete: (id: string) => `/api/agents/${id}`,
-    installer: (type: string) => `/api/agents/installer/${type}`
+    download: (os: string) => `/api/agents/download/${os}`
   },
   events: {
     list: '/api/logs',

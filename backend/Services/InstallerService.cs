@@ -55,7 +55,7 @@ namespace Backend.Services
         private readonly ILogger<InstallerService> _logger;
         private readonly string _installerBasePath;
         private readonly string _agentBasePath;
-        private const string WINDOWS_INSTALLER_FILENAME = "AthalaAgent-Setup.exe";
+        private const string WINDOWS_INSTALLER_FILENAME = "AthalaSIEMAgent.msi";
 
         /// <summary>
         /// Initializes a new instance of the <see cref="InstallerService"/> class
@@ -75,7 +75,6 @@ namespace Backend.Services
             _logger.LogInformation("Base directory: {Path}", AppDomain.CurrentDomain.BaseDirectory);
             
             EnsureInstallerDirectoryExists();
-            EnsureInstallerFileExists();
         }
 
         /// <summary>
@@ -100,7 +99,7 @@ namespace Backend.Services
                     
                     return new InstallerPackage
                     {
-                        FileName = "AthalaAgent-Setup.exe",
+                        FileName = "AthalaSIEMAgent.msi",
                         ContentType = "application/vnd.microsoft.portable-executable",
                         Content = new byte[1024] // Dummy content
                     };
@@ -116,7 +115,7 @@ namespace Backend.Services
                 
                 return new InstallerPackage
                 {
-                    FileName = "AthalaAgent-Setup.exe",
+                    FileName = "AthalaSIEMAgent.msi",
                     ContentType = "application/vnd.microsoft.portable-executable",
                     Content = new byte[1024] // Dummy content
                 };
@@ -136,7 +135,7 @@ namespace Backend.Services
                 _logger.LogInformation("Getting installer info for type: {Type}", type);
                 
                 // Get installer path from configuration
-                var installerName = _configuration["InstallerSettings:AgentInstallerName"] ?? "AthalaAgent-Setup.exe";
+                var installerName = _configuration["InstallerSettings:AgentInstallerName"] ?? "AthalaSIEMAgent.msi";
                 var installerPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "installer", installerName);
                 
                 // Check if installer exists
@@ -204,7 +203,7 @@ namespace Backend.Services
                 {
                     Type = type,
                     Version = "1.0.0",
-                    FileName = "AthalaAgent-Setup.exe",
+                    FileName = "AthalaSIEMAgent.msi",
                     Size = 0,
                     DownloadUrl = $"{baseUrl}/api/agents/download-installer/{type}",
                     LastModified = DateTime.UtcNow,
@@ -232,114 +231,8 @@ namespace Backend.Services
             }
         }
         
-        private void EnsureInstallerFileExists()
-        {
-            var installerPath = Path.Combine(_installerBasePath, WINDOWS_INSTALLER_FILENAME);
-            
-            _logger.LogInformation("Ensuring installer file exists at: {Path}", installerPath);
-            
-            if (!File.Exists(installerPath))
-            {
-                try
-                {
-                    // Try to find the Agent.exe in various locations
-                    var agentExePath = FindAgentExecutable();
-                    
-                    if (!string.IsNullOrEmpty(agentExePath) && File.Exists(agentExePath))
-                    {
-                        // Copy the Agent.exe to the Installers directory with the installer name
-                        File.Copy(agentExePath, installerPath, true);
-                        _logger.LogInformation("Copied Agent.exe to installer path: {Path}", installerPath);
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Agent executable not found. Creating a dummy executable for testing.");
-                        CreateDummyExecutable(installerPath);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error ensuring installer file exists");
-                }
-            }
-            else
-            {
-                var fileInfo = new FileInfo(installerPath);
-                _logger.LogInformation("Installer file already exists at: {Path} with size: {Size} bytes", installerPath, fileInfo.Length);
-            }
-        }
         
-        private string FindAgentExecutable()
-        {
-            // Log direktori dasar
-            _logger.LogInformation("Agent base path: {Path}", _agentBasePath);
-            
-            // Coba berbagai path absolut dan relatif
-            var possiblePaths = new List<string>
-            {
-                // Path absolut
-                @"D:\athala-siem-main\agent\bin\Release\net8.0-windows\win-x64\publish\Agent.exe",
-                
-                // Path relatif dari direktori saat ini
-                Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "..", "agent", "bin", "Release", "net8.0-windows", "win-x64", "publish", "Agent.exe")),
-                
-                // Path relatif dari AppDomain.CurrentDomain.BaseDirectory
-                Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "agent", "bin", "Release", "net8.0-windows", "win-x64", "publish", "Agent.exe")),
-                
-                // Path relatif dari _agentBasePath
-                Path.Combine(_agentBasePath, "bin", "Release", "net8.0-windows", "win-x64", "publish", "Agent.exe"),
-                Path.Combine(_agentBasePath, "bin", "Debug", "net8.0-windows", "win-x64", "publish", "Agent.exe"),
-                Path.Combine(_agentBasePath, "bin", "Release", "net8.0-windows", "win-x64", "Agent.exe"),
-                Path.Combine(_agentBasePath, "bin", "Debug", "net8.0-windows", "win-x64", "Agent.exe"),
-                Path.Combine(_agentBasePath, "bin", "Release", "net8.0-windows", "Agent.exe"),
-                Path.Combine(_agentBasePath, "bin", "Debug", "net8.0-windows", "Agent.exe")
-            };
-            
-            // Log semua path yang akan diperiksa
-            foreach (var path in possiblePaths)
-            {
-                _logger.LogInformation("Checking path: {Path}", path);
-                
-                if (File.Exists(path))
-                {
-                    var fileInfo = new FileInfo(path);
-                    _logger.LogInformation("Found Agent.exe at: {Path} with size: {Size} bytes", path, fileInfo.Length);
-                    return path;
-                }
-            }
-            
-            _logger.LogWarning("Could not find Agent.exe in any of the expected locations");
-            return string.Empty;
-        }
         
-        private void CreateDummyExecutable(string installerPath)
-        {
-            try
-            {
-                _logger.LogInformation("Creating dummy executable at: {Path}", installerPath);
-                
-                // Buat file executable dummy sederhana
-                using (var fileStream = new FileStream(installerPath, FileMode.Create))
-                using (var writer = new BinaryWriter(fileStream))
-                {
-                    // Header MZ (Magic number untuk file executable Windows)
-                    writer.Write((ushort)0x5A4D);
-                    
-                    // Tambahkan beberapa byte acak untuk membuat file lebih besar
-                    var random = new Random();
-                    var buffer = new byte[1024 * 1024 * 10]; // 10MB
-                    random.NextBytes(buffer);
-                    writer.Write(buffer);
-                }
-                
-                var fileInfo = new FileInfo(installerPath);
-                _logger.LogInformation("Created dummy executable at {Path} with size: {Size} bytes", installerPath, fileInfo.Length);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error creating dummy executable");
-            }
-        }
 
         /// <summary>
         /// Generates an installer package for the specified platform (alias for GenerateInstaller)
@@ -352,9 +245,36 @@ namespace Backend.Services
             {
                 _logger.LogInformation("Generating installer package for type: {Type}", type);
                 
-                // Get installer path from configuration
-                var installerName = _configuration["InstallerSettings:AgentInstallerName"] ?? "AthalaAgent-Setup.exe";
-                var installerPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "installer", installerName);
+                // Get installer path based on type
+                string installerPath;
+                string installerName;
+                string contentType;
+                
+                switch (type.ToLowerInvariant())
+                {
+                    case "windows":
+                        installerName = "AthalaSIEMAgent.msi";
+                        contentType = "application/x-msi";
+                        break;
+                    case "linux-rpm":
+                        installerName = "AthalaSIEMAgent.rpm";
+                        contentType = "application/x-rpm";
+                        break;
+                    case "linux-deb":
+                        installerName = "AthalaSIEMAgent.deb";
+                        contentType = "application/vnd.debian.binary-package";
+                        break;
+                    case "macos":
+                        installerName = "AthalaSIEMAgent.pkg";
+                        contentType = "application/vnd.apple.installer+xml";
+                        break;
+                    default:
+                        _logger.LogWarning("Unsupported installer type: {Type}", type);
+                        return null;
+                }
+                
+                installerPath = Path.Combine(_installerBasePath, installerName);
+                _logger.LogInformation("Looking for installer at path: {Path}", installerPath);
                 
                 // Check if installer exists
                 if (!File.Exists(installerPath))
@@ -365,18 +285,6 @@ namespace Backend.Services
                 
                 // Read installer file
                 var content = await File.ReadAllBytesAsync(installerPath);
-                
-                // Determine content type based on file extension
-                string contentType = Path.GetExtension(installerPath).ToLower() switch
-                {
-                    ".exe" => "application/vnd.microsoft.portable-executable",
-                    ".msi" => "application/x-msi",
-                    ".deb" => "application/vnd.debian.binary-package",
-                    ".rpm" => "application/x-rpm",
-                    ".pkg" => "application/vnd.apple.installer+xml",
-                    ".zip" => "application/zip",
-                    _ => "application/octet-stream"
-                };
                 
                 _logger.LogInformation("Installer package generated successfully. Size: {Size} bytes", content.Length);
                 
