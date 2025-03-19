@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from 'sonner'
+import { useEffect } from 'react'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -23,6 +24,20 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
+  // Run token debugger on initial load - only in development
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'production' && typeof window !== 'undefined') {
+      // Import and initialize token debugger
+      import('@/debug/token-debugger').then(mod => {
+        console.log('Token Debugger initialized - run debugToken() in console to analyze JWT tokens');
+        // Make the debugger available globally
+        (window as any).debugToken = mod.debugToken;
+      }).catch(err => {
+        console.error('Failed to load token debugger:', err);
+      });
+    }
+  }, []);
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>

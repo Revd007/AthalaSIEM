@@ -21,6 +21,7 @@ using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Http;
 using System.Net;
+using Microsoft.AspNetCore.Cors;
 
 namespace Backend.Controllers
 {
@@ -30,6 +31,7 @@ namespace Backend.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [Authorize(Roles = "Admin,Operator")]
+    [EnableCors("AllowFrontend")]  // Enable CORS for this controller
     public class AgentsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -55,6 +57,15 @@ namespace Backend.Controllers
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
+        // Special endpoint just for CORS preflight
+        [HttpOptions]
+        [Route("{*url}")]
+        [AllowAnonymous]
+        public IActionResult HandleOptions()
+        {
+            return Ok();
+        }
+
         private bool ValidateApiKey(string apiKey)
         {
             if (string.IsNullOrEmpty(apiKey))
@@ -74,9 +85,25 @@ namespace Backend.Controllers
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<AgentDto>>> GetAllAgents()
         {
-            var agents = await _agentService.GetAllAgentsAsync();
-            var agentDtos = agents.Select(MapToDto);
-            return Ok(agentDtos);
+            try
+            {
+                // Ensure CORS headers are added for this response
+                var origin = Request.Headers["Origin"].ToString();
+                if (!string.IsNullOrEmpty(origin))
+                {
+                    Response.Headers["Access-Control-Allow-Origin"] = origin;
+                    Response.Headers["Access-Control-Allow-Credentials"] = "true";
+                }
+
+                var agents = await _agentService.GetAllAgentsAsync();
+                var agentDtos = agents.Select(MapToDto);
+                return Ok(agentDtos);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting all agents");
+                return StatusCode(500, new { Error = "An internal server error occurred while getting agents" });
+            }
         }
 
         /// <summary>

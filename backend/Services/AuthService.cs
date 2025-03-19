@@ -292,30 +292,16 @@ namespace Backend.Services
             return await _userRepository.IsInRoleAsync(userId, role);
         }
         
-        /// <summary>
-        /// Checks if a user has a specific role
-        /// </summary>
-        /// <param name="userId">The user ID</param>
-        /// <param name="roleName">The role name</param>
-        /// <returns>True if the user has the role, false otherwise</returns>
-        public async Task<bool> UserHasRoleAsync(string userId, string roleName)
+        /// <inheritdoc/>
+        public async Task<bool> UserHasRoleAsync(string id, string v)
         {
-            try
-            {
-                var user = await _userRepository.GetByIdAsync(userId);
-                if (user == null)
-                {
-                    _logger.LogWarning("User not found: {UserId}", userId);
-                    return false;
-                }
-
-                return user.UserRoles.Any(ur => ur.Role.Name == roleName);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error checking user role: {UserId}, {RoleName}", userId, roleName);
-                return false;
-            }
+            return await IsInRoleAsync(id, v);
+        }
+        
+        /// <inheritdoc/>
+        public async Task<IEnumerable<string>> GetUserRolesAsync(string userId)
+        {
+            return await _userRepository.GetUserRolesAsync(userId);
         }
         
         private string GenerateRefreshToken()

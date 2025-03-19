@@ -35,6 +35,40 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
   const token = localStorage.getItem('token');
   const { skipAuth, ...restOptions } = options;
 
+  // Debug token information
+  if (token) {
+    console.debug('Token found in localStorage:', token.substring(0, 15) + '...');
+    
+    try {
+      // Basic JWT token structure check
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        console.warn('Token does not appear to be in valid JWT format (needs 3 parts)');
+      } else {
+        // Try to decode the payload (middle part) to check claims
+        const payload = JSON.parse(atob(parts[1]));
+        console.debug('Token payload:', payload);
+        
+        // Check for role claims - these are critical for authorization
+        const roles = payload[Object.keys(payload).find(k => k.includes('role') || k.includes('Role')) || 'role'] || [];
+        console.debug('Roles in token:', roles);
+        
+        // Check token expiration
+        const exp = payload.exp;
+        const now = Math.floor(Date.now() / 1000);
+        if (exp && exp < now) {
+          console.warn('Token appears to be expired:', new Date(exp * 1000));
+        } else if (exp) {
+          console.debug('Token expires at:', new Date(exp * 1000));
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to decode or parse token:', e);
+    }
+  } else {
+    console.warn('No token found in localStorage for authenticated request to:', url);
+  }
+
   // For authentication endpoints, use specific CORS settings to avoid preflight issues
   const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register');
   

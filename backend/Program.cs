@@ -4,6 +4,7 @@ using Backend.Data;
 using Backend.Data.Repositories;
 using Backend.Services;
 using Backend.Services.Background;
+using Backend.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
@@ -186,11 +187,14 @@ app.Use(async (context, next) =>
     await next();
 });
 
-// Apply CORS middleware first for handling standard requests
+// Apply CORS middleware for handling standard requests
 app.UseCors("AllowFrontend");
 
-// Apply HTTPS redirection AFTER handling OPTIONS requests - only for non-OPTIONS requests
-app.UseHttpsRedirection();
+// Only apply HTTPS redirection in production environment
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -213,6 +217,9 @@ using (var scope = app.Services.CreateScope())
     {
         var context = services.GetRequiredService<ApplicationDbContext>();
         context.Database.Migrate();
+        
+        // Seed database with roles and admin user
+        await SeedDatabase(context, services.GetRequiredService<ILogger<Program>>());
     }
     catch (Exception ex)
     {
@@ -221,4 +228,85 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.Run(); 
+app.Run();
+
+// Database seeding
+async Task SeedDatabase(ApplicationDbContext context, ILogger logger)
+{
+    logger.LogInformation("Checking database seed data...");
+    
+    // Ensure roles exist
+    var roles = new[] 
+    { 
+        RoleModels.DefaultRoles.Admin, 
+        RoleModels.DefaultRoles.Operator, 
+        RoleModels.DefaultRoles.Analyst, 
+        RoleModels.DefaultRoles.User 
+    };
+    
+    foreach (var roleName in roles)
+    {
+        if (!await context.Roles.AnyAsync(r => r.Name == roleName))
+        {
+            logger.LogInformation("Creating role: {Role}", roleName);
+            context.Roles.Add(new RoleModels
+            {
+                Name = roleName,
+                Description = $"Default {roleName} role",
+                IsSystem = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+            await context.SaveChangesAsync();
+        }
+    }
+    
+    // Check if any admin exists, if not create a default admin
+    bool adminExists = await context.Users
+        .Include(u => u.UserRoles)
+        .ThenInclude(ur => ur.Role)
+        .AnyAsync(u => u.UserRoles.Any(ur => ur.Role.Name == RoleModels.DefaultRoles.Admin));
+    
+    if (!adminExists)
+    {
+        logger.LogInformation("No admin user found. Creating default admin user...");
+        
+        // Create default admin user
+        var adminUser = new UserModels
+        {
+            Username = "admin",
+            Email = "admin@example.com",
+            FirstName = "System",
+            LastName = "Administrator",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        
+        // Generate password hash and salt (using HMACSHA512 as in AuthController.Register)
+        using var hmac = new System.Security.Cryptography.HMACSHA512();
+        var hashBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes("Admin123!")); // Default password
+        var saltBytes = hmac.Key;
+        
+        adminUser.PasswordHash = Convert.ToBase64String(hashBytes);
+        adminUser.PasswordSalt = Convert.ToBase64String(saltBytes);
+        
+        context.Users.Add(adminUser);
+        await context.SaveChangesAsync();
+        
+        // Add admin role to user
+        var adminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == RoleModels.DefaultRoles.Admin);
+        if (adminRole != null)
+        {
+            context.UserRoles.Add(new UserRoleModels
+            {
+                UserId = adminUser.Id,
+                RoleId = adminRole.Id
+            });
+            await context.SaveChangesAsync();
+            logger.LogInformation("Default admin user created successfully");
+        }
+    }
+    
+    logger.LogInformation("Database seeding completed");
+} 

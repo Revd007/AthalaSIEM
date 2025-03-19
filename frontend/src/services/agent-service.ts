@@ -44,8 +44,41 @@ export const agentService = {
   },
 
   async getAgents(): Promise<Agent[]> {
-    const response = await api.get<Agent[]>('/api/agents');
-    return response.data ?? [];
+    try {
+      // Make sure we have a token before making this request
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('No authentication token found. User needs to log in first.');
+        return [];
+      }
+
+      console.debug('Attempting to fetch agents with token:', token.substring(0, 10) + '...');
+      
+      const response = await api.get<Agent[]>('/api/agents');
+      console.debug('Agents fetch successful:', response.data?.length || 0, 'agents retrieved');
+      return response.data ?? [];
+    } catch (error) {
+      console.error('Error fetching agents:', error);
+      
+      // Detailed error logging for debugging
+      if (error instanceof Error) {
+        // Check for authentication errors
+        if (error.message.includes('403') || error.message.toLowerCase().includes('forbidden')) {
+          console.error('Authorization error: The current user lacks the required permissions (Admin or Operator role)');
+          alert('You do not have permission to access agent information. Please contact your administrator.');
+        } else if (error.message.includes('401') || error.message.toLowerCase().includes('unauthorized')) {
+          console.error('Authentication error: Token may be invalid or expired');
+          // Handle auth error - redirect to login
+          await authService.logout();
+          window.location.href = '/login';
+        } else if (error.message.includes('Failed to fetch')) {
+          console.error('Network error: Unable to connect to the backend server');
+        }
+      }
+      
+      // Return empty array on error to avoid UI crashes
+      return [];
+    }
   },
 
   async getAgentStatus(agentId: string): Promise<Agent> {

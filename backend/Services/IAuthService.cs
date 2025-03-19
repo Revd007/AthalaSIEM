@@ -1,5 +1,6 @@
 using System.Threading.Tasks;
 using Backend.Models;
+using System.Collections.Generic;
 
 namespace Backend.Services
 {
@@ -59,6 +60,20 @@ namespace Backend.Services
         /// <param name="role">The role</param>
         /// <returns>True if the user is in the role, false otherwise</returns>
         Task<bool> IsInRoleAsync(string userId, string role);
+        
+        /// <summary>
+        /// Checks if a user has a specific role
+        /// </summary>
+        /// <param name="id">The user ID</param>
+        /// <param name="v">The role</param>
+        /// <returns>True if the user has the role, false otherwise</returns>
         Task<bool> UserHasRoleAsync(string id, string v);
+        
+        /// <summary>
+        /// Gets the roles for a user
+        /// </summary>
+        /// <param name="userId">The user ID</param>
+        /// <returns>The user's roles</returns>
+        Task<IEnumerable<string>> GetUserRolesAsync(string userId);
     }
 } 
