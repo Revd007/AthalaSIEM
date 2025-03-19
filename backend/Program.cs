@@ -150,6 +150,7 @@ builder.Services.AddScoped<ILogService, LogService>();
 builder.Services.AddScoped<ILogAnalysisService, LogAnalysisService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<IInstallerService, InstallerService>();
 
 // Register background services
 builder.Services.AddHostedService<Backend.Services.Background.AgentMonitoringService>();

@@ -14,13 +14,43 @@ const nextConfig = {
     const apiUrl = env.NEXT_PUBLIC_API_URL || 'http://localhost:9595';
     
     return [
+      // Auth endpoints with correct casing
       {
         source: '/api/auth/:path*',
-        destination: `${apiUrl}/auth/:path*`
+        destination: `${apiUrl}/api/Auth/:path*`
       },
       {
-        source: '/auth/:path*',
-        destination: `${apiUrl}/auth/:path*`
+        source: '/api/Auth/:path*',
+        destination: `${apiUrl}/api/Auth/:path*`
+      },
+      // Additional API routes
+      {
+        source: '/api/agents/:path*',
+        destination: `${apiUrl}/api/Agents/:path*`
+      },
+      {
+        source: '/api/alerts/:path*',
+        destination: `${apiUrl}/api/Alerts/:path*`
+      },
+      {
+        source: '/api/logs/:path*',
+        destination: `${apiUrl}/api/Logs/:path*`
+      },
+      {
+        source: '/api/users/:path*',
+        destination: `${apiUrl}/api/Users/:path*`
+      },
+      {
+        source: '/api/dashboard/:path*',
+        destination: `${apiUrl}/api/Dashboard/:path*`
+      },
+      {
+        source: '/api/reports/:path*',
+        destination: `${apiUrl}/api/Reports/:path*`
+      },
+      {
+        source: '/api/:path*',
+        destination: `${apiUrl}/api/:path*`
       }
     ]
   },
@@ -32,7 +62,7 @@ const nextConfig = {
         headers: [
           { key: 'Access-Control-Allow-Credentials', value: 'true' },
           { key: 'Access-Control-Allow-Origin', value: '*' },
-          { key: 'Access-Control-Allow-Methods', value: 'GET,DELETE,PATCH,POST,PUT' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET,DELETE,PATCH,POST,PUT,OPTIONS' },
           { key: 'Access-Control-Allow-Headers', value: 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization' },
         ]
       }

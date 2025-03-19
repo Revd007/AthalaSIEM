@@ -31,6 +31,33 @@ const processPendingRequests = () => {
   pendingRequests = [];
 };
 
+const refreshToken = async () => {
+  try {
+    const response = await fetch(`${baseURL}/api/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to refresh token');
+    }
+
+    const data = await response.json();
+    if (data.token) {
+      localStorage.setItem('token', data.token);
+      document.cookie = `token=${data.token}; path=/;`;
+      return data.token;
+    }
+    throw new Error('No token in refresh response');
+  } catch (error) {
+    console.error('Token refresh failed:', error);
+    throw error;
+  }
+};
+
 const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promise<ApiResponse<T>> => {
   const token = localStorage.getItem('token');
   const { skipAuth, ...restOptions } = options;
@@ -104,59 +131,44 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
 
     // Handle 401 errors
     if (!skipAuth && response.status === 401) {
-      // For installer endpoints, just throw an error without redirecting
-      if (url.includes('/installer-info/') || url.includes('/installer/')) {
-        throw new Error('Authentication required. Please ensure you are logged in.');
+      if (isAuthEndpoint) {
+        throw new Error('Authentication failed');
       }
       
-      // For other endpoints, try to refresh the token or redirect to login
       if (!isRefreshingToken) {
         isRefreshingToken = true;
         
         try {
-          // Try to silently refresh the token (you would need to implement this endpoint)
-          const refreshResponse = await fetch(`${baseURL}/api/auth/refresh`, {
-            method: 'POST',
-            credentials: 'include',
+          const newToken = await refreshToken();
+          
+          // Process pending requests
+          processPendingRequests();
+          
+          // Retry the current request with the new token
+          return makeRequest<T>(url, {
+            ...options,
             headers: {
-              'Content-Type': 'application/json',
-            }
+              ...defaultOptions.headers,
+              'Authorization': `Bearer ${newToken}`,
+            },
           });
-          
-          if (refreshResponse.ok) {
-            const refreshData = await refreshResponse.json();
-            if (refreshData.token) {
-              // Store the new token
-              localStorage.setItem('token', refreshData.token);
-              
-              // Process pending requests
-              processPendingRequests();
-              
-              // Retry the current request with the new token
-              return makeRequest<T>(url, options);
-            }
-          }
-          
-          // If refresh failed, redirect to login
-          localStorage.removeItem('token');
-          window.location.href = '/login';
-          throw new Error('Session expired. Please login again.');
         } catch (error) {
           // If refresh failed, redirect to login
           localStorage.removeItem('token');
+          document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
           window.location.href = '/login';
           throw new Error('Session expired. Please login again.');
         } finally {
           isRefreshingToken = false;
         }
-      } else {
-        // If we're already refreshing the token, add this request to the queue
-        return new Promise<ApiResponse<T>>(resolve => {
-          pendingRequests.push(() => {
-            resolve(makeRequest<T>(url, options));
-          });
-        });
       }
+      
+      // If we're already refreshing the token, add this request to the queue
+      return new Promise<ApiResponse<T>>(resolve => {
+        pendingRequests.push(() => {
+          resolve(makeRequest<T>(url, options));
+        });
+      });
     }
 
     if (!response.ok) {
@@ -262,7 +274,8 @@ export const endpoints = {
     login: '/api/auth/login',
     logout: '/api/auth/logout',
     register: '/api/auth/register',
-    me: '/api/auth/me'
+    me: '/api/auth/me',
+    refresh: '/api/auth/refresh'
   },
   agents: {
     list: '/api/agents',

@@ -64,18 +64,7 @@ The agent uses a worker service pattern to run background processes and implemen
 ```
 
 ## Project Structure in Detail
-### Agent Settings
-The agent source code is organized into the following directories:
-- `AgentName`: Name of the agent (optional, will use hostname if not specified)
-- `BackendUrl`: URL of the Athala SIEM backend
-- `HeartbeatIntervalMinutes`: Interval in minutes between heartbeats
-- `ConfigRefreshIntervalMinutes`: Interval in minutes between configuration refreshes
-- `LogBatchSize`: Number of logs to batch before sending to the backend
-- `MaxLogBatchIntervalSeconds`: Maximum interval in seconds to wait before sending a batch
-- `CollectSystemMetrics`: Whether to collect system metrics
-- `SystemMetricsIntervalMinutes`: Interval in minutes between system metrics collections
-- `UseCompression`: Whether to compress logs before sending to the backend
-- `EncryptLogs`: Whether to encrypt logs before sending to the backend
+
 ### `/Collectors`
 
 Contains components responsible for collecting logs and metrics from various sources.
@@ -181,76 +170,20 @@ services.AddGrpcClient<SiemService.SiemServiceClient>(/* configuration */);
 services.AddHostedService<SiemAgentService>();
 ```
 
-## Event-Based Communication
+## Agent Settings
 
-The agent uses an event-based system for internal communication between components:
+The agent is configured using the following settings in `appsettings.json`:
 
-1. **Log Collection Events**: `LogCollected` event in `ILogCollector`
-2. **Health Monitoring Events**: `HealthStatusChanged` event in `IAgentHealthMonitor`
-3. **Configuration Change Events**: `ConfigurationChanged` event
-
-## Thread Management
-
-The agent manages multiple threads for different operations:
-
-1. **Collection Threads**: One per collector (managed by each collector)
-2. **Processing Thread**: For log normalization and enrichment
-3. **Communication Thread**: For sending data to the backend
-4. **Health Monitoring Thread**: For system metrics collection
-
-Thread synchronization is handled through task-based operations and cancellation tokens.
-
-## Configuration Schema
-
-The agent configuration is defined in `appsettings.json` and follows this schema:
-
-```json
-{
-  "Logging": {
-    "LogLevel": { /* Logging configuration */ },
-    "File": { /* File logging configuration */ },
-    "EventLog": { /* Windows Event Log configuration */ }
-  },
-  "AgentSettings": {
-    "AgentName": "string",
-    "BackendApiUrl": "string",
-    "BackendGrpcUrl": "string",
-    "LogBatchSize": int,
-    "MaxLogBufferSize": int,
-    "LogSendingIntervalSeconds": int,
-    "HeartbeatIntervalMinutes": int,
-    "HealthMonitoringIntervalMinutes": int,
-    "ConfigRefreshIntervalMinutes": int,
-    "MaxLogBatchIntervalSeconds": int,
-    "MaxRetries": int,
-    "RetryDelaySeconds": int,
-    "EncryptLogs": boolean,
-    "UseMutualTls": boolean,
-    "ClientCertificatePath": "string",
-    "ClientCertificatePassword": "string",
-    "ServerCaCertificatePath": "string",
-    "ValidateServerCertificate": boolean,
-    "UseTrafficCompression": boolean,
-    "Collectors": [
-      {
-        "Type": "string",
-        "Enabled": boolean,
-        "IntervalSeconds": int,
-        "Properties": {
-          /* Collector-specific properties */
-        }
-      }
-    ],
-    "Proxy": {
-      "Enabled": boolean,
-      "Address": "string",
-      "Port": int,
-      "Username": "string",
-      "Password": "string"
-    }
-  }
-}
-```
+- `AgentName`: Name of the agent (optional, will use hostname if not specified)
+- `BackendUrl`: URL of the Athala SIEM backend
+- `HeartbeatIntervalMinutes`: Interval in minutes between heartbeats
+- `ConfigRefreshIntervalMinutes`: Interval in minutes between configuration refreshes
+- `LogBatchSize`: Number of logs to batch before sending to the backend
+- `MaxLogBatchIntervalSeconds`: Maximum interval in seconds to wait before sending a batch
+- `CollectSystemMetrics`: Whether to collect system metrics
+- `SystemMetricsIntervalMinutes`: Interval in minutes between system metrics collections
+- `UseCompression`: Whether to compress logs before sending to the backend
+- `EncryptLogs`: Whether to encrypt logs before sending to the backend
 
 ## Error Handling Strategy
 
@@ -261,16 +194,6 @@ The agent implements a robust error handling strategy:
 3. **Circuit Breaker**: Prevents repeated calls to failing endpoints
 4. **Logging**: Detailed error logging with context information
 5. **Graceful Degradation**: Continues partial operation when some components fail
-
-## Extension Points
-
-The agent provides the following extension points for developers:
-
-1. **Custom Collectors**: Implement `ILogCollector` and register with `LogCollectorFactory`
-2. **Custom Log Normalizers**: Extend `LogNormalizer` or implement `ILogNormalizer`
-3. **Custom Forwarders**: Implement `ILogForwarder` to support additional protocols
-4. **Custom Encryption**: Implement `IEncryptionService` for different encryption methods
-5. **Additional Metrics**: Extend `SystemMetrics` to collect additional metrics
 
 ## System Requirements
 
@@ -351,7 +274,7 @@ The agent is configured through the `appsettings.json` file, which contains the 
   "Collectors": [
     {
       "Type": "WindowsEventLog",
-  "Enabled": true,
+      "Enabled": true,
       "IntervalSeconds": 10,
       "Properties": {
         "EventLogs": "Application,System,Security",
@@ -403,69 +326,6 @@ chmod +x build-linux-packages.sh
 ./build-linux-packages.sh
 ```
 
-## Coding Conventions
-
-The codebase follows these conventions:
-
-1. **Naming**:
-   - PascalCase for classes, methods, properties, and public members
-   - camelCase for private fields (prefixed with underscore)
-   - UPPER_CASE for constants
-
-2. **Documentation**:
-   - XML documentation for all public APIs
-   - In-line comments for complex logic
-
-3. **Error Handling**:
-   - Prefer exceptions for exceptional conditions
-   - Use result patterns for expected failure cases
-   - Log errors before rethrowing
-
-4. **Async Pattern**:
-   - Async/await for asynchronous operations
-   - Cancellation token support for cancellable operations
-   - ConfigureAwait(false) for library code
-
-## Testing
-
-The agent includes several types of tests:
-
-1. **Unit Tests**: For individual components
-2. **Integration Tests**: For component interactions
-3. **End-to-End Tests**: For full agent functionality
-
-To run tests:
-```
-dotnet test agent.sln
-```
-
-## Troubleshooting
-
-### Log Locations
-- Windows: `C:\Program Files\Athala SIEM Agent\Logs\`
-- Linux: `/var/log/athalasiem/`
-
-### Common Issues
-1. **Agent not connecting to server**:
-   - Verify network connectivity to server
-   - Check that ports 9596 and 50051 are open
-   - Verify server URL and ports in configuration
-   - Check for valid API key or deployment token
-
-2. **Service not starting**:
-   - Check Windows Event Viewer or Linux system logs
-   - Verify that the service user has sufficient permissions
-   - Check configuration file for errors
-
-3. **No logs being collected**:
-   - Verify collector configuration in settings
-   - Check that the agent has permissions to read log sources
-   - Review agent logs for any collection errors
-
-Please follow the existing code style and add appropriate documentation.
-
-
-
 ## Service Configuration and Working Directory
 
 The AthalaSIEM Agent service is configured to use the installation directory as its working directory. This ensures that configuration files are found in the correct location.
@@ -491,15 +351,6 @@ Logs are stored in the following locations (in order of priority):
 3. ProgramData (C:\ProgramData\Athala SIEM Agent\logs)
 4. Temp directory
 
-### Troubleshooting
-
-If the service fails to start:
-
-1. Check if appsettings.json exists in the installation directory
-2. Verify that the service has proper permissions to read/write in its directory
-3. Check Windows Event Viewer for startup errors
-4. Look for logs in C:\ProgramData\Athala SIEM Agent\
-
 ### Registry Keys Used by AthalaSIEM Agent
 
 The agent uses the following Windows registry keys for proper service operation:
@@ -524,11 +375,9 @@ The agent uses the following Windows registry keys for proper service operation:
      - installed: Value set to 1 when installation is complete
    ```
 
-These registry keys are automatically created during installation and removed during uninstallation. They follow standard Windows practices for service registration and do not affect other applications or system components.
+### Manual Service Management
 
-### Manual Service Configuration
-
-If you need to configure the service manually:
+To manage the AthalaSIEM Agent service:
 
 1. Open Services Management Console:
    - Press Win+R, type `services.msc` and press Enter
@@ -551,16 +400,43 @@ If you need to configure the service manually:
    sc query AthalaSIEMAgent                 # Check service status
    ```
 
-### Best Practices
+## Troubleshooting
 
-1. Use the Windows Services Management Console (services.msc) to manage the service
-2. Always run the service using an account with appropriate permissions
-3. Keep configuration files in the installation directory or the ProgramData folder
-4. Configure automatic startup for production environments
-5. Regularly check the logs in the designated log directory
-6. Ensure the agent has network connectivity to the SIEM server
-7. Use the configuration UI for all settings changes
+### Log Locations
+- Windows: `C:\Program Files\Athala SIEM Agent\Logs\` or `C:\ProgramData\Athala SIEM Agent\logs\`
+- Linux: `/var/log/athalasiem/`
+
+### Common Issues
+1. **Agent not connecting to server**:
+   - Verify network connectivity to server
+   - Check that ports 9596 and 50051 are open
+   - Verify server URL and ports in configuration
+   - Check for valid API key or deployment token
+
+2. **Service not starting**:
+   - Check Windows Event Viewer or Linux system logs
+   - Verify that the service user has sufficient permissions
+   - Check configuration file for errors
+   - Ensure the configuration file is in the correct location
+
+3. **No logs being collected**:
+   - Verify collector configuration in settings
+   - Check that the agent has permissions to read log sources
+   - Review agent logs for any collection errors
+
+4. **Configuration Issues**:
+   - If the service fails to start due to configuration errors, check:
+     - If appsettings.json exists in the installation directory
+     - If the file has valid JSON format
+     - If all required settings are present
+     - Windows Event Viewer for detailed error messages
 
 ## License
 
-Copyright © 2025 Athala SIEM. All rights reserved.
+Copyright © 2025 Athala Security Solutions
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

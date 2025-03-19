@@ -96,7 +96,7 @@ namespace Backend.Controllers
                 }
 
                 var agents = await _agentService.GetAllAgentsAsync();
-                var agentDtos = agents.Select(MapToDto);
+                var agentDtos = agents.Select(a => MapToDto(a)).ToList();
                 return Ok(agentDtos);
             }
             catch (Exception ex)
@@ -141,7 +141,7 @@ namespace Backend.Controllers
             }
             
             var agents = await _agentService.GetAgentsByStatusAsync(agentStatus);
-            var agentDtos = agents.Select(MapToDto);
+            var agentDtos = agents.Select(a => MapToDto(a)).ToList();
             return Ok(agentDtos);
         }
 
@@ -161,7 +161,7 @@ namespace Backend.Controllers
             }
             
             var agents = await _agentService.GetAgentsByTypeAsync(agentType);
-            var agentDtos = agents.Select(MapToDto);
+            var agentDtos = agents.Select(a => MapToDto(a)).ToList();
             return Ok(agentDtos);
         }
 
@@ -456,32 +456,33 @@ namespace Backend.Controllers
         /// </summary>
         /// <param name="agent">The agent model</param>
         /// <returns>The agent DTO</returns>
-        private AgentDto? MapToDto(AgentModels agent)
+        private AgentDto? MapToDto(AgentModels? agent)
         {
-            if (agent == null)
-            {
-                return null;
-            }
+            if (agent == null) return null;
             
             return new AgentDto
             {
                 Id = agent.Id,
                 Name = agent.Name,
-                Hostname = agent.Hostname,
-                IPAddress = agent.IPAddress,
-                OperatingSystem = agent.OperatingSystem,
-                Version = agent.Version,
                 Status = agent.Status.ToString(),
                 Type = agent.Type.ToString(),
+                Hostname = agent.Hostname,
+                IpAddress = agent.IPAddress,
+                Version = agent.Version,
                 LastConnected = agent.LastConnected,
                 InstallDate = agent.InstallDate,
                 IsEnabled = agent.IsEnabled,
+                OperatingSystem = agent.OperatingSystem,
                 CpuUsage = agent.CpuUsage,
                 MemoryUsage = agent.MemoryUsage,
                 DiskUsage = agent.DiskUsage,
                 CollectEventLogs = agent.CollectEventLogs,
                 CollectSystemMetrics = agent.CollectSystemMetrics,
-                EventLogsToMonitor = agent.EventLogsToMonitor?.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList() ?? new List<string>()
+                EventLogsToMonitor = string.IsNullOrEmpty(agent.EventLogsToMonitor) 
+                    ? new List<string>() 
+                    : agent.EventLogsToMonitor.Split(',').ToList(),
+                HealthStatus = agent.HealthReports.OrderByDescending(r => r.Timestamp).FirstOrDefault()?.OverallStatus ?? "Unknown",
+                Tags = new List<string>() // Default empty list for tags
             };
         }
 
@@ -497,10 +498,8 @@ namespace Backend.Controllers
             {
                 return false;
             }
-            
-            return CryptographicOperations.FixedTimeEquals(
-                Encoding.UTF8.GetBytes(a),
-                Encoding.UTF8.GetBytes(b));
+
+            return a.Equals(b, StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -697,42 +696,6 @@ namespace Backend.Controllers
         }
 
         /// <summary>
-        /// Gets the download link for an agent installer
-        /// </summary>
-        /// <param name="type">The installer type</param>
-        /// <returns>The download link</returns>
-        [HttpGet("download-installer/{type}")]
-        [AllowAnonymous]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        public async Task<ActionResult> DownloadInstaller(string type)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(type))
-                {
-                    return BadRequest(new { Error = "Type is required" });
-                }
-                
-                var installer = await _installerService.GenerateInstallerPackage(type);
-                
-                if (installer == null)
-                {
-                    return NotFound(new { Error = $"Installer for type {type} not found" });
-                }
-                
-                // Stream the installer to the client
-                return File(installer.Content, installer.ContentType, installer.FileName);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error downloading installer for type {Type}", type);
-                return StatusCode(500, new { Error = $"Error downloading installer: {ex.Message}" });
-            }
-        }
-
-        /// <summary>
         /// Generates a deployment token with pre-configuration
         /// </summary>
         /// <param name="request">The token generation request</param>
@@ -908,5 +871,56 @@ namespace Backend.Controllers
         }
 
         // Note: Log ingestion is now handled by the LogsController
+        
+        /// <summary>
+        /// Securely downloads an agent installer using a secure identifier
+        /// </summary>
+        /// <param name="secureId">The secure download identifier</param>
+        /// <returns>The installer file</returns>
+        [HttpGet("secure-download/{secureId}")]
+        [AllowAnonymous]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult> SecureDownloadInstaller(string secureId)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(secureId))
+                {
+                    return BadRequest(new { Error = "Secure download ID is required" });
+                }
+                
+                _logger.LogInformation("Secure download requested with ID: {SecureId}", secureId);
+                
+                // Check if the secureId matches the configured download code
+                var configuredCode = _configuration["InstallerDownloadCode"];
+                if (string.IsNullOrEmpty(configuredCode) || secureId != configuredCode)
+                {
+                    // If there's no matching ID or it's incorrect, return 404
+                    _logger.LogWarning("Invalid secure download ID: {SecureId}", secureId);
+                    return NotFound(new { Error = "Invalid secure download ID" });
+                }
+                
+                // Default to Windows installer if no platform is specified
+                string installerType = "windows";
+                
+                // Generate the installer package
+                var installer = await _installerService.GenerateInstallerPackage(installerType);
+                
+                if (installer == null)
+                {
+                    return NotFound(new { Error = $"Installer for type {installerType} not found" });
+                }
+                
+                // Stream the installer to the client
+                return File(installer.Content, installer.ContentType, installer.FileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing secure download for ID {SecureId}", secureId);
+                return StatusCode(500, new { Error = $"Error downloading installer: {ex.Message}" });
+            }
+        }
     }
 } 

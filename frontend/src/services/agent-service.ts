@@ -31,6 +31,22 @@ interface SecureDownloadResponse {
   downloadUrl: string;
 }
 
+interface DownloadUrlResponse {
+  downloadUrl: string;
+}
+
+interface DeploymentTokenResponse {
+  token: string;
+  expiresAt: string;
+  downloadUrl: string;
+}
+
+interface DeploymentTokenConfig {
+  name?: string;
+  group?: string;
+  serverAddress?: string;
+}
+
 export const agentService = {
   async addAgent(agentConfig: NewAgentConfig): Promise<AgentResponse> {
     try {
@@ -129,73 +145,37 @@ export const agentService = {
     }
   },
 
-  async getSecureDownloadUrl(): Promise<string> {
+  async getSecureDownloadUrl(os: string = 'windows'): Promise<string> {
     try {
-      const response = await api.get<SecureDownloadResponse>('/api/auth/secure-download-url');
-      
-      if (!response.data || !response.data.downloadUrl) {
-        throw new Error('Failed to get secure download URL');
-      }
-      
-      console.log('Secure download URL obtained:', response.data.downloadUrl);
+      const response = await api.get<DownloadUrlResponse>(`/api/agents/download/${os}`);
       return response.data.downloadUrl;
-    } catch (error) {
-      console.error('Error getting secure download URL:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error('Error getting download URL:', errorMessage);
       throw error;
     }
   },
 
-  async downloadAgentInstaller(type: string): Promise<void> {
+  async downloadAgentInstaller(os: string = 'windows'): Promise<Blob> {
     try {
-      // Use the API client which already has the correct base URL
-      const response = await api.get<SecureDownloadResponse>('/api/auth/secure-download-url');
-      
-      if (!response.data || !response.data.downloadUrl) {
-        throw new Error('Failed to get secure download URL');
-      }
-      
-      const downloadUrl = response.data.downloadUrl;
-      console.log('Secure download URL obtained:', downloadUrl);
-      
-      // Make a direct fetch to the full URL
-      const downloadResponse = await fetch(downloadUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Accept': 'application/octet-stream'
-        },
-        // Don't use credentials for cross-origin requests to avoid CORS issues
-        credentials: 'same-origin'
+      const response = await api.get<Blob>(`/api/agents/download/${os}`, {
+        responseType: 'blob'
       });
+      return response.data;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error('Error downloading installer:', errorMessage);
+      throw error;
+    }
+  },
 
-      if (!downloadResponse.ok) {
-        throw new Error(`Download failed with status: ${downloadResponse.status}`);
-      }
-      
-      // Get the blob from the response
-      const blob = await downloadResponse.blob();
-      
-      // Create a download link
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      
-      // Extract filename from Content-Disposition header
-      const disposition = downloadResponse.headers.get('Content-Disposition');
-      const filename = disposition?.match(/filename="?([^"]+)"?/)?.[1] || 'AthalaAgent-Setup.exe';
-      
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      
-      // Clean up
-      setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }, 100);
-
-    } catch (error) {
-      console.error('Download failed:', error);
+  async generateDeploymentToken(config: DeploymentTokenConfig): Promise<DeploymentTokenResponse> {
+    try {
+      const response = await api.post<DeploymentTokenResponse>('/api/agents/generate-token', config);
+      return response.data;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error('Error generating deployment token:', errorMessage);
       throw error;
     }
   },
