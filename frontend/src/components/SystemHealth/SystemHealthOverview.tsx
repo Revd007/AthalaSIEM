@@ -1,43 +1,61 @@
 'use client'
 
-import { Server, Shield, Network, Monitor, Database, AlertTriangle } from 'lucide-react'
+import { Server, Shield, AlertTriangle } from 'lucide-react'
 import { StatsCard } from '@/components/ui/StatsCard'
+import { useQuery } from '@tanstack/react-query'
+import { agentService } from '@/services/agent-service'
+import { AgentStatus } from '@/types/agent'
 
 export function SystemHealthOverview() {
-  const metrics = [
-    {
-      title: 'Total Devices',
-      value: '6',
-      change: '+3',
-      icon: Server,
-      trend: 'up' as const,
-      color: 'blue' as const
-    },
-    {
-      title: 'Healthy',
-      value: '3',
-      change: '+5',
-      icon: Shield,
-      trend: 'up' as const,
-      color: 'green' as const
-    },
-    {
-      title: 'Warning',
-      value: '2',
-      change: '-2',
-      icon: AlertTriangle,
-      trend: 'down' as const,
-      color: 'yellow' as const
-    },
-    {
-      title: 'Critical',
-      value: '1',
-      change: '+1',
-      icon: AlertTriangle,
-      trend: 'up' as const,
-      color: 'red' as const
-    }
-  ]
+  const { data: agents, isLoading } = useQuery({
+    queryKey: ['agents'],
+    queryFn: agentService.getAgents,
+    refetchInterval: 30000, // Refetch every 30 seconds
+  })
+
+  const calculateMetrics = () => {
+    if (!agents) return []
+
+    const totalAgents = agents.length
+    const healthyAgents = agents.filter(agent => agent.status === AgentStatus.Online).length
+    const warningAgents = agents.filter(agent => agent.status === AgentStatus.Pending).length
+    const criticalAgents = agents.filter(agent => 
+      agent.status === AgentStatus.Offline || agent.status === AgentStatus.Error
+    ).length
+
+    return [
+      {
+        title: 'Total Agents',
+        value: totalAgents.toString(),
+        icon: Server,
+        color: 'blue' as const,
+        loading: isLoading
+      },
+      {
+        title: 'Healthy',
+        value: healthyAgents.toString(),
+        icon: Shield,
+        color: 'green' as const,
+        loading: isLoading
+      },
+      {
+        title: 'Warning',
+        value: warningAgents.toString(),
+        icon: AlertTriangle,
+        color: 'yellow' as const,
+        loading: isLoading
+      },
+      {
+        title: 'Critical',
+        value: criticalAgents.toString(),
+        icon: AlertTriangle,
+        color: 'red' as const,
+        loading: isLoading
+      }
+    ]
+  }
+
+  const metrics = calculateMetrics()
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
