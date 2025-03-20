@@ -66,13 +66,17 @@ namespace Backend.Services
         {
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _installerBasePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Installers");
-            _agentBasePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "Agent");
+            
+            // Get the solution directory (two levels up from the bin directory)
+            var solutionDirectory = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", ".."));
+            _installerBasePath = Path.Combine(solutionDirectory, "Installers");
+            _agentBasePath = Path.Combine(solutionDirectory, "agent");
             
             _logger.LogInformation("Installer base path: {Path}", _installerBasePath);
             _logger.LogInformation("Agent base path: {Path}", _agentBasePath);
             _logger.LogInformation("Current directory: {Path}", Directory.GetCurrentDirectory());
             _logger.LogInformation("Base directory: {Path}", AppDomain.CurrentDomain.BaseDirectory);
+            _logger.LogInformation("Solution directory: {Path}", solutionDirectory);
             
             EnsureInstallerDirectoryExists();
         }
@@ -223,10 +227,21 @@ namespace Backend.Services
                     _logger.LogInformation("Creating installer directory: {Path}", _installerBasePath);
                     Directory.CreateDirectory(_installerBasePath);
                 }
+
+                // Check if installer exists
+                var installerPath = Path.Combine(_installerBasePath, WINDOWS_INSTALLER_FILENAME);
+                if (!File.Exists(installerPath))
+                {
+                    _logger.LogWarning("Installer not found at path: {Path}", installerPath);
+                    throw new FileNotFoundException($"Installer file not found at {installerPath}");
+                }
+
+                var fileInfo = new FileInfo(installerPath);
+                _logger.LogInformation("Installer file exists at: {Path} with size: {Size} bytes", installerPath, fileInfo.Length);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creating installer directory");
+                _logger.LogError(ex, "Error checking installer directory");
                 throw;
             }
         }

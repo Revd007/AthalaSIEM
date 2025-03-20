@@ -139,7 +139,7 @@ The frontend follows a modular component architecture:
    # or
    yarn dev
    ```
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
+5. Open [http://localhost:7654](http://localhost:7654) in your browser
 
 ### Building for Production
 ```bash
@@ -151,7 +151,7 @@ yarn build
 ### Docker Deployment
 ```bash
 docker build -t athala-siem-frontend .
-docker run -p 3000:3000 -e NEXT_PUBLIC_API_URL=<backend_url> athala-siem-frontend
+docker run -p 7654:7655 -e NEXT_PUBLIC_API_URL=<backend_url> athala-siem-frontend
 ```
 
 ## Authentication

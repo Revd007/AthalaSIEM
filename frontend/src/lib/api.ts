@@ -33,12 +33,19 @@ const processPendingRequests = () => {
 
 const refreshToken = async () => {
   try {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
     const response = await fetch(`${baseURL}/api/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-      }
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({ refreshToken })
     });
 
     if (!response.ok) {
@@ -48,6 +55,7 @@ const refreshToken = async () => {
     const data = await response.json();
     if (data.token) {
       localStorage.setItem('token', data.token);
+      localStorage.setItem('refreshToken', data.refreshToken);
       return data.token;
     }
     throw new Error('No token in refresh response');
@@ -104,8 +112,9 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
             },
           });
         } catch (error) {
-          // If refresh failed, clear token and throw error
+          // If refresh failed, clear both tokens and throw error
           localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
           queryClient.clear();
           throw new Error('Session expired');
         } finally {
@@ -237,4 +246,39 @@ export const endpoints = {
     status: '/api/ai/status'
   },
   health: '/api/health'
+};
+
+export const login = async (username: string, password: string) => {
+  try {
+    const response = await fetch(`${baseURL}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ username, password }),
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error('Login failed');
+    }
+
+    const data = await response.json();
+    if (data.token && data.refreshToken) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('refreshToken', data.refreshToken);
+      return data;
+    }
+    throw new Error('Invalid login response - missing token or refresh token');
+  } catch (error) {
+    console.error('Login failed:', error);
+    throw error;
+  }
+};
+
+export const logout = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('refreshToken');
+  queryClient.clear();
+  window.location.href = '/login';
 }; 

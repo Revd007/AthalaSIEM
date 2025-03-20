@@ -23,6 +23,7 @@ interface User {
 
 export interface LoginResponse {
   token: string;
+  refreshToken: string;
   token_type: string;
   user: {
     id: string;
@@ -52,8 +53,11 @@ export const authService = {
 
       const data = await response.json();
       
-      // Store token in both localStorage and cookie
+      // Store both tokens in localStorage
       localStorage.setItem('token', data.token);
+      localStorage.setItem('refreshToken', data.refreshToken);
+      
+      // Also store token in cookie for server-side auth
       document.cookie = `token=${data.token}; path=/;`;
       
       return data;
@@ -112,6 +116,7 @@ export const authService = {
               const refreshData = await refreshResponse.json();
               if (refreshData.token) {
                 localStorage.setItem('token', refreshData.token);
+                localStorage.setItem('refreshToken', refreshData.refreshToken);
                 document.cookie = `token=${refreshData.token}; path=/;`;
                 
                 // Retry the request with new token
@@ -155,6 +160,7 @@ export const authService = {
     } finally {
       // Clear both localStorage and cookie
       localStorage.removeItem('token');
+      localStorage.removeItem('refreshToken');
       document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     }
   }

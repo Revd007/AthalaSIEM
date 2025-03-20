@@ -10,6 +10,7 @@ import { toast } from 'sonner'
 // Add type definition for the API response
 type AuthResponse = {
   token: string;
+  refreshToken: string;
   user: {
     id: string;
     username: string;
@@ -24,23 +25,14 @@ export function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [shouldNavigate, setShouldNavigate] = useState(false)
 
-  // Check if user is already logged in
+  // Combined effect for navigation
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
       router.replace('/dashboard');
     }
   }, [router]);
-
-  // Handle navigation after successful login
-  useEffect(() => {
-    if (shouldNavigate) {
-      router.replace('/dashboard');
-      setShouldNavigate(false);
-    }
-  }, [shouldNavigate, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -57,9 +49,10 @@ export function LoginPage() {
         password 
       })
       
-      if (response.data?.token) {
-        // Store token
+      if (response.data?.token && response.data?.refreshToken) {
+        // Store both tokens
         localStorage.setItem('token', response.data.token)
+        localStorage.setItem('refreshToken', response.data.refreshToken)
         
         // Also store user info if available
         if (response.data.user) {
@@ -82,13 +75,14 @@ export function LoginPage() {
           toast.success('Login successful');
         }
         
-        // Trigger navigation via state change instead of direct router call
-        setShouldNavigate(true);
+        // Navigate directly after successful login
+        router.replace('/dashboard');
       } else {
-        throw new Error('Invalid response from server - no token received')
+        throw new Error('Invalid response from server - missing token or refresh token')
       }
     } catch (error) {
       localStorage.removeItem('token')
+      localStorage.removeItem('refreshToken')
       localStorage.removeItem('user')
       console.error('Login error:', error);
       

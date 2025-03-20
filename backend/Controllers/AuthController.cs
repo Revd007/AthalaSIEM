@@ -369,19 +369,24 @@ namespace Backend.Controllers
         /// <returns>The refreshed token</returns>
         [HttpPost("refresh")]
         [Authorize]
-        public async Task<ActionResult> RefreshToken()
+        public async Task<ActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
         {
             try
             {
+                if (request == null || string.IsNullOrEmpty(request.RefreshToken))
+                {
+                    return BadRequest(new { message = "Refresh token is required" });
+                }
+
                 var token = HttpContext.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
                 var user = await _authService.GetUserFromTokenAsync(token);
                 
-                if (user == null || string.IsNullOrEmpty(user.RefreshToken))
+                if (user == null)
                 {
-                    return Unauthorized(new { message = "Invalid token or refresh token" });
+                    return Unauthorized(new { message = "Invalid token" });
                 }
 
-                var result = await _authService.RefreshTokenAsync(token, user.RefreshToken);
+                var result = await _authService.RefreshTokenAsync(token, request.RefreshToken);
                 
                 if (!result.Success)
                 {
@@ -550,5 +555,10 @@ namespace Backend.Controllers
         /// Gets or sets the token
         /// </summary>
         public string Token { get; set; } = string.Empty;
+    }
+
+    public class RefreshTokenRequest
+    {
+        public string RefreshToken { get; set; } = string.Empty;
     }
 } 
