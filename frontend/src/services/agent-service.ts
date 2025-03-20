@@ -1,7 +1,17 @@
 import { ApiResponse } from '@/types/api';
 import { api, endpoints, queryClient } from '../lib/api';
-import type { NewAgentConfig } from '../types/agent';
-import type { Agent, AgentStatus, AgentHealthReport, LogQueryParams, PaginatedResult, LogEntry } from '../types/agent';
+import type { 
+  NewAgentConfig, 
+  Agent, 
+  AgentStatus, 
+  AgentHealthReport, 
+  LogQueryParams, 
+  PaginatedResult, 
+  LogEntry,
+  AgentMetrics,
+  AgentAlert,
+  Severity
+} from '../types/agent';
 import { authService } from './auth-service';
 
 interface AgentResponse {
@@ -177,5 +187,82 @@ export const agentService = {
   async deleteAgent(agentId: string): Promise<boolean> {
     await api.delete(endpoints.agents.delete(agentId));
     return true;
-  }
+  },
+
+  async getAgentMetrics(agentId: string, timeRange: { start: Date; end: Date }): Promise<AgentMetrics[]> {
+    const queryString = new URLSearchParams({
+      startDate: timeRange.start.toISOString(),
+      endDate: timeRange.end.toISOString()
+    });
+    
+    const response = await api.get<AgentMetrics[]>(`${endpoints.agents.details(agentId)}/metrics?${queryString}`);
+    return response.data;
+  },
+
+  async getAgentAlerts(agentId: string, params: { 
+    status?: 'open' | 'resolved' | 'acknowledged';
+    severity?: Severity;
+    page?: number;
+    pageSize?: number;
+  }): Promise<PaginatedResult<AgentAlert>> {
+    const queryString = new URLSearchParams();
+    
+    if (params.status) queryString.append('status', params.status);
+    if (params.severity) queryString.append('severity', params.severity);
+    if (params.page) queryString.append('page', params.page.toString());
+    if (params.pageSize) queryString.append('pageSize', params.pageSize.toString());
+    
+    const response = await api.get<PaginatedResult<AgentAlert>>(
+      `${endpoints.agents.details(agentId)}/alerts?${queryString}`
+    );
+    return response.data;
+  },
+
+  async acknowledgeAlert(agentId: string, alertId: string): Promise<void> {
+    await api.post(`${endpoints.agents.details(agentId)}/alerts/${alertId}/acknowledge`);
+  },
+
+  async resolveAlert(agentId: string, alertId: string): Promise<void> {
+    await api.post(`${endpoints.agents.details(agentId)}/alerts/${alertId}/resolve`);
+  },
+
+  async getAgentProcesses(agentId: string): Promise<Array<{
+    pid: number;
+    name: string;
+    cpuUsage: number;
+    memoryUsage: number;
+    status: string;
+  }>> {
+    const response = await api.get(`${endpoints.agents.details(agentId)}/processes`);
+    return response.data as Array<{
+      pid: number;
+      name: string;
+      cpuUsage: number;
+      memoryUsage: number;
+      status: string;
+    }>;
+  },
+
+  async getAgentNetworkStats(agentId: string): Promise<{
+    bytesIn: number;
+    bytesOut: number;
+    connections: number;
+    ports: Array<{
+      port: number;
+      protocol: string;
+      state: string;
+    }>;
+  }> {
+    const response = await api.get(`${endpoints.agents.details(agentId)}/network`);
+    return response.data as {
+      bytesIn: number;
+      bytesOut: number;
+      connections: number;
+      ports: Array<{
+        port: number;
+        protocol: string;
+        state: string;
+      }>;
+    };
+  },
 }; 

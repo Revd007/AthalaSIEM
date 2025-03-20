@@ -229,13 +229,13 @@ namespace Backend.Services
                 }
 
                 // Check if installer exists
-                var installerPath = Path.Combine(_installerBasePath, WINDOWS_INSTALLER_FILENAME);
-                if (!File.Exists(installerPath))
+            var installerPath = Path.Combine(_installerBasePath, WINDOWS_INSTALLER_FILENAME);
+            if (!File.Exists(installerPath))
                 {
                     _logger.LogWarning("Installer not found at path: {Path}", installerPath);
                     throw new FileNotFoundException($"Installer file not found at {installerPath}");
                 }
-
+                
                 var fileInfo = new FileInfo(installerPath);
                 _logger.LogInformation("Installer file exists at: {Path} with size: {Size} bytes", installerPath, fileInfo.Length);
             }

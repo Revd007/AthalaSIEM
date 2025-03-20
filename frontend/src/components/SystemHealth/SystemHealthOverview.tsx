@@ -7,7 +7,7 @@ export function SystemHealthOverview() {
   const metrics = [
     {
       title: 'Total Devices',
-      value: '156',
+      value: '6',
       change: '+3',
       icon: Server,
       trend: 'up' as const,
@@ -15,7 +15,7 @@ export function SystemHealthOverview() {
     },
     {
       title: 'Healthy',
-      value: '142',
+      value: '3',
       change: '+5',
       icon: Shield,
       trend: 'up' as const,
@@ -23,7 +23,7 @@ export function SystemHealthOverview() {
     },
     {
       title: 'Warning',
-      value: '8',
+      value: '2',
       change: '-2',
       icon: AlertTriangle,
       trend: 'down' as const,
@@ -31,7 +31,7 @@ export function SystemHealthOverview() {
     },
     {
       title: 'Critical',
-      value: '6',
+      value: '1',
       change: '+1',
       icon: AlertTriangle,
       trend: 'up' as const,
