@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { AIThreatAnalyzer } from '@/components/AI/SecurityAnalysis/AIThreatAnalyzer'
 import { AnomalyDetection } from '@/components/AI/SecurityAnalysis/AnomalyDetection'
 import { BehavioralAnalytics } from '@/components/AI/SecurityAnalysis/BehavioralAnalytics'
@@ -13,6 +14,16 @@ import { Brain, Activity, AlertTriangle, Shield, Zap, LineChart, Globe } from 'l
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 export default function AIAnalysisPage() {
+  const router = useRouter()
+
+  useEffect(() => {
+    // Check if user is logged in
+    const token = localStorage.getItem('token')
+    if (!token) {
+      router.push('/login')
+    }
+  }, [router])
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">

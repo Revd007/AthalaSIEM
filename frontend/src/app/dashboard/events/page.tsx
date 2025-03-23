@@ -5,9 +5,20 @@ import { EventsTimeline } from '@/components/SecurityEvents/EventsTimeline'
 import { EventsDistribution } from '@/components/SecurityEvents/EventsDistribution'
 import { EventsTable } from '@/components/SecurityEvents/EventsTable'
 import { EventsFilters } from '@/components/SecurityEvents/EventsFilters'
-import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 
 export default function SecurityEventsPage() {
+  const router = useRouter()
+
+  useEffect(() => {
+    // Check if user is logged in
+    const token = localStorage.getItem('token')
+    if (!token) {
+      router.push('/login')
+    }
+  }, [router])
+
   const [timeRange, setTimeRange] = useState('24h')
   const [filters, setFilters] = useState({
     severity: [],
