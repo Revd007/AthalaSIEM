@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { IncidentDashboard } from '@/components/Incidents/IncidentDashboard'
 import { IncidentMetrics } from '@/components/Incidents/IncidentMetrics'
 import { IncidentFilters } from '@/components/Incidents/IncidentFilters'
@@ -17,6 +18,15 @@ export default function IncidentsPage() {
     category: [],
     assignee: []
   })
+  const router = useRouter()
+
+  useEffect(() => {
+    // Check if user is logged in
+    const token = localStorage.getItem('token')
+    if (!token) {
+      router.push('/login')
+    }
+  }, [router])
 
   return (
     <div className="p-8 space-y-6">
@@ -44,4 +54,4 @@ export default function IncidentsPage() {
       />
     </div>
   )
-} 
+}

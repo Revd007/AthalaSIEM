@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { DashboardCard } from '@/components/ui/DashboardCard'
 import { 
   LineChart as LineChartIcon, Brain, AlertTriangle, Target, 
@@ -13,6 +13,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
   ResponsiveContainer, AreaChart, Area, PieChart, Pie, Cell 
 } from 'recharts'
+import { useRouter } from 'next/navigation'
 
 interface DetailedPrediction {
   id: string
@@ -108,7 +109,16 @@ const COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981']
 export default function PredictivePage() {
   const [selectedPrediction, setSelectedPrediction] = useState<DetailedPrediction | null>(null)
   const [timeRange, setTimeRange] = useState('7d')
+  const router = useRouter()
 
+  useEffect(() => {
+    // Check if user is logged in
+    const token = localStorage.getItem('token')
+    if (!token) {
+      router.push('/login')
+    }
+  }, [router])
+  
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
@@ -188,7 +198,7 @@ export default function PredictivePage() {
                 title="ML Models Active"
                 value="8"
                 change="0"
-                trend="stable"
+                trend="neutral"
                 icon={Activity}
                 color="yellow"
               />
@@ -385,10 +395,10 @@ export default function PredictivePage() {
                                   Date: {label}
                                 </p>
                                 <p className="text-sm font-medium text-blue-600 dark:text-blue-400">
-                                  Predictions: {payload[0].value}
+                                  Predictions: {payload[0]?.value}
                                 </p>
                                 <p className="text-sm font-medium text-green-600 dark:text-green-400">
-                                  Accuracy: {payload[1].value.toFixed(1)}%
+                                  Accuracy: {typeof payload[1]?.value === 'number' ? payload[1].value.toFixed(1) : payload[1]?.value}%
                                 </p>
                               </div>
                             )
@@ -417,7 +427,7 @@ export default function PredictivePage() {
                 </div>
               </DashboardCard>
 
-              <DashboardCard title="Threat Distribution" icon={PieChart}>
+              <DashboardCard title="Threat Distribution" icon={Brain}>
                 <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -501,7 +511,7 @@ export default function PredictivePage() {
                 title="Analysis Period"
                 value="30 Days"
                 change=""
-                trend="stable"
+                trend="neutral"
                 icon={Clock}
                 color="yellow"
               />
@@ -615,4 +625,4 @@ export default function PredictivePage() {
       </Tabs>
     </div>
   )
-} 
+}

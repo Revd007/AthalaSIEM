@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { ThreatHuntingDashboard } from '@/components/ThreatHunting/ThreatHuntingDashboard'
 import { IOCScanner } from '@/components/ThreatHunting/IOCScanner'
 import { BehaviorAnalysis } from '@/components/ThreatHunting/BehaviorAnalysis'
@@ -12,6 +13,15 @@ import { LiveHunting } from '@/components/ThreatHunting/LiveHunting'
 
 export default function ThreatHuntingPage() {
   const [activeTab, setActiveTab] = useState('dashboard')
+  const router = useRouter()
+
+  useEffect(() => {
+    // Check if user is logged in
+    const token = localStorage.getItem('token')
+    if (!token) {
+      router.push('/login')
+    }
+  }, [router])
 
   return (
     <div className="p-8 space-y-6">
