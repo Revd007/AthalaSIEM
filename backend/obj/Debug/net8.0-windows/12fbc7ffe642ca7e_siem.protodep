@@ -1,0 +1,2 @@
+obj\Debug\net8.0-windows\Protos/Siem.cs \
+obj\Debug\net8.0-windows\Protos/SiemGrpc.cs: Protos/siem.proto

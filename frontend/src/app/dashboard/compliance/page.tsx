@@ -4,20 +4,10 @@ import { ComplianceFrameworkSelector } from '@/components/Compliance/ComplianceF
 import { ComplianceMetrics } from '@/components/Compliance/ComplianceMetrics'
 import { ComplianceDashboard } from '@/components/Compliance/ComplianceDashboard'
 import type { ComplianceFramework } from '@/types/compliance'
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 
 export default function CompliancePage() {
   const [selectedFramework, setSelectedFramework] = useState<ComplianceFramework>('ISO27001')
-  const router = useRouter()
-
-  useEffect(() => {
-    // Check if user is logged in
-    const token = localStorage.getItem('token')
-    if (!token) {
-      router.push('/login')
-    }
-  }, [router])
 
   return (
     <div className="p-8 space-y-6">
