@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SecuritySettings } from '@/components/Settings/SecuritySettings'
 import { AgentSettings } from '@/components/Settings/AgentSettings'
@@ -12,6 +13,15 @@ import { BackupSettings } from '@/components/Settings/BackupSettings'
 import { IntegrationSettings } from '@/components/Settings/IntegrationSettings'
 
 export default function SettingsPage() {
+  const router = useRouter()
+  useEffect(() => {
+    // Check if user is logged in
+    const token = localStorage.getItem('token')
+    if (!token) {
+      router.push('/login')
+    }
+  }, [router])
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Settings</h1>

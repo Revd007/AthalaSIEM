@@ -56,7 +56,7 @@ export function LoginPage() {
         
         // Also store user info if available
         if (response.data.user) {
-          console.debug('Login successful, storing user info:', response.data.user);
+          // console.debug('Login successful, storing user info:', response.data.user);
           localStorage.setItem('user', JSON.stringify(response.data.user));
           
           // Debug information for roles
@@ -66,7 +66,7 @@ export function LoginPage() {
             const roleInfo = Array.isArray(response.data.user.role) 
               ? response.data.user.role.join(', ') 
               : response.data.user.role;
-            toast.success(`Login successful as ${response.data.user.username} with role: ${roleInfo}`);
+            //toast.success(`Login successful as ${response.data.user.username} with role: ${roleInfo}`);
           } else {
             console.warn('No roles found in user info. User may not have permission for restricted areas.');
             toast.warning('Login successful but no role information found. You may have limited access.');

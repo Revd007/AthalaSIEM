@@ -6,13 +6,22 @@ import { DeviceMetrics } from '@/components/SystemHealth/DeviceMetrics'
 import { DeviceDetails } from '@/components/SystemHealth/DeviceDetails'
 import { SystemHealthFilters } from '@/components/SystemHealth/SystemHealthFilters'
 import type { DeviceType } from '@/types/system-health'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
 export default function HealthPage() {
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null)
   const [selectedTypes, setSelectedTypes] = useState<DeviceType[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string[]>([])
+  const router = useRouter()
+  useEffect(() => {
+    // Check if user is logged in
+    const token = localStorage.getItem('token')
+    if (!token) {
+      router.push('/login')
+    }
+  }, [router])
 
   return (
     <div className="p-8 space-y-6">

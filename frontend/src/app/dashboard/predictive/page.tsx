@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { DashboardCard } from '@/components/ui/DashboardCard'
 import { 
   LineChart as LineChartIcon, Brain, AlertTriangle, Target, 
@@ -108,6 +109,14 @@ const COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981']
 export default function PredictivePage() {
   const [selectedPrediction, setSelectedPrediction] = useState<DetailedPrediction | null>(null)
   const [timeRange, setTimeRange] = useState('7d')
+  const router = useRouter()
+  useEffect(() => {
+    // Check if user is logged in
+    const token = localStorage.getItem('token')
+    if (!token) {
+      router.push('/login')
+    }
+  }, [router])
 
   return (
     <div className="p-6 space-y-6">
@@ -615,4 +624,4 @@ export default function PredictivePage() {
       </Tabs>
     </div>
   )
-} 
+}
