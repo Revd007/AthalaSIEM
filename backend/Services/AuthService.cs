@@ -105,7 +105,7 @@ namespace Backend.Services
             try
             {
                 var tokenHandler = new JwtSecurityTokenHandler();
-                var key = Encoding.ASCII.GetBytes(_configuration["JwtSettings:Secret"] ?? throw new InvalidOperationException("JWT Secret is not configured"));
+                var key = Encoding.ASCII.GetBytes(GetJwtKey());
                 
                 tokenHandler.ValidateToken(token, new TokenValidationParameters
                 {
@@ -138,7 +138,7 @@ namespace Backend.Services
             {
                 _logger.LogInformation("GetUserFromTokenAsync: Starting to parse token");
                 var tokenHandler = new JwtSecurityTokenHandler();
-                var key = Encoding.ASCII.GetBytes(_configuration["JwtSettings:Secret"] ?? throw new InvalidOperationException("JWT Secret is not configured"));
+                var key = Encoding.ASCII.GetBytes(GetJwtKey());
                 
                 var tokenValidationParameters = new TokenValidationParameters
                 {
@@ -191,7 +191,7 @@ namespace Backend.Services
             _logger.LogInformation("GenerateJwtToken: Generating token for user {Username}", user.Username);
             
             var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.ASCII.GetBytes(_configuration["JwtSettings:Secret"] ?? throw new InvalidOperationException("JWT Secret is not configured"));
+            var key = Encoding.ASCII.GetBytes(GetJwtKey());
             
             _logger.LogInformation("GenerateJwtToken: Getting roles for user {Username}", user.Username);
             var roles = _userRepository.GetUserRolesAsync(user.Id).Result;
@@ -292,30 +292,16 @@ namespace Backend.Services
             return await _userRepository.IsInRoleAsync(userId, role);
         }
         
-        /// <summary>
-        /// Checks if a user has a specific role
-        /// </summary>
-        /// <param name="userId">The user ID</param>
-        /// <param name="roleName">The role name</param>
-        /// <returns>True if the user has the role, false otherwise</returns>
-        public async Task<bool> UserHasRoleAsync(string userId, string roleName)
+        /// <inheritdoc/>
+        public async Task<bool> UserHasRoleAsync(string id, string v)
         {
-            try
-            {
-                var user = await _userRepository.GetByIdAsync(userId);
-                if (user == null)
-                {
-                    _logger.LogWarning("User not found: {UserId}", userId);
-                    return false;
-                }
-
-                return user.UserRoles.Any(ur => ur.Role.Name == roleName);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error checking user role: {UserId}, {RoleName}", userId, roleName);
-                return false;
-            }
+            return await IsInRoleAsync(id, v);
+        }
+        
+        /// <inheritdoc/>
+        public async Task<IEnumerable<string>> GetUserRolesAsync(string userId)
+        {
+            return await _userRepository.GetUserRolesAsync(userId);
         }
         
         private string GenerateRefreshToken()
@@ -365,6 +351,21 @@ namespace Backend.Services
                 _logger.LogError(ex, "VerifyPasswordHash: Error during password verification");
                 return false;
             }
+        }
+        
+        private string GetJwtKey()
+        {
+            string? key = _configuration["JwtSettings:Secret"];
+            if (string.IsNullOrEmpty(key))
+            {
+                key = _configuration["Jwt:Key"];
+                if (string.IsNullOrEmpty(key))
+                {
+                    throw new InvalidOperationException("JWT Secret is not configured in either JwtSettings:Secret or Jwt:Key");
+                }
+            }
+            _logger.LogInformation("Using JWT key from configuration");
+            return key;
         }
     }
 } 

@@ -1,173 +1,164 @@
-# ATHALA SIEM Frontend
+# AthalaSIEM Frontend
 
-The frontend component of the ATHALA SIEM (Security Information and Event Management) platform provides a modern, responsive user interface for security monitoring, incident response, and system management.
-
-## Overview
-
-The ATHALA SIEM Frontend offers a comprehensive dashboard and management interface for:
-- Real-time security event monitoring
-- Agent deployment and management
-- Alert investigation and response
-- Log analysis and threat hunting
-- System health monitoring
-- Compliance reporting
-- User and permission management
-
-## Tech Stack
-
-- **Framework**: Next.js 15.0 with App Router
-- **Language**: TypeScript
-- **UI Components**: 
-  - Radix UI primitives
-  - Tailwind CSS for styling
-  - Tremor for data visualization
-  - Tanstack React Table for data displays
-- **State Management**: 
-  - Zustand for global state
-  - React Context for theme and authentication
-- **Data Fetching**: 
-  - Tanstack React Query
-  - Axios for API requests
-- **Charts and Visualization**:
-  - Recharts
-  - D3.js
-  - React Leaflet for geospatial mapping
-- **Deployment**: Containerized with Docker
+Frontend application for AthalaSIEM, built with Next.js, TypeScript, and TailwindCSS.
 
 ## Project Structure
 
 ```
 frontend/
 ├── src/
-│   ├── app/                   # Next.js App Router routes
-│   ├── components/            # UI Components
-│   │   ├── ui/                # Shared UI components
-│   │   ├── Dashboard/         # Dashboard-specific components
-│   │   ├── Agents/            # Agent management components
-│   │   ├── SecurityEvents/    # Event monitoring components
-│   │   └── ...                # Other feature-specific components
-│   ├── services/              # API service clients
-│   ├── contexts/              # React Context providers
-│   ├── hooks/                 # Custom React hooks
-│   ├── types/                 # TypeScript type definitions
-│   ├── utils/                 # Utility functions
-│   ├── lib/                   # Shared libraries and configurations
-│   └── styles/                # Global styles
-├── public/                    # Static assets
-├── next.config.js             # Next.js configuration
-└── tailwind.config.js         # Tailwind CSS configuration
+│   ├── app/                   # Next.js 13+ App Router routes
+│   │   ├── dashboard/         # Dashboard pages
+│   │   ├── login/            # Authentication pages
+│   │   ├── register/         # Registration pages
+│   │   ├── settings/         # Settings pages
+│   │   ├── security/         # Security monitoring pages
+│   │   └── compliance/       # Compliance reporting pages
+│   ├── components/           # React components
+│   │   ├── Agents/          # Agent management components
+│   │   ├── Dashboard/       # Dashboard components
+│   │   ├── Security/        # Security monitoring components
+│   │   ├── Analytics/       # Analytics and reporting components
+│   │   ├── Admin/          # Administrative components
+│   │   └── ui/             # Shared UI components (shadcn/ui)
+│   ├── services/            # API service layer
+│   │   ├── agent-service.ts    # Agent management service
+│   │   ├── auth-service.ts     # Authentication service
+│   │   ├── monitoring-service.ts # System monitoring service
+│   │   └── security-alert-service.ts # Security alert service
+│   ├── lib/                 # Core utilities
+│   │   ├── api.ts          # API client configuration
+│   │   ├── api-endpoints.ts # API endpoint definitions
+│   │   └── utils.ts        # Utility functions
+│   ├── types/              # TypeScript type definitions
+│   │   ├── agent.ts       # Agent related types
+│   │   ├── auth.ts        # Authentication types
+│   │   └── api.ts         # API response types
+│   ├── hooks/             # Custom React hooks
+│   ├── contexts/          # React context providers
+│   ├── providers/         # Global providers
+│   └── styles/            # Global styles
+├── public/                # Static assets
+└── [config files]         # Various configuration files
 ```
+
+## Tech Stack
+
+- **Framework**: Next.js 15+ (App Router)
+- **Language**: TypeScript
+- **Styling**: TailwindCSS
+- **UI Components**: shadcn/ui
+- **State Management**: 
+  - React Query (Server State)
+  - Zustand (Client State)
+- **Authentication**: JWT with refresh tokens
+- **Form Handling**: React Hook Form
+- **Validation**: Zod
+- **Icons**: Lucide React
+- **Charts**: Recharts
+- **Tables**: TanStack Table
+- **Date Handling**: date-fns
 
 ## Key Features
 
-### Dashboard
-- **Security Overview**: Real-time security posture with threat indicators
-- **Agent Status**: Live monitoring of deployed agents
-- **Alert Statistics**: Visual representations of alert trends and severity
-- **System Health**: Performance metrics and health status
-- **Recent Activities**: Timeline of recent security events
+### 1. Authentication & Authorization
+- JWT-based authentication
+- Role-based access control
+- Secure token management
+- Protected routes
 
-### Security Monitoring
-- **Live Event Stream**: Real-time security event monitoring
-- **Event Filtering**: Advanced filtering and search capabilities
-- **Alert Management**: View, assign, and resolve security alerts
-- **Incident Response**: Guided workflows for handling security incidents
-- **SIEM Correlation**: Visual representation of event correlations
+### 2. Dashboard & Monitoring
+- Real-time system monitoring
+- Customizable dashboards
+- Performance metrics
+- Health status indicators
 
-### Agent Management
-- **Agent Deployment**: Generate deployment tokens and installer packages
-- **Agent Configuration**: Remote configuration of data collection parameters
-- **Health Monitoring**: Track agent performance and status
-- **Log Collection**: Configure log sources and collection policies
+### 3. Agent Management
+- Agent deployment
+- Configuration management
+- Status monitoring
+- Health checks
+- Log collection
 
-### Analytics and Reporting
-- **Threat Intelligence**: Integration with threat feeds
-- **Compliance Reporting**: Pre-configured compliance report templates
-- **Custom Reports**: Configurable reporting with export options
-- **Security Metrics**: Key security indicators and metrics
-- **Predictive Analysis**: ML-powered risk prediction
+### 4. Security Monitoring
+- Real-time event monitoring
+- Alert management
+- Incident response
+- Threat detection
+- Compliance monitoring
 
-### Administration
-- **User Management**: Create and manage users and roles
-- **System Configuration**: Configure system-wide settings
-- **Audit Trail**: Comprehensive logging of administrative actions
-- **API Key Management**: Generate and manage API keys for integrations
+### 5. Analytics & Reporting
+- Custom reports
+- Data visualization
+- Trend analysis
+- Compliance reporting
+- Performance analytics
 
-## Component Architecture
-
-The frontend follows a modular component architecture:
-
-### Core Layout Components
-- `Layout`: Base layout with navigation
-- `Header`: Application header with user controls
-- `Sidebar`: Main navigation sidebar
-- `Dashboard`: Main dashboard container
-
-### Feature-specific Components
-- Each major feature has its dedicated component directory
-- Components follow a hierarchical structure (containers -> elements)
-- Shared UI elements are in the `ui` directory
-
-### Service Layer
-- API communication is abstracted through service modules
-- Each service focuses on a specific domain (auth, agents, events, etc.)
-- Services handle data fetching, caching, and error management
+### 6. System Administration
+- User management
+- Role management
+- System configuration
+- Audit logging
+- API key management
 
 ## Getting Started
 
-### Prerequisites
-- Node.js 18.0+ 
-- npm or yarn
-- ATHALA SIEM Backend running and accessible
-
-### Development Setup
-1. Clone the repository
-2. Install dependencies:
+1. Install dependencies:
    ```bash
    npm install
-   # or
-   yarn
    ```
-3. Configure the backend API URL in `.env.local`:
+
+2. Set up environment variables:
+   ```bash
+   cp .env.example .env.local
+   ```
+   Edit `.env.local` with your configuration:
    ```
    NEXT_PUBLIC_API_URL=http://localhost:9595
    NEXT_PUBLIC_GRPC_URL=http://localhost:50051
    ```
-4. Start the development server:
+
+3. Run the development server:
    ```bash
    npm run dev
-   # or
-   yarn dev
    ```
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-### Building for Production
-```bash
-npm run build
-# or
-yarn build
-```
+4. Open [http://localhost:7654](http://localhost:7654) in your browser.
 
-### Docker Deployment
-```bash
-docker build -t athala-siem-frontend .
-docker run -p 3000:3000 -e NEXT_PUBLIC_API_URL=<backend_url> athala-siem-frontend
-```
+## Available Scripts
 
-## Authentication
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
+- `npm run format` - Format code with Prettier
 
-The frontend uses JWT authentication with the following flow:
-1. User login with credentials
-2. JWT token stored in memory and HTTP-only cookies
-3. Automatic token refresh
-4. Protected routes with authentication checks
+## Development Guidelines
 
-## Theme System
+### Code Style
+- Use TypeScript for type safety
+- Follow ESLint and Prettier configurations
+- Use functional components with hooks
+- Implement proper error handling
+- Write meaningful comments
 
-The application supports both light and dark themes:
-- Theme selection persisted in local storage
-- Automatic system preference detection
-- Consistent design across both themes
+### Component Structure
+- Place components in appropriate feature folders
+- Use shared UI components from shadcn/ui
+- Implement proper prop types
+- Handle loading and error states
+
+### State Management
+- Use React Query for server state
+- Use Zustand for global client state
+- Use local state for component-specific state
+- Implement proper caching strategies
+
+### API Integration
+- Use the centralized API client
+- Implement proper error handling
+- Use TypeScript types for API responses
+- Handle loading and error states
 
 ## Responsive Design
 
@@ -177,17 +168,16 @@ The UI is fully responsive and optimized for:
 - Tablets (768x1024+)
 - Mobile devices (320x568+)
 
-## Extension Points
+## Security Considerations
 
-The frontend is designed for extensibility:
-- Custom dashboard widgets
-- Additional visualization components
-- New report templates
-- Integration with external security tools
+- Implement proper authentication
+- Use secure token management
+- Implement proper authorization
+- Handle sensitive data properly
+- Follow security best practices
 
-## Browser Compatibility
+## Browser Support
 
-The application is tested and supported on:
 - Chrome (latest 2 versions)
 - Firefox (latest 2 versions)
 - Edge (latest 2 versions)

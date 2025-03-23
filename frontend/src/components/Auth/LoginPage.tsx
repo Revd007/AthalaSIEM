@@ -10,7 +10,13 @@ import { toast } from 'sonner'
 // Add type definition for the API response
 type AuthResponse = {
   token: string;
-  // Add other expected response fields if any
+  refreshToken: string;
+  user: {
+    id: string;
+    username: string;
+    email: string;
+    role?: string | string[];
+  }
 };
 
 export function LoginPage() {
@@ -20,6 +26,7 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
+  // Combined effect for navigation
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
@@ -42,20 +49,41 @@ export function LoginPage() {
         password 
       })
       
-      if (response.data?.token) {
-        // Store token
+      if (response.data?.token && response.data?.refreshToken) {
+        // Store both tokens
         localStorage.setItem('token', response.data.token)
-        toast.success('Login successful')
+        localStorage.setItem('refreshToken', response.data.refreshToken)
         
-        // Small delay to ensure token is stored
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Also store user info if available
+        if (response.data.user) {
+          // console.debug('Login successful, storing user info:', response.data.user);
+          localStorage.setItem('user', JSON.stringify(response.data.user));
+          
+          // Debug information for roles
+          if (response.data.user.role) {
+            console.debug('User roles:', response.data.user.role);
+            // Show a more descriptive toast for roles
+            const roleInfo = Array.isArray(response.data.user.role) 
+              ? response.data.user.role.join(', ') 
+              : response.data.user.role;
+            //toast.success(`Login successful as ${response.data.user.username} with role: ${roleInfo}`);
+          } else {
+            console.warn('No roles found in user info. User may not have permission for restricted areas.');
+            toast.warning('Login successful but no role information found. You may have limited access.');
+          }
+        } else {
+          toast.success('Login successful');
+        }
         
-        router.replace('/dashboard')
+        // Navigate directly after successful login
+        router.replace('/dashboard');
       } else {
-        throw new Error('Invalid response from server - no token received')
+        throw new Error('Invalid response from server - missing token or refresh token')
       }
     } catch (error) {
       localStorage.removeItem('token')
+      localStorage.removeItem('refreshToken')
+      localStorage.removeItem('user')
       console.error('Login error:', error);
       
       // Handle different types of errors

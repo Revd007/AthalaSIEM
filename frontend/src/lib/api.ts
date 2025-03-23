@@ -1,8 +1,9 @@
 import { QueryClient } from '@tanstack/react-query'
 import type { ApiResponse } from '../types/api'
+import { ENV } from '../config/env'
 
-// Use environment variable with fallback
-const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5135'
+// Use environment configuration for base URL
+const baseURL = ENV.API_URL
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,110 +31,132 @@ const processPendingRequests = () => {
   pendingRequests = [];
 };
 
+const refreshToken = async () => {
+  try {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    const response = await fetch(`${baseURL}/api/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`
+      },
+      body: JSON.stringify({ refreshToken })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to refresh token');
+    }
+
+    const data = await response.json();
+    if (data.token) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('refreshToken', data.refreshToken);
+      return data.token;
+    }
+    throw new Error('No token in refresh response');
+  } catch (error) {
+    console.error('Token refresh failed:', error);
+    throw error;
+  }
+};
+
 const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promise<ApiResponse<T>> => {
   const token = localStorage.getItem('token');
-  const { skipAuth, ...restOptions } = options;
+  const { skipAuth, responseType, ...restOptions } = options;
 
-  const defaultOptions: RequestOptions = {
+  const defaultOptions: RequestInit = {
     mode: 'cors',
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
+      'Accept': responseType === 'blob' ? '*/*' : 'application/json',
       ...(!skipAuth && token ? { 'Authorization': `Bearer ${token}` } : {}),
-      ...options.headers,
+      ...(options.headers || {}),
     },
     ...restOptions,
   };
 
   try {
     const response = await fetch(`${baseURL}${url}`, defaultOptions);
-    
-    // Network error handling
+
     if (!response) {
       throw new Error('Network error - Failed to connect to the server');
     }
 
     // Handle 401 errors
     if (!skipAuth && response.status === 401) {
-      // For installer endpoints, just throw an error without redirecting
-      if (url.includes('/installer-info/') || url.includes('/installer/')) {
-        throw new Error('Authentication required. Please ensure you are logged in.');
+      if (url.includes('/auth/login') || url.includes('/auth/register')) {
+        throw new Error('Authentication failed');
       }
       
-      // For other endpoints, try to refresh the token or redirect to login
       if (!isRefreshingToken) {
         isRefreshingToken = true;
         
         try {
-          // Try to silently refresh the token (you would need to implement this endpoint)
-          const refreshResponse = await fetch(`${baseURL}/api/auth/refresh`, {
-            method: 'POST',
-            credentials: 'include',
+          const newToken = await refreshToken();
+          
+          // Process pending requests
+          processPendingRequests();
+          
+          // Retry the current request with the new token
+          return makeRequest<T>(url, {
+            ...options,
             headers: {
-              'Content-Type': 'application/json',
-            }
+              ...defaultOptions.headers,
+              'Authorization': `Bearer ${newToken}`,
+            },
           });
-          
-          if (refreshResponse.ok) {
-            const refreshData = await refreshResponse.json();
-            if (refreshData.token) {
-              // Store the new token
-              localStorage.setItem('token', refreshData.token);
-              
-              // Process pending requests
-              processPendingRequests();
-              
-              // Retry the current request with the new token
-              return makeRequest<T>(url, options);
-            }
-          }
-          
-          // If refresh failed, redirect to login
-          localStorage.removeItem('token');
-          window.location.href = '/login';
-          throw new Error('Session expired. Please login again.');
         } catch (error) {
-          // If refresh failed, redirect to login
+          // If refresh failed, clear both tokens and throw error
           localStorage.removeItem('token');
-          window.location.href = '/login';
-          throw new Error('Session expired. Please login again.');
+          localStorage.removeItem('refreshToken');
+          queryClient.clear();
+          throw new Error('Session expired');
         } finally {
           isRefreshingToken = false;
         }
-      } else {
-        // If we're already refreshing the token, add this request to the queue
-        return new Promise<ApiResponse<T>>(resolve => {
-          pendingRequests.push(() => {
-            resolve(makeRequest<T>(url, options));
-          });
-        });
       }
+      
+      // If we're already refreshing the token, add this request to the queue
+      return new Promise<ApiResponse<T>>(resolve => {
+        pendingRequests.push(() => {
+          resolve(makeRequest<T>(url, options));
+        });
+      });
     }
 
     if (!response.ok) {
-      try {
+      const contentType = response.headers.get('content-type');
+      if (contentType?.includes('application/json')) {
         const errorData = await response.json();
-        const errorMessage = errorData.message || errorData.title || errorData.detail || `Request failed with status ${response.status}`;
-        console.error('API Error:', errorData);
-        throw new Error(errorMessage);
-      } catch (e) {
-        throw new Error(`Request failed with status ${response.status}`);
+        throw new Error(errorData.message || `Request failed with status ${response.status}`);
       }
+      throw new Error(`Request failed with status ${response.status}`);
     }
 
-    if (options.responseType === 'blob') {
-      return { data: await response.blob() } as ApiResponse<T>;
+    if (responseType === 'blob') {
+      const blob = await response.blob();
+      return { data: blob } as ApiResponse<T>;
     }
 
-    const data = await response.json();
-    return { data } as ApiResponse<T>;
+    const contentType = response.headers.get('content-type');
+    if (contentType?.includes('application/json')) {
+      const data = await response.json();
+      return { data } as ApiResponse<T>;
+    }
+
+    const text = await response.text();
+    return { data: text as any } as ApiResponse<T>;
   } catch (error) {
-    console.error('API Request failed:', error);
     if (error instanceof Error) {
       throw error;
     }
-    throw new Error('Failed to connect to the server. Please check your connection.');
+    throw new Error('Failed to connect to the server');
   }
 };
 
@@ -156,7 +179,11 @@ export const api = {
    * @param options - Optional fetch options
    * @returns Promise with the response data
    */
-  post: <T>(url: string, body?: any, options?: RequestOptions) => makeRequest<T>(url, { method: 'POST', body: JSON.stringify(body), ...options }),
+  post: <T>(url: string, body?: any, options?: RequestOptions) => makeRequest<T>(url, { 
+    method: 'POST', 
+    body: body ? JSON.stringify(body) : undefined,
+    ...options 
+  }),
 
   /**
    * Make a PUT request to the API
@@ -165,7 +192,11 @@ export const api = {
    * @param options - Optional fetch options
    * @returns Promise with the response data
    */
-  put: <T>(url: string, body?: any, options?: RequestOptions) => makeRequest<T>(url, { method: 'PUT', body: JSON.stringify(body), ...options }),
+  put: <T>(url: string, body?: any, options?: RequestOptions) => makeRequest<T>(url, { 
+    method: 'PUT', 
+    body: body ? JSON.stringify(body) : undefined,
+    ...options 
+  }),
 
   /**
    * Make a DELETE request to the API
@@ -191,7 +222,8 @@ export const endpoints = {
     login: '/api/auth/login',
     logout: '/api/auth/logout',
     register: '/api/auth/register',
-    me: '/api/auth/me'
+    me: '/api/auth/me',
+    refresh: '/api/auth/refresh'
   },
   agents: {
     list: '/api/agents',
@@ -199,7 +231,7 @@ export const endpoints = {
     details: (id: string) => `/api/agents/${id}`,
     update: (id: string) => `/api/agents/${id}`,
     delete: (id: string) => `/api/agents/${id}`,
-    installer: (type: string) => `/api/agents/installer/${type}`
+    download: (os: string) => `/api/agents/download/${os}`
   },
   events: {
     list: '/api/logs',
@@ -214,4 +246,39 @@ export const endpoints = {
     status: '/api/ai/status'
   },
   health: '/api/health'
+};
+
+export const login = async (username: string, password: string) => {
+  try {
+    const response = await fetch(`${baseURL}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ username, password }),
+      credentials: 'include'
+    });
+
+    if (!response.ok) {
+      throw new Error('Login failed');
+    }
+
+    const data = await response.json();
+    if (data.token && data.refreshToken) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('refreshToken', data.refreshToken);
+      return data;
+    }
+    throw new Error('Invalid login response - missing token or refresh token');
+  } catch (error) {
+    console.error('Login failed:', error);
+    throw error;
+  }
+};
+
+export const logout = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('refreshToken');
+  queryClient.clear();
+  window.location.href = '/login';
 }; 

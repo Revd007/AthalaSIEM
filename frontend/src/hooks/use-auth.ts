@@ -11,6 +11,7 @@ interface User {
 
 interface AuthResponse {
   token: string;
+  refreshToken: string;
   user: User;
 }
 
@@ -32,6 +33,7 @@ export const useAuthStore = create<AuthState>()(
           const authData = response.data as AuthResponse
           set({ user: authData.user, isLoading: false })
           localStorage.setItem('token', authData.token)
+          localStorage.setItem('refreshToken', authData.refreshToken)
         } catch (error) {
           console.error('Login failed:', error)
           throw error
@@ -39,6 +41,7 @@ export const useAuthStore = create<AuthState>()(
       },
       logout: () => {
         localStorage.removeItem('token')
+        localStorage.removeItem('refreshToken')
         set({ user: null })
       }
     }),

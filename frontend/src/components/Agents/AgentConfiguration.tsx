@@ -1,153 +1,244 @@
-import React, { useState } from 'react';
-import { Settings, Save, RefreshCw } from 'lucide-react';
+"use client";
+
+import React from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 import { Agent } from '../../types/agent';
+import { agentService } from '../../services/agent-service';
+import { Button } from '../ui/button';
+import { Card } from '../ui/card';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Switch } from '../ui/switch';
+import { Textarea } from '../ui/textarea';
+import { useToast } from '../ui/use-toast';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
-interface AgentConfig {
-  collectionInterval: number;
-  logLevel: 'debug' | 'info' | 'warn' | 'error';
-  enableFIM: boolean;
-  fimPaths: string[];
-  enableNetworkMonitoring: boolean;
-  enableProcessMonitoring: boolean;
-  retentionDays: number;
-}
-
-const defaultConfig: AgentConfig = {
-  collectionInterval: 60,
-  logLevel: 'info',
-  enableFIM: true,
-  fimPaths: ['/etc', '/var/www', '/usr/local/bin'],
-  enableNetworkMonitoring: true,
-  enableProcessMonitoring: true,
-  retentionDays: 30,
+// Define the schema shape first
+type AgentConfigForm = {
+  name: string;
+  hostname: string;
+  ipAddress: string;
+  port: number;
+  isEnabled: boolean;
+  collectEventLogs: boolean;
+  collectSystemMetrics: boolean;
+  eventLogsToMonitor?: string;
+  configuration?: Record<string, string>;
 };
 
-export function AgentConfiguration({ agent }: { agent: Agent }) {
-  const [config, setConfig] = useState<AgentConfig>(defaultConfig);
+// Then create the schema
+const agentConfigSchema: z.ZodType<AgentConfigForm> = z.object({
+  name: z.string().min(1, 'Name is required'),
+  hostname: z.string().min(1, 'Hostname is required'),
+  ipAddress: z.string().ip('Invalid IP address'),
+  port: z.number().min(1).max(65535),
+  isEnabled: z.boolean().default(true),
+  collectEventLogs: z.boolean().default(false),
+  collectSystemMetrics: z.boolean().default(false),
+  eventLogsToMonitor: z.string().optional(),
+  configuration: z.record(z.string()).optional(),
+});
+
+interface AgentConfigurationProps {
+  agent: Agent;
+  onClose: () => void;
+}
+
+export function AgentConfiguration({ agent, onClose }: AgentConfigurationProps) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<AgentConfigForm>({
+    resolver: zodResolver(agentConfigSchema),
+    defaultValues: {
+      name: agent.name,
+      hostname: agent.hostname,
+      ipAddress: agent.ipAddress,
+      port: agent.port,
+      isEnabled: agent.isEnabled,
+      collectEventLogs: agent.collectEventLogs ?? false,
+      collectSystemMetrics: agent.collectSystemMetrics ?? false,
+      eventLogsToMonitor: agent.eventLogsToMonitor,
+      configuration: agent.configuration,
+    },
+  });
+
+  const onSubmit = async (data: AgentConfigForm) => {
+    try {
+      await agentService.configureAgent(agent.agentId, data);
+      await queryClient.invalidateQueries({ queryKey: ['agents'] });
+      toast({
+        title: 'Success',
+        description: 'Agent configuration updated successfully',
+      });
+      onClose();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to update agent configuration',
+        variant: 'destructive',
+      });
+    }
+  };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-2">
-          <Settings className="h-6 w-6 text-blue-500" />
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-            Agent Configuration: {agent.name}
-          </h2>
-        </div>
-        <div className="flex space-x-2">
-          <button className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center">
-            <Save className="h-4 w-4 mr-2" />
-            Save Changes
-          </button>
-          <button className="px-4 py-2 border rounded-lg hover:bg-gray-50 flex items-center">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Reset
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Collection Interval (seconds)
-            </label>
-            <input
-              type="number"
-              value={config.collectionInterval}
-              onChange={(e) => setConfig({ ...config, collectionInterval: parseInt(e.target.value) })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+    <Card className="p-6">
+      <h3 className="text-lg font-semibold mb-4">Agent Configuration</h3>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="name">Name</Label>
+            <Input
+              id="name"
+              {...register('name')}
+              className={errors.name ? 'border-red-500' : ''}
+              aria-describedby="name-description"
             />
+            <p id="name-description" className="text-sm text-muted-foreground">
+              A unique name for this agent
+            </p>
+            {errors.name && (
+              <p className="text-sm text-red-500">{errors.name.message}</p>
+            )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Log Level
-            </label>
-            <select
-              value={config.logLevel}
-              onChange={(e) => setConfig({ ...config, logLevel: e.target.value as any })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-            >
-              <option value="debug">Debug</option>
-              <option value="info">Info</option>
-              <option value="warn">Warning</option>
-              <option value="error">Error</option>
-            </select>
+          <div className="space-y-2">
+            <Label htmlFor="hostname">Hostname</Label>
+            <Input
+              id="hostname"
+              {...register('hostname')}
+              className={errors.hostname ? 'border-red-500' : ''}
+              aria-describedby="hostname-description"
+            />
+            <p id="hostname-description" className="text-sm text-muted-foreground">
+              The hostname where this agent is installed
+            </p>
+            {errors.hostname && (
+              <p className="text-sm text-red-500">{errors.hostname.message}</p>
+            )}
           </div>
         </div>
 
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Monitoring Features
-            </label>
-            <div className="mt-2 space-y-2">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={config.enableFIM}
-                  onChange={(e) => setConfig({ ...config, enableFIM: e.target.checked })}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">
-                  File Integrity Monitoring
-                </span>
-              </label>
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={config.enableNetworkMonitoring}
-                  onChange={(e) => setConfig({ ...config, enableNetworkMonitoring: e.target.checked })}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">
-                  Network Monitoring
-                </span>
-              </label>
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={config.enableProcessMonitoring}
-                  onChange={(e) => setConfig({ ...config, enableProcessMonitoring: e.target.checked })}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="ml-2 text-sm text-gray-600 dark:text-gray-400">
-                  Process Monitoring
-                </span>
-              </label>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="ipAddress">IP Address</Label>
+            <Input
+              id="ipAddress"
+              {...register('ipAddress')}
+              className={errors.ipAddress ? 'border-red-500' : ''}
+              aria-describedby="ip-description"
+            />
+            <p id="ip-description" className="text-sm text-muted-foreground">
+              The IP address of the agent
+            </p>
+            {errors.ipAddress && (
+              <p className="text-sm text-red-500">{errors.ipAddress.message}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="port">Port</Label>
+            <Input
+              id="port"
+              type="number"
+              {...register('port', { valueAsNumber: true })}
+              className={errors.port ? 'border-red-500' : ''}
+              aria-describedby="port-description"
+            />
+            <p id="port-description" className="text-sm text-muted-foreground">
+              Port number (1-65535)
+            </p>
+            {errors.port && (
+              <p className="text-sm text-red-500">{errors.port.message}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="eventLogsToMonitor">Event Logs to Monitor</Label>
+          <Textarea
+            id="eventLogsToMonitor"
+            {...register('eventLogsToMonitor')}
+            placeholder="Enter event log names separated by commas"
+            aria-describedby="logs-description"
+          />
+          <p id="logs-description" className="text-sm text-muted-foreground">
+            Specify which Windows Event Logs to monitor
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="isEnabled">Enabled</Label>
+              <p className="text-sm text-muted-foreground">
+                Enable or disable this agent
+              </p>
             </div>
+            <Switch
+              id="isEnabled"
+              {...register('isEnabled')}
+            />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Data Retention (days)
-            </label>
-            <input
-              type="number"
-              value={config.retentionDays}
-              onChange={(e) => setConfig({ ...config, retentionDays: parseInt(e.target.value) })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="collectSystemMetrics">System Metrics</Label>
+              <p className="text-sm text-muted-foreground">
+                Collect system performance metrics
+              </p>
+            </div>
+            <Switch
+              id="collectSystemMetrics"
+              {...register('collectSystemMetrics')}
             />
           </div>
         </div>
-      </div>
 
-      {config.enableFIM && (
-        <div className="mt-6">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            FIM Monitored Paths
-          </label>
-          <div className="mt-2">
-            <textarea
-              value={config.fimPaths.join('\n')}
-              onChange={(e) => setConfig({ ...config, fimPaths: e.target.value.split('\n') })}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
-              rows={4}
-            />
+        <div className="flex items-center justify-between rounded-lg border p-4">
+          <div className="space-y-0.5">
+            <Label htmlFor="collectEventLogs">Event Logs</Label>
+            <p className="text-sm text-muted-foreground">
+              Enable Windows Event Log collection
+            </p>
           </div>
+          <Switch
+            id="collectEventLogs"
+            {...register('collectEventLogs')}
+          />
         </div>
-      )}
-    </div>
+
+        <div className="flex justify-end space-x-2">
+          <Button 
+            type="button" 
+            variant="outline" 
+            onClick={onClose}
+            className="w-24"
+          >
+            Cancel
+          </Button>
+          <Button 
+            type="submit" 
+            disabled={isSubmitting}
+            className="w-24"
+          >
+            {isSubmitting ? 'Saving...' : 'Save'}
+          </Button>
+        </div>
+      </form>
+    </Card>
   );
 }

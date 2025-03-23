@@ -1,98 +1,54 @@
 'use client'
 
-import { useState } from 'react'
-import { Server, Shield, Network, Monitor, Database, AlertTriangle } from 'lucide-react'
+import { Server, Activity, AlertTriangle } from 'lucide-react'
 import { Card } from '@/components/ui/card'
-import type { SystemDevice, DeviceType } from '@/types/system-health'
+import { useQuery } from '@tanstack/react-query'
+import { agentService } from '@/services/agent-service'
+import { Agent, AgentStatus } from '@/types/agent'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Badge } from '@/components/ui/badge'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 interface DevicesListProps {
   selectedDevice: string | null
   onDeviceSelect: (deviceId: string) => void
-  typeFilter: DeviceType[]
+  typeFilter: string[]
   searchQuery: string
   statusFilter: string[]
 }
 
-const mockDevices: SystemDevice[] = [
-  {
-    id: '1',
-    name: 'Main Firewall',
-    type: 'firewall',
-    status: 'healthy',
-    ipAddress: '192.168.1.1',
-    location: 'Main DC',
-    lastSeen: '2024-03-19T10:00:00Z',
-    agentVersion: '2.0.0',
-    manufacturer: 'Palo Alto',
-    model: 'PA-3260'
+const statusConfig: Record<AgentStatus, { color: string; bgColor: string; icon: any }> = {
+  [AgentStatus.Online]: { 
+    color: 'text-green-500', 
+    bgColor: 'bg-green-50',
+    icon: Activity 
   },
-  {
-    id: '2',
-    name: 'Web Server 01',
-    type: 'server',
-    status: 'healthy',
-    ipAddress: '192.168.1.10',
-    location: 'Main DC',
-    lastSeen: '2024-03-19T10:05:00Z',
-    agentVersion: '2.0.0',
-    manufacturer: 'Dell',
-    model: 'PowerEdge R740'
+  [AgentStatus.Active]: { 
+    color: 'text-green-500', 
+    bgColor: 'bg-green-50',
+    icon: Activity 
   },
-  {
-    id: '3', 
-    name: 'Syslog Server',
-    type: 'syslog',
-    status: 'warning',
-    ipAddress: '192.168.1.15',
-    location: 'Main DC',
-    lastSeen: '2024-03-19T09:55:00Z',
-    agentVersion: '2.0.0',
-    manufacturer: 'HP',
-    model: 'ProLiant DL380'
+  [AgentStatus.Pending]: { 
+    color: 'text-yellow-500', 
+    bgColor: 'bg-yellow-50',
+    icon: Server 
   },
-  {
-    id: '4',
-    name: 'AWS EC2 Instance',
-    type: 'cloud',
-    status: 'healthy',
-    ipAddress: '10.0.1.100',
-    location: 'AWS us-east-1',
-    lastSeen: '2024-03-19T10:02:00Z',
-    agentVersion: '2.0.0',
-    manufacturer: 'Amazon',
-    model: 't3.large'
+  [AgentStatus.Offline]: { 
+    color: 'text-gray-500', 
+    bgColor: 'bg-gray-50',
+    icon: Server 
   },
-  {
-    id: '5',
-    name: 'Linux App Server',
-    type: 'server',
-    status: 'critical',
-    ipAddress: '192.168.1.20',
-    location: 'Main DC',
-    lastSeen: '2024-03-19T09:30:00Z', 
-    agentVersion: '2.0.0',
-    manufacturer: 'NetApp',
-    model: 'FAS8700'
-  },
-  {
-    id: '6',
-    name: 'IDS Sensor',
-    type: 'security-appliance',
-    status: 'warning',
-    ipAddress: '192.168.1.40',
-    location: 'Main DC',
-    lastSeen: '2024-03-19T09:58:00Z',
-    agentVersion: '2.0.0',
-    manufacturer: 'Cisco',
-    model: 'ASA 5500-X'
+  [AgentStatus.Error]: { 
+    color: 'text-red-500', 
+    bgColor: 'bg-red-50',
+    icon: AlertTriangle 
   }
-]
+}
 
-const statusConfig = {
-  healthy: { color: 'text-green-500', bgColor: 'bg-green-50' },
-  warning: { color: 'text-yellow-500', bgColor: 'bg-yellow-50' },
-  critical: { color: 'text-red-500', bgColor: 'bg-red-50' },
-  offline: { color: 'text-gray-500', bgColor: 'bg-gray-50' }
+const getMetricColor = (value: number) => {
+  if (value >= 90) return 'text-red-500'
+  if (value >= 70) return 'text-yellow-500'
+  return 'text-green-500'
 }
 
 export function DevicesList({
@@ -102,52 +58,152 @@ export function DevicesList({
   searchQuery,
   statusFilter
 }: DevicesListProps) {
-  const filteredDevices = mockDevices.filter(device => {
-    if (typeFilter.length && !typeFilter.includes(device.type)) return false
-    if (statusFilter.length && !statusFilter.includes(device.status)) return false
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      return (
-        device.name.toLowerCase().includes(query) ||
-        device.ipAddress.includes(query) ||
-        device.location.toLowerCase().includes(query)
-      )
-    }
-    return true
-  })
+  const { data: agents, isLoading, error } = useQuery({
+    queryKey: ['agents'],
+    queryFn: async () => {
+      console.log('Fetching agents...');
+      try {
+        const result = await agentService.getAgents();
+        console.log('Agents fetched:', result);
+        return result;
+      } catch (error) {
+        console.error('Error fetching agents:', error);
+        throw error;
+      }
+    },
+    refetchInterval: 30000,
+  });
 
-  return (
-    <Card>
-      <div className="p-4 space-y-4">
-        <h2 className="font-semibold">Devices ({filteredDevices.length})</h2>
-        <div className="space-y-2">
-          {filteredDevices.map(device => (
-            <div
-              key={device.id}
-              onClick={() => onDeviceSelect(device.id)}
-              className={`w-full p-4 rounded-lg border transition-colors cursor-pointer ${
-                selectedDevice === device.id
-                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                  : 'border-gray-200 hover:border-blue-500 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800'
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
-                  <div className="font-medium">{device.name}</div>
-                  <div className="text-sm text-gray-500">{device.ipAddress}</div>
-                  <div className="flex items-center space-x-2 text-sm">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      statusConfig[device.status].bgColor
-                    } ${statusConfig[device.status].color}`}>
-                      {device.status}
-                    </span>
-                    <span className="text-gray-500">{device.location}</span>
+  if (error) {
+    console.error('Error in DevicesList:', error);
+    return (
+      <Card>
+        <div className="p-4">
+          <div className="text-red-500">
+            Error loading agents. Please check your connection and try again.
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <Card>
+        <div className="p-4 space-y-4">
+          <h2 className="text-lg font-semibold">Devices</h2>
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="w-full p-4 rounded-lg border">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                  <div className="flex items-center space-x-2">
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                    <Skeleton className="h-3 w-24" />
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
+      </Card>
+    )
+  }
+
+  const filteredAgents = agents?.filter(agent => {
+    if (typeFilter.length && !typeFilter.includes(agent.type)) return false
+    if (statusFilter.length && !statusFilter.includes(agent.status)) return false
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      return (
+        agent.name.toLowerCase().includes(query) ||
+        agent.ipAddress.includes(query) ||
+        agent.hostname.toLowerCase().includes(query)
+      )
+    }
+    return true
+  }) ?? []
+
+  return (
+    <Card>
+      <div className="p-4">
+        <h2 className="text-lg font-semibold mb-4">Agents ({filteredAgents.length})</h2>
+        <ScrollArea className="h-[calc(100vh-300px)]">
+          <div className="space-y-2 pr-4">
+            {filteredAgents.map(agent => {
+              const StatusIcon = statusConfig[agent.status]?.icon || Server
+              return (
+                <div
+                  key={agent.agentId}
+                  onClick={() => onDeviceSelect(agent.agentId)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onDeviceSelect(agent.agentId)
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-selected={selectedDevice === agent.agentId}
+                  className={`w-full p-4 rounded-lg border transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    selectedDevice === agent.agentId
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 hover:border-blue-500 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2">
+                        <div className="font-medium">{agent.name}</div>
+                        <Badge variant="outline" className="text-xs">
+                          {agent.type}
+                        </Badge>
+                      </div>
+                      <div className="text-sm text-gray-500 flex items-center space-x-2">
+                        <span>{agent.ipAddress}</span>
+                        <span>•</span>
+                        <span>{agent.hostname}</span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span 
+                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            statusConfig[agent.status]?.bgColor || statusConfig[AgentStatus.Offline].bgColor
+                          } ${statusConfig[agent.status]?.color || statusConfig[AgentStatus.Offline].color}`}
+                        >
+                          <StatusIcon className="w-3 h-3 mr-1" />
+                          {agent.status}
+                        </span>
+                      </div>
+                      {agent.cpuUsage !== undefined && (
+                        <div className="grid grid-cols-3 gap-4 mt-2">
+                          <div className="text-sm">
+                            <span className="text-gray-500">CPU: </span>
+                            <span className={getMetricColor(agent.cpuUsage)}>{agent.cpuUsage}%</span>
+                          </div>
+                          <div className="text-sm">
+                            <span className="text-gray-500">Memory: </span>
+                            <span className={getMetricColor(agent.memoryUsage || 0)}>{agent.memoryUsage}%</span>
+                          </div>
+                          <div className="text-sm">
+                            <span className="text-gray-500">Disk: </span>
+                            <span className={getMetricColor(agent.diskUsage || 0)}>{agent.diskUsage}%</span>
+                          </div>
+                        </div>
+                      )}
+                      <div className="text-xs text-gray-400 flex items-center space-x-1">
+                        <span>Last seen:</span>
+                        <time dateTime={agent.lastHeartbeat}>
+                          {new Date(agent.lastHeartbeat).toLocaleString()}
+                        </time>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </ScrollArea>
       </div>
     </Card>
   )

@@ -39,6 +39,31 @@ export interface Agent {
   collectEventLogs?: boolean;
   collectSystemMetrics?: boolean;
   eventLogsToMonitor?: string;
+  version?: string;
+  osInfo?: {
+    platform: string;
+    version: string;
+    architecture: string;
+  };
+  cloudInfo?: {
+    provider: string;
+    region: string;
+    instanceId: string;
+  };
+  metrics?: {
+    cpuUsage: number;
+    memoryUsage: number;
+    diskUsage: number;
+    networkIn?: number;
+    networkOut?: number;
+    processCount?: number;
+    threadCount?: number;
+  };
+  alerts?: {
+    count: number;
+    severity: Severity;
+    lastAlert?: string;
+  };
 }
 
 export enum HealthStatus {
@@ -100,6 +125,28 @@ export interface PaginatedResult<T> {
   pageCount: number;
   currentPage: number;
   pageSize: number;
+}
+
+export interface AgentMetrics {
+  timestamp: string;
+  cpuUsage: number;
+  memoryUsage: number;
+  diskUsage: number;
+  networkIn?: number;
+  networkOut?: number;
+  processCount?: number;
+  threadCount?: number;
+}
+
+export interface AgentAlert {
+  id: string;
+  agentId: string;
+  timestamp: string;
+  type: string;
+  message: string;
+  severity: Severity;
+  status: 'open' | 'resolved' | 'acknowledged';
+  metadata?: Record<string, any>;
 }
 
 // "id": "48865b6d-944e-40cf-97fa-658315c5804d",

@@ -1,6 +1,17 @@
-import { api, endpoints } from '../lib/api';
-import type { NewAgentConfig } from '../types/agent';
-import type { Agent, AgentStatus, AgentHealthReport, LogQueryParams, PaginatedResult, LogEntry } from '../types/agent';
+import { ApiResponse } from '@/types/api';
+import { api, endpoints, queryClient } from '../lib/api';
+import type { 
+  NewAgentConfig, 
+  Agent, 
+  AgentStatus, 
+  AgentHealthReport, 
+  LogQueryParams, 
+  PaginatedResult, 
+  LogEntry,
+  AgentMetrics,
+  AgentAlert,
+  Severity
+} from '../types/agent';
 import { authService } from './auth-service';
 
 interface AgentResponse {
@@ -10,22 +21,6 @@ interface AgentResponse {
     installationCommand: string;
     message: string;
     apiKey?: string;
-}
-
-// Registration response from the backend API
-interface AgentRegistrationResultDto {
-    agentId: string;
-    apiKey: string;
-    success: boolean;
-}
-
-// Request data for agent registration
-interface AgentRegistrationDto {
-    hostname: string;
-    ipAddress: string;
-    operatingSystem: string;
-    name?: string;
-    registrationKey: string;
 }
 
 interface InstallerInfo {
@@ -46,97 +41,40 @@ interface SecureDownloadResponse {
   downloadUrl: string;
 }
 
-// Definition for the agent pre-configuration
-interface AgentPreConfig {
-  serverUrl: string;
-  port: number;
-  name: string;
-  useSSL: boolean;
-  collectors: string[];
+interface DownloadUrlResponse {
+  downloadUrl: string;
 }
 
-// Definition for the token generation request
-interface GenerateTokenRequest {
-  installerType: string;
-  configuration: AgentPreConfig;
-}
-
-// Definition for the token response
 interface DeploymentTokenResponse {
   token: string;
   expiresAt: string;
   downloadUrl: string;
 }
 
+interface DeploymentTokenConfig {
+  name?: string;
+  group?: string;
+  serverAddress?: string;
+}
+
 export const agentService = {
-  // Method to register a new agent with the backend
-  async registerAgent(registrationData: AgentRegistrationDto): Promise<AgentRegistrationResultDto> {
-    try {
-      const response = await api.post<AgentRegistrationResultDto>('/api/agents/register', registrationData, {
-        headers: {
-          'X-Registration-Key': registrationData.registrationKey
-        }
-      });
-      
-      if (!response.data) throw new Error('Failed to register agent');
-      return response.data;
-    } catch (error) {
-      console.error('Agent registration error:', error);
-      throw error;
-    }
-  },
-
-  // Method to get installation instructions for different operating systems
-  async getInstallationInstructions(agentId: string, apiKey: string, os: string): Promise<string> {
-    // Format different installation commands based on OS
-    if (os.toLowerCase().includes('windows')) {
-      return `powershell -ExecutionPolicy Bypass -Command "iex ((New-Object System.Net.WebClient).DownloadString('https://yourdomain.com/install.ps1')); Install-Agent -AgentId '${agentId}' -ApiKey '${apiKey}'"`;
-    } else if (os.toLowerCase().includes('linux')) {
-      return `curl -sSL https://yourdomain.com/install.sh | sudo bash -s -- --agent-id "${agentId}" --api-key "${apiKey}"`;
-    } else {
-      return `Please download the appropriate installer for your operating system and use the following parameters:\nAgent ID: ${agentId}\nAPI Key: ${apiKey}`;
-    }
-  },
-
   async addAgent(agentConfig: NewAgentConfig): Promise<AgentResponse> {
-    try {
-      const response = await api.post<AgentResponse>('/api/agents/add-agent', agentConfig);
-      if (!response.data) throw new Error('Failed to register agent');
-      return response.data;
-    } catch (error) {
-      console.error('Agent registration error:', error);
-      throw error;
-    }
-  },
-
-  // Method to get agent download links for different OS types
-  async getAgentDownloadLink(os: string, version: string = 'latest'): Promise<string> {
-    try {
-      const response = await api.get<{downloadUrl: string}>(`/api/agents/download/${os}?version=${version}`);
-      if (!response.data || !response.data.downloadUrl) {
-        throw new Error('Failed to get download link');
-      }
-      return response.data.downloadUrl;
-    } catch (error) {
-      console.error('Error getting download link:', error);
-      throw error;
-    }
+    const response = await api.post<AgentResponse>(endpoints.agents.add, agentConfig);
+    return response.data;
   },
 
   async getAgents(): Promise<Agent[]> {
-    const response = await api.get<Agent[]>('/api/agents');
+    const response = await api.get<Agent[]>(endpoints.agents.list);
     return response.data ?? [];
   },
 
   async getAgentStatus(agentId: string): Promise<Agent> {
-    const response = await api.get<Agent>(`/api/agents/${agentId}/status`);
-    if (!response.data) throw new Error('Failed to get agent status');
+    const response = await api.get<Agent>(`${endpoints.agents.details(agentId)}/status`);
     return response.data;
   },
 
   async configureAgent(agentId: string, config: Partial<Agent>): Promise<Agent> {
-    const response = await api.put<Agent>(`/api/agents/${agentId}`, config);
-    if (!response.data) throw new Error('Failed to configure agent');
+    const response = await api.put<Agent>(endpoints.agents.update(agentId), config);
     return response.data;
   },
 
@@ -176,78 +114,54 @@ export const agentService = {
     }
   },
 
-  async getSecureDownloadUrl(): Promise<string> {
+  async getSecureDownloadUrl(os: string = 'windows'): Promise<string> {
     try {
-      const response = await api.get<SecureDownloadResponse>('/api/auth/secure-download-url');
-      
-      if (!response.data || !response.data.downloadUrl) {
-        throw new Error('Failed to get secure download URL');
-      }
-      
-      console.log('Secure download URL obtained:', response.data.downloadUrl);
+      const response = await api.get<DownloadUrlResponse>(`/api/agents/download/${os}`);
       return response.data.downloadUrl;
-    } catch (error) {
-      console.error('Error getting secure download URL:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error('Error getting download URL:', errorMessage);
       throw error;
     }
   },
 
-  async downloadAgentInstaller(type: string): Promise<void> {
+  async downloadAgentInstaller(os: string = 'windows'): Promise<void> {
     try {
-      // Use the API client which already has the correct base URL
-      const response = await api.get<SecureDownloadResponse>('/api/auth/secure-download-url');
-      
-      if (!response.data || !response.data.downloadUrl) {
-        throw new Error('Failed to get secure download URL');
-      }
-      
-      const downloadUrl = response.data.downloadUrl;
-      console.log('Secure download URL obtained:', downloadUrl);
-      
-      // Make a direct fetch to the full URL
-      const downloadResponse = await fetch(downloadUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Accept': 'application/octet-stream'
-        },
-        credentials: 'include'
+      const response = await api.get(endpoints.agents.download(os), {
+        responseType: 'blob'
       });
 
-      if (!downloadResponse.ok) {
-        throw new Error(`Download failed with status: ${downloadResponse.status}`);
-      }
-      
-      // Get the blob from the response
-      const blob = await downloadResponse.blob();
-      
-      // Create a download link
+      // Create a blob from the response and trigger download
+      const blob = new Blob([response.data as BlobPart], { type: 'application/octet-stream' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      
-      // Extract filename from Content-Disposition header
-      const disposition = downloadResponse.headers.get('Content-Disposition');
-      const filename = disposition?.match(/filename="?([^"]+)"?/)?.[1] || 'AthalaAgent-Setup.exe';
-      
-      a.download = filename;
+      a.download = `athala-agent.${os === 'windows' ? 'msi' : os.includes('deb') ? 'deb' : 'rpm'}`;
       document.body.appendChild(a);
       a.click();
-      
-      // Clean up
-      setTimeout(() => {
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      }, 100);
-
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
     } catch (error) {
-      console.error('Download failed:', error);
+      if (error instanceof Error) {
+        throw new Error(`Failed to download installer: ${error.message}`);
+      }
+      throw new Error('Failed to download installer');
+    }
+  },
+
+  async generateDeploymentToken(config: DeploymentTokenConfig): Promise<DeploymentTokenResponse> {
+    try {
+      const response = await api.post<DeploymentTokenResponse>('/api/agents/generate-token', config);
+      return response.data;
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error('Error generating deployment token:', errorMessage);
       throw error;
     }
   },
 
   async getAgentHealth(agentId: string): Promise<AgentHealthReport> {
-    const response = await api.get<AgentHealthReport>(`/api/agents/${agentId}/health`);
+    const response = await api.get<AgentHealthReport>(`${endpoints.agents.details(agentId)}/health`);
     return response.data;
   },
 
@@ -266,71 +180,89 @@ export const agentService = {
   },
 
   async restartAgent(agentId: string): Promise<boolean> {
-    try {
-      await api.post(`/api/agents/${agentId}/restart`);
-      return true;
-    } catch (error) {
-      console.error('Failed to restart agent:', error);
-      return false;
-    }
+    await api.post(`${endpoints.agents.details(agentId)}/restart`);
+    return true;
   },
 
   async deleteAgent(agentId: string): Promise<boolean> {
-    try {
-      await api.delete(`/api/agents/${agentId}`);
-      return true;
-    } catch (error) {
-      console.error('Failed to delete agent:', error);
-      throw error;
-    }
+    await api.delete(endpoints.agents.delete(agentId));
+    return true;
   },
 
-  // Method to generate a deployment token
-  async generateDeploymentToken(
-    type: string = 'windows',
-    config: AgentPreConfig
-  ): Promise<DeploymentTokenResponse> {
-    try {
-      const request: GenerateTokenRequest = {
-        installerType: type,
-        configuration: config
-      };
-      
-      const response = await api.post<DeploymentTokenResponse>('/api/agents/generate-token', request);
-      
-      if (!response.data) throw new Error('Failed to generate deployment token');
-      return response.data;
-    } catch (error) {
-      console.error('Error generating deployment token:', error);
-      throw error;
-    }
+  async getAgentMetrics(agentId: string, timeRange: { start: Date; end: Date }): Promise<AgentMetrics[]> {
+    const queryString = new URLSearchParams({
+      startDate: timeRange.start.toISOString(),
+      endDate: timeRange.end.toISOString()
+    });
+    
+    const response = await api.get<AgentMetrics[]>(`${endpoints.agents.details(agentId)}/metrics?${queryString}`);
+    return response.data;
   },
-  
-  // Method to register an agent using a deployment token
-  async registerWithToken(
-    hostname: string,
-    ipAddress: string,
-    operatingSystem: string,
-    token: string
-  ): Promise<AgentRegistrationResultDto> {
-    try {
-      const registrationData = {
-        hostname,
-        ipAddress,
-        operatingSystem,
-        deploymentToken: token
-      };
-      
-      const response = await api.post<AgentRegistrationResultDto>(
-        '/api/agents/token-register',
-        registrationData
-      );
-      
-      if (!response.data) throw new Error('Failed to register agent with token');
-      return response.data;
-    } catch (error) {
-      console.error('Error registering agent with token:', error);
-      throw error;
-    }
-  }
+
+  async getAgentAlerts(agentId: string, params: { 
+    status?: 'open' | 'resolved' | 'acknowledged';
+    severity?: Severity;
+    page?: number;
+    pageSize?: number;
+  }): Promise<PaginatedResult<AgentAlert>> {
+    const queryString = new URLSearchParams();
+    
+    if (params.status) queryString.append('status', params.status);
+    if (params.severity) queryString.append('severity', params.severity);
+    if (params.page) queryString.append('page', params.page.toString());
+    if (params.pageSize) queryString.append('pageSize', params.pageSize.toString());
+    
+    const response = await api.get<PaginatedResult<AgentAlert>>(
+      `${endpoints.agents.details(agentId)}/alerts?${queryString}`
+    );
+    return response.data;
+  },
+
+  async acknowledgeAlert(agentId: string, alertId: string): Promise<void> {
+    await api.post(`${endpoints.agents.details(agentId)}/alerts/${alertId}/acknowledge`);
+  },
+
+  async resolveAlert(agentId: string, alertId: string): Promise<void> {
+    await api.post(`${endpoints.agents.details(agentId)}/alerts/${alertId}/resolve`);
+  },
+
+  async getAgentProcesses(agentId: string): Promise<Array<{
+    pid: number;
+    name: string;
+    cpuUsage: number;
+    memoryUsage: number;
+    status: string;
+  }>> {
+    const response = await api.get(`${endpoints.agents.details(agentId)}/processes`);
+    return response.data as Array<{
+      pid: number;
+      name: string;
+      cpuUsage: number;
+      memoryUsage: number;
+      status: string;
+    }>;
+  },
+
+  async getAgentNetworkStats(agentId: string): Promise<{
+    bytesIn: number;
+    bytesOut: number;
+    connections: number;
+    ports: Array<{
+      port: number;
+      protocol: string;
+      state: string;
+    }>;
+  }> {
+    const response = await api.get(`${endpoints.agents.details(agentId)}/network`);
+    return response.data as {
+      bytesIn: number;
+      bytesOut: number;
+      connections: number;
+      ports: Array<{
+        port: number;
+        protocol: string;
+        state: string;
+      }>;
+    };
+  },
 }; 

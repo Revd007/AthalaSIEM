@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using Backend.Models;
 
 namespace Backend.DTOs
@@ -71,6 +72,7 @@ namespace Backend.DTOs
         /// <summary>
         /// Gets or sets the agent IP address (alias for IpAddress)
         /// </summary>
+        [JsonIgnore]
         public string IPAddress { get => IpAddress; set => IpAddress = value; }
         
         /// <summary>

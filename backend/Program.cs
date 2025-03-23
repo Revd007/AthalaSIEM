@@ -4,6 +4,7 @@ using Backend.Data;
 using Backend.Data.Repositories;
 using Backend.Services;
 using Backend.Services.Background;
+using Backend.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
@@ -66,16 +67,38 @@ builder.Services.AddGrpc(options =>
     options.MaxSendMessageSize = 16 * 1024 * 1024; // 16 MB
 });
 
-// Configure CORS
+// Configure CORS - updated to properly handle preflight requests
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", builder =>
     {
-        builder.WithOrigins("http://localhost:3000")
-               .AllowAnyMethod()
-               .AllowAnyHeader()
-               .AllowCredentials()
-               .WithExposedHeaders("Content-Disposition"); // For file downloads
+        builder.WithOrigins(
+                "http://localhost:3000",  // Development
+                "http://localhost:9595",  // Backend
+                "http://localhost:7654",  // Development
+                "http://localhost:7655",  // Production
+                "https://localhost:9596", // Secure Production
+                "http://localhost:7657"   // Test
+            )
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials()
+            .WithExposedHeaders("Content-Disposition"); // For file downloads
+    });
+    
+    // Add a more permissive CORS policy for gRPC clients that doesn't use credentials
+    options.AddPolicy("AllowAll", builder =>
+    {
+        builder.WithOrigins(
+                "http://localhost:3000",
+                "http://localhost:9595",
+                "http://localhost:7654",
+                "http://localhost:7655",
+                "https://localhost:9596",
+                "http://localhost:7657"
+            )
+            .AllowAnyMethod()
+            .AllowAnyHeader();
     });
 });
 
@@ -131,6 +154,7 @@ builder.Services.AddScoped<ILogService, LogService>();
 builder.Services.AddScoped<ILogAnalysisService, LogAnalysisService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<IInstallerService, InstallerService>();
 
 // Register background services
 builder.Services.AddHostedService<Backend.Services.Background.AgentMonitoringService>();
@@ -146,14 +170,45 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+// Configure middleware in correct order - IMPORTANT: Routing must come before CORS
+app.UseRouting();
+
+// Special handling for OPTIONS requests (preflight)
+app.Use(async (context, next) =>
+{
+    // If it's a preflight request, handle it directly
+    if (context.Request.Method == "OPTIONS")
+    {
+        // Apply CORS directly for OPTIONS requests
+        context.Response.Headers["Access-Control-Allow-Origin"] = context.Request.Headers["Origin"];
+        context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
+        context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With";
+        context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+        context.Response.StatusCode = 200;
+        return;
+    }
+
+    // For non-OPTIONS requests, continue with middleware pipeline
+    await next();
+});
+
+// Apply CORS middleware for handling standard requests
 app.UseCors("AllowFrontend");
+
+// Only apply HTTPS redirection in production environment
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Map controllers
 app.MapControllers();
 
 // Map gRPC services
-app.MapGrpcService<AthalaSIEM.Backend.Services.SiemService>();
+app.MapGrpcService<AthalaSIEM.Backend.Services.SiemService>().RequireCors("AllowAll");
 app.MapGet("/proto/siem.proto", async context =>
 {
     await context.Response.WriteAsync(File.ReadAllText("Protos/siem.proto"));
@@ -167,6 +222,9 @@ using (var scope = app.Services.CreateScope())
     {
         var context = services.GetRequiredService<ApplicationDbContext>();
         context.Database.Migrate();
+        
+        // Seed database with roles and admin user
+        await SeedDatabase(context, services.GetRequiredService<ILogger<Program>>());
     }
     catch (Exception ex)
     {
@@ -175,4 +233,85 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.Run(); 
+app.Run();
+
+// Database seeding
+async Task SeedDatabase(ApplicationDbContext context, ILogger logger)
+{
+    logger.LogInformation("Checking database seed data...");
+    
+    // Ensure roles exist
+    var roles = new[] 
+    { 
+        RoleModels.DefaultRoles.Admin, 
+        RoleModels.DefaultRoles.Operator, 
+        RoleModels.DefaultRoles.Analyst, 
+        RoleModels.DefaultRoles.User 
+    };
+    
+    foreach (var roleName in roles)
+    {
+        if (!await context.Roles.AnyAsync(r => r.Name == roleName))
+        {
+            logger.LogInformation("Creating role: {Role}", roleName);
+            context.Roles.Add(new RoleModels
+            {
+                Name = roleName,
+                Description = $"Default {roleName} role",
+                IsSystem = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            });
+            await context.SaveChangesAsync();
+        }
+    }
+    
+    // Check if any admin exists, if not create a default admin
+    bool adminExists = await context.Users
+        .Include(u => u.UserRoles)
+        .ThenInclude(ur => ur.Role)
+        .AnyAsync(u => u.UserRoles.Any(ur => ur.Role.Name == RoleModels.DefaultRoles.Admin));
+    
+    if (!adminExists)
+    {
+        logger.LogInformation("No admin user found. Creating default admin user...");
+        
+        // Create default admin user
+        var adminUser = new UserModels
+        {
+            Username = "admin",
+            Email = "admin@example.com",
+            FirstName = "System",
+            LastName = "Administrator",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        
+        // Generate password hash and salt (using HMACSHA512 as in AuthController.Register)
+        using var hmac = new System.Security.Cryptography.HMACSHA512();
+        var hashBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes("Admin123!")); // Default password
+        var saltBytes = hmac.Key;
+        
+        adminUser.PasswordHash = Convert.ToBase64String(hashBytes);
+        adminUser.PasswordSalt = Convert.ToBase64String(saltBytes);
+        
+        context.Users.Add(adminUser);
+        await context.SaveChangesAsync();
+        
+        // Add admin role to user
+        var adminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == RoleModels.DefaultRoles.Admin);
+        if (adminRole != null)
+        {
+            context.UserRoles.Add(new UserRoleModels
+            {
+                UserId = adminUser.Id,
+                RoleId = adminRole.Id
+            });
+            await context.SaveChangesAsync();
+            logger.LogInformation("Default admin user created successfully");
+        }
+    }
+    
+    logger.LogInformation("Database seeding completed");
+} 
