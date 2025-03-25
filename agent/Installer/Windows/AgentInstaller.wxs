@@ -2,15 +2,15 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
-  <Package Name="Athala SIEM Agent" 
-           Language="1033" 
-           Version="1.0.0.0" 
-           Manufacturer="Athala Security" 
+  <Package Name="Athala SIEM Agent"
+           Language="1033"
+           Version="1.0.0.0"
+           Manufacturer="Athala Security"
            UpgradeCode="12345678-1234-1234-1234-123456789012">
-    
+
     <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
     <MediaTemplate EmbedCab="yes" />
-    
+
     <!-- Define installer properties -->
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
     <Property Id="DEPLOYMENT_TOKEN" Secure="yes" />
@@ -20,14 +20,14 @@
     <Property Id="USE_SSL" Value="1" />
     <Property Id="SILENT_REGISTRATION" Value="0" />
     <Property Id="MSIUSEREALADMINDETECTION" Value="1" />
-    
+
     <!-- Allow passing properties from command line -->
     <SetProperty Id="DEPLOYMENT_TOKEN" Value="[TOKEN]" After="AppSearch" Condition="TOKEN" />
     <SetProperty Id="SERVER_URL" Value="[SERVERURL]" After="AppSearch" Condition="SERVERURL" />
     <SetProperty Id="SERVER_PORT" Value="[PORT]" After="AppSearch" Condition="PORT" />
     <SetProperty Id="AGENT_NAME" Value="[NAME]" After="AppSearch" Condition="NAME" />
     <SetProperty Id="SILENT_REGISTRATION" Value="1" After="AppSearch" Condition="TOKEN AND SILENT=1" />
-    
+
     <!-- Define the directory structure -->
     <StandardDirectory Id="ProgramFiles6432Folder">
       <Directory Id="INSTALLFOLDER" Name="Athala SIEM Agent">
@@ -35,36 +35,36 @@
         <Directory Id="CONFIGFOLDER" Name="Config" />
       </Directory>
     </StandardDirectory>
-    
+
     <!-- Define Start Menu directory -->
     <StandardDirectory Id="ProgramMenuFolder">
       <Directory Id="ApplicationProgramsFolder" Name="Athala SIEM Agent" />
     </StandardDirectory>
-    
+
     <!-- Define the components to install -->
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <Component Id="AgentExecutable" Guid="0d615a60-cf57-40e2-bce5-6ef5327db491">
         <File Id="AgentEXE" Source="$(var.SourceDir)\AthalaSIEM.Agent.exe" KeyPath="yes" />
-        
+
         <!-- Create Windows Service but don't start it -->
         <ServiceInstall Id="ServiceInstaller"
                         Type="ownProcess"
                         Name="AthalaSIEMAgent"
                         DisplayName="Athala SIEM Agent"
                         Description="Collects and forwards security events to Athala SIEM"
-                        Start="demand"
+                        Start="auto"
                         Account="LocalSystem"
-                        ErrorControl="normal"
+                        Arguments="--configpath &quot;[INSTALLFOLDER]appsettings.json&quot;"
                         Vital="yes">
-          <!-- Service recovery settings -->
-          <util:ServiceConfig 
-            FirstFailureActionType="restart"
-            SecondFailureActionType="restart"
-            ThirdFailureActionType="restart"
-            RestartServiceDelayInSeconds="60"
-            ResetPeriodInDays="1" />
+          <!-- Set service parameters and registry keys-->
+          <util:ServiceConfig
+             FirstFailureActionType="restart"
+             SecondFailureActionType="restart"
+             ThirdFailureActionType="restart"
+             RestartServiceDelayInSeconds="60"
+             ResetPeriodInDays="1" />
         </ServiceInstall>
-        
+
         <!-- ServiceControl without Start -->
         <ServiceControl Id="StopService"
                         Name="AthalaSIEMAgent"
@@ -72,60 +72,37 @@
                         Remove="uninstall"
                         Wait="yes" />
       </Component>
-      
-      <!-- Service registry configuration -->
-      <Component Id="ServiceRegistry" Guid="0d615a60-cf57-40e2-bce5-6ef5327db497">
-        <!-- Service Parameters registry keys -->
-        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\AthalaSIEMAgent\Parameters" 
-                      Name="WorkingDirectory" Value="[INSTALLFOLDER]" Type="string" KeyPath="yes" />
-        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\AthalaSIEMAgent\Parameters" 
-                      Name="ConfigPath" Value="[INSTALLFOLDER]appsettings.json" Type="string" />
-        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\AthalaSIEMAgent\Parameters" 
-                      Name="ApplicationBase" Value="[INSTALLFOLDER]" Type="string" />
-        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\AthalaSIEMAgent\Parameters" 
-                      Name="LogPath" Value="[INSTALLFOLDER]Logs" Type="string" />
-      </Component>
-      
+
       <!-- Application path registry -->
       <Component Id="AppPathRegistry" Guid="0d615a60-cf57-40e2-bce5-6ef5327db498">
-        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\AthalaSIEM.Agent.exe" 
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\AthalaSIEM.Agent.exe"
                       Value="[INSTALLFOLDER]AthalaSIEM.Agent.exe" Type="string" KeyPath="yes" />
-        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\AthalaSIEM.Agent.exe" 
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\AthalaSIEM.Agent.exe"
                       Name="Path" Value="[INSTALLFOLDER]" Type="string" />
       </Component>
-      
+
+      <!-- Copy appsettings.json with new GUID  -->
       <Component Id="AgentConfig" Guid="0d615a60-cf57-40e2-bce5-6ef5327db492">
-        <File Id="ConfigJSON" Source="$(var.SourceDir)\appsettings.json" KeyPath="yes" />
-      </Component>
-      
-      <Component Id="ReadmeFile" Guid="0d615a60-cf57-40e2-bce5-6ef5327db493">
-        <File Id="README" Source="$(var.SourceDir)\README.md" KeyPath="yes" />
+        <File Id="ConfigJSON" Source="$(var.SourceDir)\appsettings.json" KeyPath="yes"/>
       </Component>
     </ComponentGroup>
-    
+
     <!-- Start Menu shortcuts -->
     <ComponentGroup Id="StartMenuShortcuts" Directory="ApplicationProgramsFolder">
       <Component Id="ApplicationShortcuts" Guid="0d615a60-cf57-40e2-bce5-6ef5327db499">
         <!-- Configure Agent shortcut -->
-        <Shortcut Id="ConfigureAgentShortcut" 
+        <Shortcut Id="ConfigureAgentShortcut"
                   Name="Configure Athala SIEM Agent"
                   Description="Configure Athala SIEM Agent settings"
                   Target="[INSTALLFOLDER]AthalaSIEM.Agent.exe"
                   Arguments="--config"
                   WorkingDirectory="INSTALLFOLDER" />
-        
-        <!-- Add shortcut to manage service -->
-        <Shortcut Id="ManageServiceShortcut" 
-                  Name="Manage Athala SIEM Agent Service"
-                  Description="Manage the Athala SIEM Agent service"
-                  Target="[System64Folder]services.msc"
-                  WorkingDirectory="System64Folder" />
-                  
+
         <RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall" />
         <RegistryValue Root="HKCU" Key="Software\AthalaSecurity\AthalaSIEMAgent" Name="installed" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </ComponentGroup>
-    
+
     <!-- Create log directories -->
     <ComponentGroup Id="LogComponents" Directory="LOGSFOLDER">
       <Component Id="LogFolderComponent" Guid="0d615a60-cf57-40e2-bce5-6ef5327db494">
@@ -134,7 +111,7 @@
         </CreateFolder>
       </Component>
     </ComponentGroup>
-    
+
     <!-- Create config directories -->
     <ComponentGroup Id="ConfigComponents" Directory="CONFIGFOLDER">
       <Component Id="ConfigFolderComponent" Guid="0d615a60-cf57-40e2-bce5-6ef5327db495">
@@ -143,14 +120,14 @@
         </CreateFolder>
       </Component>
     </ComponentGroup>
-    
+
     <!-- UI Definition -->
     <UI>
       <ui:WixUI Id="WixUI_InstallDir" />
-      
+
       <!-- Skip license dialog -->
       <Publish Dialog="WelcomeDlg"
-               Control="Next" 
+               Control="Next"
                Event="NewDialog"
                Value="DeploymentTokenDlg"
                Order="2"
@@ -161,78 +138,72 @@
                Value="WelcomeDlg"
                Order="1"
                Condition="1" />
-      <Publish Dialog="DeploymentTokenDlg" 
-               Control="Next" 
-               Event="NewDialog" 
-               Value="InstallDirDlg" 
-               Order="1"
-               Condition="1" />
       <Publish Dialog="InstallDirDlg"
-               Control="Back"
-               Event="NewDialog"
-               Value="DeploymentTokenDlg"
-               Order="2"
-               Condition="1" />
-      
+             Control="Next"
+             Event="NewDialog"
+             Value="VerifyReadyDlg"
+             Order="2"
+             Condition="NOT REMOVE" />
+
       <!-- Add deployment token dialog -->
       <Dialog Id="DeploymentTokenDlg" Width="400" Height="270" Title="Athala SIEM Agent Setup">
         <!-- Title dan header -->
         <Control Id="Title" Type="Text" X="20" Y="15" Width="360" Height="15" Transparent="yes" NoPrefix="yes" Text="AthalaSIEM Agent Setup" />
-        
-        <Control Id="Description" Type="Text" X="25" Y="35" Width="340" Height="30" Transparent="yes" NoPrefix="yes" 
+
+        <Control Id="Description" Type="Text" X="25" Y="35" Width="340" Height="30" Transparent="yes" NoPrefix="yes"
                  Text="Please enter the connection details to the Athala SIEM server." />
-        
+
         <!-- Server IP field -->
         <Control Id="ServerUrlLabel" Type="Text" X="20" Y="60" Width="100" Height="15" Text="Server IP:" />
         <Control Id="ServerUrlEdit" Type="Edit" X="140" Y="60" Width="200" Height="18" Property="SERVER_URL" />
-        
+
         <!-- Server Port field -->
         <Control Id="ServerPortLabel" Type="Text" X="20" Y="90" Width="100" Height="15" Text="Server Port:" />
         <Control Id="ServerPortEdit" Type="Edit" X="140" Y="90" Width="80" Height="18" Property="SERVER_PORT" />
-        
+
         <!-- Agent Name field -->
         <Control Id="AgentNameLabel" Type="Text" X="20" Y="120" Width="100" Height="15" Text="Agent Name:" />
         <Control Id="AgentNameEdit" Type="Edit" X="140" Y="120" Width="200" Height="18" Property="AGENT_NAME" />
-        
+
         <!-- Token field -->
         <Control Id="TokenLabel" Type="Text" X="20" Y="150" Width="100" Height="15" Text="Deployment Token:" />
         <Control Id="TokenEdit" Type="Edit" X="140" Y="150" Width="200" Height="18" Property="DEPLOYMENT_TOKEN" />
-        
+
         <!-- SSL Checkbox -->
         <Control Id="UseSslLabel" Type="Text" X="20" Y="180" Width="100" Height="15" Text="Use SSL:" />
         <Control Id="UseSslCheckbox" Type="CheckBox" X="140" Y="180" Width="100" Height="18" Property="USE_SSL" CheckBoxValue="1" Text="Enable SSL" />
-        
+
         <!-- Navigation buttons -->
         <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="Back" />
         <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next" />
         <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel" />
       </Dialog>
-      
+
       <!-- Insert token dialog into sequence -->
-      <Publish Dialog="InstallDirDlg" 
-               Control="Next" 
-               Event="NewDialog" 
-               Value="DeploymentTokenDlg" 
+      <Publish Dialog="InstallDirDlg"
+               Control="Next"
+               Event="NewDialog"
+               Value="DeploymentTokenDlg"
                Order="1"
                Condition="1" />
-      <Publish Dialog="DeploymentTokenDlg" 
-               Control="Back" 
-               Event="NewDialog" 
-               Value="InstallDirDlg" 
+      <Publish Dialog="DeploymentTokenDlg"
+               Control="Back"
+               Event="NewDialog"
+               Value="InstallDirDlg"
                Order="1"
                Condition="1" />
-      <Publish Dialog="DeploymentTokenDlg" 
-               Control="Next" 
-               Event="NewDialog" 
-               Value="VerifyReadyDlg" 
+       <Publish Dialog="DeploymentTokenDlg"
+               Control="Next"
+               Event="NewDialog"
+               Value="VerifyReadyDlg"
                Order="1"
                Condition="1" />
     </UI>
-    
+
     <!-- Icon for application -->
     <Icon Id="AthalaSIEMIcon.ico" SourceFile="$(var.SourceDir)\AthalaSIEM.Agent.exe" />
     <Property Id="ARPPRODUCTICON" Value="AthalaSIEMIcon.ico" />
-    
+
     <!-- Feature Definition -->
     <Feature Id="ProductFeature" Title="Athala SIEM Agent" Level="1">
       <ComponentGroupRef Id="ProductComponents" />
@@ -240,5 +211,5 @@
       <ComponentGroupRef Id="ConfigComponents" />
       <ComponentGroupRef Id="StartMenuShortcuts" />
     </Feature>
-  </Package> 
-</Wix> 
+  </Package>
+</Wix>
