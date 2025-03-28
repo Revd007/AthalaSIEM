@@ -1,11 +1,12 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { Bell, User, LogOut } from 'lucide-react'
+import { Bell, User, LogOut, Settings } from 'lucide-react'
 import { toast } from 'sonner'
 import { Navigation } from './Navigation'
 import Image from 'next/image'
 import { AlertNotifications } from './AlertNotifications'
+import Link from 'next/link'
 
 export function Header() {
   const router = useRouter()
@@ -39,6 +40,13 @@ export function Header() {
           {/* Right side buttons */}
           <div className="flex items-center space-x-4">
             <AlertNotifications />
+            
+            <Link 
+              href="/dashboard/settings"
+              className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              <Settings className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+            </Link>
             
             <div className="relative">
               <button className="flex items-center space-x-3 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700">
