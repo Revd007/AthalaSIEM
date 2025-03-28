@@ -514,155 +514,27 @@ namespace AthalaSIEM.Agent
                         { HostDefaults.ContentRootKey, AppContext.BaseDirectory }
                     });
                 })
-                .ConfigureAppConfiguration((hostContext, config) =>
+                .ConfigureAppConfiguration((hostingContext, config) =>
                 {
-                    // Clear any existing configuration sources added by CreateDefaultBuilder
-                    // This is important to prevent it from looking in the wrong locations
-                    ((IConfigurationBuilder)config).Sources.Clear();
+                    var basePath = AppContext.BaseDirectory;
+                    config.SetBasePath(basePath);
                     
-                    // We define multiple possible locations for configuration
-                    string executablePath = AppContext.BaseDirectory;
-                    string currentDirectory = Directory.GetCurrentDirectory();
-                    string appDataPath = Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-                        "Athala SIEM Agent");
-                        
-                    // Check if the service has registry parameters set
-                    string? registryConfigPath = null;
-                    try 
+                    var configFilePath = Path.Combine(basePath, "appsettings.json");
+                    if (File.Exists(configFilePath))
                     {
-                        using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
-                            @"SYSTEM\CurrentControlSet\Services\AthalaSIEMAgent\Parameters");
-                        if (key != null)
-                        {
-                            registryConfigPath = key.GetValue("ConfigPath") as string;
-                            
-                            if (!string.IsNullOrEmpty(registryConfigPath))
-                            {
-                                Console.WriteLine($"Found registry-defined config path: {registryConfigPath}");
-                            }
-                        }
-                    }
-                    catch (Exception regEx)
-                    {
-                        Console.WriteLine($"Error reading registry: {regEx.Message}");
-                    }
-                    
-                    // Build a list of potential configuration file paths
-                    var configFiles = new List<string>();
-                    
-                    // First priority - registry defined path (if it exists)
-                    if (!string.IsNullOrEmpty(registryConfigPath))
-                    {
-                        configFiles.Add(registryConfigPath);
-                    }
-                    
-                    // Add standard locations
-                    var locations = new List<string>();
-                    
-                    // Executable directory (most reliable)
-                    locations.Add(Path.Combine(executablePath, "appsettings.json"));
-                    
-                    // Current directory (if different)
-                    if (!currentDirectory.Equals(executablePath, StringComparison.OrdinalIgnoreCase))
-                    {
-                        locations.Add(Path.Combine(currentDirectory, "appsettings.json"));
-                    }
-                    
-                    // Standard installation paths
-                    locations.Add(@"C:\Program Files (x86)\Athala SIEM Agent\appsettings.json");
-                    locations.Add(@"C:\Program Files\Athala SIEM Agent\appsettings.json");
-                    
-                    // ProgramData fallback
-                    locations.Add(Path.Combine(appDataPath, "appsettings.json"));
-                    
-                    // Add all locations
-                    configFiles.AddRange(locations);
-                    
-                    // Check for existing configuration files
-                    string? foundConfigPath = null;
-                    foreach (var path in configFiles)
-                    {
-                        if (File.Exists(path))
-                        {
-                            foundConfigPath = path;
-                            Console.WriteLine($"Found configuration at: {path}");
-                            break;
-                        }
-                    }
-                    
-                    if (foundConfigPath != null)
-                    {
-                        // Get the directory containing the config file
-                        string configDirectory = Path.GetDirectoryName(foundConfigPath) ?? executablePath;
-                        
-                        // Set base path to the directory containing the config file
-                        config.SetBasePath(configDirectory);
-                        
-                        // Add the configuration file
-                        config.AddJsonFile(Path.GetFileName(foundConfigPath), optional: false, reloadOnChange: true);
-                        
-                        // Add the config file path as a configuration value
-                        config.AddInMemoryCollection(new Dictionary<string, string?>
-                        {
-                            { "ConfigFilePath", foundConfigPath }
-                        });
+                        config.AddJsonFile(configFilePath, optional: false, reloadOnChange: true);
                     }
                     else
                     {
-                        // No configuration file found, create a fallback in ProgramData
-                        try
+                        var commonAppData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+                        var altConfigPath = Path.Combine(commonAppData, "Athala SIEM Agent", "appsettings.json");
+                        if (File.Exists(altConfigPath))
                         {
-                            Directory.CreateDirectory(appDataPath);
-                            string fallbackPath = Path.Combine(appDataPath, "appsettings.json");
-                            
-                            if (!File.Exists(fallbackPath))
-                            {
-                                string minimalConfig = @"{
-  ""Logging"": {
-    ""LogLevel"": {
-      ""Default"": ""Information"",
-      ""Microsoft"": ""Warning"",
-      ""Microsoft.Hosting.Lifetime"": ""Information""
-    }
-  },
-  ""Agent"": {
-    ""AgentName"": ""AthalaSIEM Agent"",
-    ""BackendApiUrl"": ""https://localhost:9596"",
-    ""BackendGrpcUrl"": ""https://localhost:50051""
-  }
-}";
-                                File.WriteAllText(fallbackPath, minimalConfig);
-                            }
-                            
-                            config.SetBasePath(appDataPath);
-                            config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-                            
-                            config.AddInMemoryCollection(new Dictionary<string, string?>
-                            {
-                                { "ConfigFilePath", fallbackPath },
-                                { "IsEmergencyConfig", "true" }
-                            });
-                            
-                            Console.WriteLine($"Using emergency fallback configuration at: {fallbackPath}");
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"ERROR: Could not create fallback configuration: {ex.Message}");
-                            
-                            // Last resort - use the executable directory as base
-                            config.SetBasePath(executablePath);
-                            
-                            // Add optional config file
-                            config.AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
-                            
-                            Console.WriteLine("WARNING: Using executable directory as fallback for configuration!");
+                            config.AddJsonFile(altConfigPath, optional: false, reloadOnChange: true);
                         }
                     }
                     
-                    // Add environment variables and command line args
                     config.AddEnvironmentVariables();
-                    config.AddCommandLine(args);
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
