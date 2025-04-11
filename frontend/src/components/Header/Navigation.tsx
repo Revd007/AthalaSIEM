@@ -129,11 +129,14 @@ export function Navigation() {
             </button>
             {openDropdown === index && (
               <div 
-                ref={dropdownRefs[index]}
-                className="dropdown-menu fixed w-58 bg-white dark:bg-gray-800 shadow-lg rounded-lg p-2 z-50 border border-gray-200 dark:border-gray-700"
-                style={{ position: 'fixed', marginTop: '5px' }}
-                onClick={(e) => e.stopPropagation()}
-              >
+              ref={dropdownRefs[index]}
+              className="dropdown-menu fixed w-58 bg-white dark:bg-gray-800 shadow-lg rounded-lg p-2 z-50 border border-gray-200 dark:border-gray-700
+                         transition-all duration-300 ease-out transform origin-top scale-95 opacity-0
+                         animate-dropdown-open"
+              style={{ position: 'fixed', marginTop: '5px' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+            
                 {category.items.map((item) => {
                   const Icon = item.icon;
                   return (
@@ -186,7 +189,7 @@ export function Navigation() {
                 {openDropdown === index ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
               </button>
               {openDropdown === index && (
-                <div className="mt-2 space-y-1 border-l-2 border-gray-200 dark:border-gray-700 ml-2 pl-2">
+                <div className="mt-2 space-y-1 border-l-2 border-gray-200 dark:border-gray-700 ml-2 pl-2 transition-all duration-300 ease-in-out transform scale-95 opacity-0 animate-dropdown-open">
                   {category.items.map((item) => {
                     const Icon = item.icon;
                     return (
