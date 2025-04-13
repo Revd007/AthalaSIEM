@@ -172,6 +172,20 @@ builder.Services.AddAuthentication(x =>
     };
 });
 
+// Add Authorization
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("RequireAdminRole", policy => 
+        policy.RequireRole("Admin"));
+        
+    options.AddPolicy("RequireUserRole", policy => 
+        policy.RequireRole("User", "Admin", "Operator"));
+        
+    options.AddPolicy("RequireAgentAccess", policy => 
+        policy.RequireRole("User", "Admin", "Operator")
+              .RequireClaim("permission", "agent:read"));
+});
+
 // Configure Kestrel
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
@@ -333,7 +347,7 @@ async Task SeedDatabase(ApplicationDbContext context, Microsoft.Extensions.Loggi
         var adminUser = new UserModels
         {
             Username = "admin",
-            Email = "admin@example.com",
+            Email = "admin@athalasiem.com",
             FirstName = "System",
             LastName = "Administrator",
             IsActive = true,
@@ -362,7 +376,30 @@ async Task SeedDatabase(ApplicationDbContext context, Microsoft.Extensions.Loggi
                 RoleId = adminRole.Id
             });
             await context.SaveChangesAsync();
-            logger.LogInformation("Default admin user created successfully");
+            logger.LogInformation("Default admin user created successfully with Admin role");
+        }
+    }
+    else
+    {
+        // Ensure existing admin user has Admin role
+        var adminUser = await context.Users
+            .Include(u => u.UserRoles)
+            .ThenInclude(ur => ur.Role)
+            .FirstOrDefaultAsync(u => u.Username == "admin");
+            
+        if (adminUser != null)
+        {
+            var adminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == RoleModels.DefaultRoles.Admin);
+            if (adminRole != null && !adminUser.UserRoles.Any(ur => ur.Role.Name == RoleModels.DefaultRoles.Admin))
+            {
+                context.UserRoles.Add(new UserRoleModels
+                {
+                    UserId = adminUser.Id,
+                    RoleId = adminRole.Id
+                });
+                await context.SaveChangesAsync();
+                logger.LogInformation("Added Admin role to existing admin user");
+            }
         }
     }
     
