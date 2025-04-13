@@ -417,7 +417,7 @@ export function AgentSettings() {
                 </h4>
                 <ul className="text-sm text-muted-foreground pl-6 list-disc space-y-1">
                   <li>Administrator privileges are required for installation</li>
-                  {selectedOS === 'windows' && <li>Windows 7 or later is required</li>}
+                  {selectedOS === 'windows' && <li>Windows 2008 Server or later is required</li>}
                   {selectedOS.includes('linux') && <li>systemd-based Linux distribution is required</li>}
                   {selectedOS === 'macos' && <li>macOS 10.15 or later is required</li>}
                 </ul>

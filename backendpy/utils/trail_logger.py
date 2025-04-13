@@ -4,8 +4,7 @@ import logging
 from typing import Dict, Any, Optional
 from fastapi import Request
 from sqlalchemy.orm import Session
-from .database import get_db
-from .models import TrailLog
+from backendpy.models import TrailLog
 
 class TrailLogger:
     def __init__(self):

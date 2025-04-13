@@ -19,6 +19,7 @@
     <PackageReference Include="Microsoft.Win32.SystemEvents" Version="9.0.2" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore.Filters" Version="7.0.9" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.13" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.0" />
@@ -46,6 +47,6 @@
   </ItemGroup>
   
   <ItemGroup>
-    <Protobuf Include="Protos\siem.proto" GrpcServices="Server" />
+    <Protobuf Include="Protos\siem.proto" GrpcServices="Both" />
   </ItemGroup>
 </Project> 

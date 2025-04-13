@@ -564,11 +564,46 @@ namespace AthalaSIEM.Agent
                     // Register configuration UI services
                     services.AddSingleton<AgentConfigurationLauncher>();
 
+                    // Register and initialize log collectors
+                    var collectors = agentSettings?.Collectors ?? new List<CollectorSettings>();
+                    foreach (var collectorConfig in collectors)
+                    {
+                        if (collectorConfig.Enabled)
+                        {
+                            switch (collectorConfig.Type)
+                            {
+                                case "WindowsEventLog":
+                                    services.AddSingleton<ILogCollector>(sp => 
+                                    {
+                                        var collector = new WindowsEventLogCollector(
+                                            sp.GetRequiredService<ILogger<WindowsEventLogCollector>>(),
+                                            sp.GetRequiredService<ILogNormalizer>());
+                                        collector.Initialize(collectorConfig);
+                                        return collector;
+                                    });
+                                    break;
+                                case "LinuxSyslog":
+                                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                                    {
+                                        services.AddSingleton<ILogCollector>(sp => 
+                                        {
+                                            var collector = new LinuxSyslogCollector(
+                                                sp.GetRequiredService<ILogger<LinuxSyslogCollector>>(),
+                                                sp.GetRequiredService<ILogNormalizer>());
+                                            collector.Initialize(collectorConfig);
+                                            return collector;
+                                        });
+                                    }
+                                    break;
+                            }
+                        }
+                    }
+
                     // Register gRPC client
                     services.AddGrpcClient<SiemService.SiemServiceClient>((services, options) =>
                     {
                         var settings = hostContext.Configuration.GetSection("Agent").Get<AgentSettings>();
-                        options.Address = new Uri(settings?.BackendGrpcUrl ?? "https://localhost:50051");
+                        options.Address = new Uri(settings?.BackendGrpcUrl ?? "https://localhost:9596");
                     })
                     .ConfigurePrimaryHttpMessageHandler(() =>
                     {
@@ -735,11 +770,46 @@ namespace AthalaSIEM.Agent
             // Register configuration UI services
             services.AddSingleton<AgentConfigurationLauncher>();
 
+            // Register and initialize log collectors
+            var collectors = agentSettings?.Collectors ?? new List<CollectorSettings>();
+            foreach (var collectorConfig in collectors)
+            {
+                if (collectorConfig.Enabled)
+                {
+                    switch (collectorConfig.Type)
+                    {
+                        case "WindowsEventLog":
+                            services.AddSingleton<ILogCollector>(sp => 
+                            {
+                                var collector = new WindowsEventLogCollector(
+                                    sp.GetRequiredService<ILogger<WindowsEventLogCollector>>(),
+                                    sp.GetRequiredService<ILogNormalizer>());
+                                collector.Initialize(collectorConfig);
+                                return collector;
+                            });
+                            break;
+                        case "LinuxSyslog":
+                            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                            {
+                                services.AddSingleton<ILogCollector>(sp => 
+                                {
+                                    var collector = new LinuxSyslogCollector(
+                                        sp.GetRequiredService<ILogger<LinuxSyslogCollector>>(),
+                                        sp.GetRequiredService<ILogNormalizer>());
+                                    collector.Initialize(collectorConfig);
+                                    return collector;
+                                });
+                            }
+                            break;
+                    }
+                }
+            }
+
             // Register gRPC client
             services.AddGrpcClient<SiemService.SiemServiceClient>((services, options) =>
             {
                 var settings = configuration.GetSection("Agent").Get<AgentSettings>();
-                options.Address = new Uri(settings?.BackendGrpcUrl ?? "https://localhost:50051");
+                options.Address = new Uri(settings?.BackendGrpcUrl ?? "https://localhost:9596");
             })
             .ConfigurePrimaryHttpMessageHandler(() =>
             {

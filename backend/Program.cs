@@ -16,6 +16,20 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Npgsql.EntityFrameworkCore.PostgreSQL;
 using Grpc.Net.Client;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
+using System.Net.Security;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
+using Grpc.Net.Client.Configuration;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using System.Net;
+using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Text.Json.Serialization;
+using Serilog;
+using Serilog.Events;
+using Microsoft.Extensions.Options;
+using Swashbuckle.AspNetCore.Filters;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -65,6 +79,28 @@ builder.Services.AddGrpc(options =>
     options.EnableDetailedErrors = true;
     options.MaxReceiveMessageSize = 16 * 1024 * 1024; // 16 MB
     options.MaxSendMessageSize = 16 * 1024 * 1024; // 16 MB
+});
+
+// Configure gRPC client
+builder.Services.AddGrpcClient<AthalaSIEM.Agent.SiemService.SiemServiceClient>(options =>
+{
+    options.Address = new Uri(builder.Configuration["GrpcServer:Url"] ?? "https://localhost:9596");
+})
+.ConfigureChannel(options =>
+{
+    options.HttpHandler = new SocketsHttpHandler
+    {
+        KeepAlivePingDelay = TimeSpan.FromSeconds(60),
+        KeepAlivePingTimeout = TimeSpan.FromSeconds(30),
+        PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
+        EnableMultipleHttp2Connections = true,
+        SslOptions = new SslClientAuthenticationOptions
+        {
+            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+            CertificateRevocationCheckMode = X509RevocationMode.Online,
+            EncryptionPolicy = EncryptionPolicy.RequireEncryption
+        }
+    };
 });
 
 // Configure CORS - updated to properly handle preflight requests
@@ -134,6 +170,23 @@ builder.Services.AddAuthentication(x =>
         ValidateAudience = false,
         ClockSkew = TimeSpan.Zero
     };
+});
+
+// Configure Kestrel
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    // Configure HTTP endpoint
+    serverOptions.ListenAnyIP(9595, listenOptions =>
+    {
+        listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
+    });
+
+    // Configure HTTPS endpoint
+    serverOptions.ListenAnyIP(9596, listenOptions =>
+    {
+        listenOptions.Protocols = HttpProtocols.Http2;
+        listenOptions.UseHttps();
+    });
 });
 
 // Register repositories
@@ -224,11 +277,11 @@ using (var scope = app.Services.CreateScope())
         context.Database.Migrate();
         
         // Seed database with roles and admin user
-        await SeedDatabase(context, services.GetRequiredService<ILogger<Program>>());
+        await SeedDatabase(context, services.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Program>>());
     }
     catch (Exception ex)
     {
-        var logger = services.GetRequiredService<ILogger<Program>>();
+        var logger = services.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Program>>();
         logger.LogError(ex, "An error occurred while migrating the database");
     }
 }
@@ -236,7 +289,7 @@ using (var scope = app.Services.CreateScope())
 app.Run();
 
 // Database seeding
-async Task SeedDatabase(ApplicationDbContext context, ILogger logger)
+async Task SeedDatabase(ApplicationDbContext context, Microsoft.Extensions.Logging.ILogger<Program> logger)
 {
     logger.LogInformation("Checking database seed data...");
     
