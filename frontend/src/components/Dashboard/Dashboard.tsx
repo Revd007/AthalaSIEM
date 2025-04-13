@@ -11,6 +11,7 @@ import { RealTimeCollaboration } from '../Collaboration/RealTimeCollaboration';
 import { ComplianceReport } from '../Compliance/ComplianceReport';
 import { RecentAlerts } from './RecentAlerts';
 
+
 export function Dashboard() {
   return (
     <div className="flex-1 bg-gray-50 dark:bg-gray-900 p-8">

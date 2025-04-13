@@ -7,6 +7,7 @@ module.exports = {
     ],
     theme: {
       extend: {
+
         colors: {
           primary: {
             DEFAULT: '#3b82f6', // blue-500
@@ -28,6 +29,15 @@ module.exports = {
             hover: '#6366f1', // indigo-500
           }
         },
+        animation: {
+          'dropdown-open': 'dropdownOpen 0.25s ease-out forwards'
+        },
+        keyframes: {
+          dropdownOpen: {
+            '0%': { opacity: '0', transform: 'scale(95%)' },
+            '100%': { opacity: '1', transform: 'scale(100%)' }
+          }
+        }
       },
     },
     plugins: [],

@@ -2,12 +2,13 @@
 
 import { Server, Activity, AlertTriangle } from 'lucide-react'
 import { Card } from '@/components/ui/card'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { agentService } from '@/services/agent-service'
 import { Agent, AgentStatus } from '@/types/agent'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useState, useEffect } from 'react'
 
 interface DevicesListProps {
   selectedDevice: string | null
@@ -58,21 +59,65 @@ export function DevicesList({
   searchQuery,
   statusFilter
 }: DevicesListProps) {
-  const { data: agents, isLoading, error } = useQuery({
+  const queryClient = useQueryClient();
+  const { data, isLoading, error } = useQuery({
     queryKey: ['agents'],
-    queryFn: async () => {
+    queryFn: async (): Promise<Agent[]> => {
       console.log('Fetching agents...');
+      // Check if the browser is online
+      if (!navigator.onLine) {
+        console.error('Browser is offline');
+        return [];
+      }
+      
       try {
         const result = await agentService.getAgents();
         console.log('Agents fetched:', result);
         return result;
       } catch (error) {
         console.error('Error fetching agents:', error);
-        throw error;
+        // Return empty array instead of throwing to prevent component from crashing
+        return [];
       }
     },
     refetchInterval: 30000,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    // Add stale time to prevent too frequent refetches
+    staleTime: 10000,
   });
+
+  // Ensure agents is always an array
+  const agents = data as Agent[] || [];
+
+  // Add online status detection
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    // Update online status
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  if (!isOnline) {
+    return (
+      <Card>
+        <div className="p-4">
+          <div className="text-yellow-500">
+            You are currently offline. Agent data cannot be loaded. Please check your internet connection.
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   if (error) {
     console.error('Error in DevicesList:', error);
@@ -111,7 +156,7 @@ export function DevicesList({
     )
   }
 
-  const filteredAgents = agents?.filter(agent => {
+  const filteredAgents = agents.filter(agent => {
     if (typeFilter.length && !typeFilter.includes(agent.type)) return false
     if (statusFilter.length && !statusFilter.includes(agent.status)) return false
     if (searchQuery) {
@@ -123,7 +168,7 @@ export function DevicesList({
       )
     }
     return true
-  }) ?? []
+  });
 
   return (
     <Card>
@@ -207,4 +252,4 @@ export function DevicesList({
       </div>
     </Card>
   )
-} 
+}
