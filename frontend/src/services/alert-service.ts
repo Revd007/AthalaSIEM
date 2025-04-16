@@ -1,7 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { AlertFilters } from '../types/alert';
+import { api } from '@/lib/api';
+import { Alert } from '@/types/alert';
 
-export function useAlerts(filters: AlertFilters) {
+export function useAlerts(filters: AlertFilters = {}) {
   return useQuery({
     queryKey: ['alerts', filters],
     queryFn: async () => {
@@ -9,8 +11,8 @@ export function useAlerts(filters: AlertFilters) {
       Object.entries(filters).forEach(([key, value]) => {
         if (value) params.append(key, value.toString());
       });
-      const response = await fetch(`/alerts?${params}`);
-      return response.json();
+      const { data } = await api.get<Alert[]>(`/api/alerts?${params.toString()}`);
+      return data;
     }
   });
 }
