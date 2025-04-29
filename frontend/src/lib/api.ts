@@ -1,9 +1,9 @@
 import { QueryClient } from '@tanstack/react-query'
 import type { ApiResponse } from '../types/api'
-import { ENV } from '../config/env'
+import { env } from '../config/env'
 
 // Use environment configuration for base URL
-const baseURL = ENV.API_URL
+const baseURL = env.NEXT_PUBLIC_API_URL
 
 export const queryClient = new QueryClient({
   defaultOptions: {

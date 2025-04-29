@@ -11,7 +11,7 @@ const defaults = {
 };
 
 // Environment object to store the loaded variables
-const env: Record<string, string> = {};
+const env = {};
 
 // Ensure all required variables are set by using defaults for any missing
 Object.entries(defaults).forEach(([key, value]) => {
@@ -26,4 +26,4 @@ console.log(`- NEXT_PUBLIC_USE_HTTPS: ${env.NEXT_PUBLIC_USE_HTTPS}`);
 console.log(`- NEXT_PUBLIC_GRPC_URL: ${env.NEXT_PUBLIC_GRPC_URL}`);
 console.log(`- SECURE_CONNECTION: ${env.SECURE_CONNECTION}`);
 
-export { env }; 
+module.exports = { env }; 

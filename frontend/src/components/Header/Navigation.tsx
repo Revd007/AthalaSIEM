@@ -14,7 +14,6 @@ import {
   Users,
   FileCheck,
   Network,
-  Settings,
   Menu,
   X,
   ChevronDown,
@@ -56,8 +55,14 @@ export function Navigation() {
   const pathname = usePathname()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [openDropdown, setOpenDropdown] = useState<number | null>(null)
-  const dropdownRefs = Array(categories.length).fill(0).map(() => useRef<HTMLDivElement>(null))
-  const buttonRefs = Array(categories.length).fill(0).map(() => useRef<HTMLButtonElement>(null))
+  const dropdownRefs = useRef<Array<HTMLDivElement | null>>([])
+  const buttonRefs = useRef<Array<HTMLButtonElement | null>>([])
+
+  // Initialize refs
+  useEffect(() => {
+    dropdownRefs.current = Array(categories.length).fill(null)
+    buttonRefs.current = Array(categories.length).fill(null)
+  }, [])
 
   // Handle ESC key to close dropdowns
   useEffect(() => {
@@ -77,8 +82,8 @@ export function Navigation() {
   // Position dropdown below button
   useEffect(() => {
     if (openDropdown !== null) {
-      const buttonEl = buttonRefs[openDropdown].current;
-      const dropdownEl = dropdownRefs[openDropdown].current;
+      const buttonEl = buttonRefs.current[openDropdown];
+      const dropdownEl = dropdownRefs.current[openDropdown];
       
       if (buttonEl && dropdownEl) {
         const buttonRect = buttonEl.getBoundingClientRect();
@@ -103,6 +108,14 @@ export function Navigation() {
     };
   }, []);
 
+  const setButtonRef = (index: number) => (el: HTMLButtonElement | null) => {
+    buttonRefs.current[index] = el;
+  };
+
+  const setDropdownRef = (index: number) => (el: HTMLDivElement | null) => {
+    dropdownRefs.current[index] = el;
+  };
+
   return (
     <>
       {/* Desktop Navigation */}
@@ -116,7 +129,7 @@ export function Navigation() {
         {categories.map((category, index) => (
           <div key={index} className="relative">
             <button
-              ref={buttonRefs[index]}
+              ref={setButtonRef(index)}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -129,14 +142,13 @@ export function Navigation() {
             </button>
             {openDropdown === index && (
               <div 
-              ref={dropdownRefs[index]}
-              className="dropdown-menu fixed w-58 bg-white dark:bg-gray-800 shadow-lg rounded-lg p-2 z-50 border border-gray-200 dark:border-gray-700
-                         transition-all duration-300 ease-out transform origin-top scale-95 opacity-0
-                         animate-dropdown-open"
-              style={{ position: 'fixed', marginTop: '5px' }}
-              onClick={(e) => e.stopPropagation()}
-            >
-            
+                ref={setDropdownRef(index)}
+                className="dropdown-menu fixed w-58 bg-white dark:bg-gray-800 shadow-lg rounded-lg p-2 z-50 border border-gray-200 dark:border-gray-700
+                           transition-all duration-300 ease-out transform origin-top scale-95 opacity-0
+                           animate-dropdown-open"
+                style={{ position: 'fixed', marginTop: '5px' }}
+                onClick={(e) => e.stopPropagation()}
+              >
                 {category.items.map((item) => {
                   const Icon = item.icon;
                   return (

@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 
-// Load environment variables from .env.local
-const { env } = require('./src/scripts/load-env');
+// Load environment variables
+const { env } = require('./src/config/env');
 
 const nextConfig = {
   reactStrictMode: true,

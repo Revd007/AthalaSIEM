@@ -188,7 +188,7 @@ export default function PredictivePage() {
                 title="ML Models Active"
                 value="8"
                 change="0"
-                trend="stable"
+                trend="neutral"
                 icon={Activity}
                 color="yellow"
               />
@@ -388,7 +388,7 @@ export default function PredictivePage() {
                                   Predictions: {payload[0].value}
                                 </p>
                                 <p className="text-sm font-medium text-green-600 dark:text-green-400">
-                                  Accuracy: {payload[1].value.toFixed(1)}%
+                                  Accuracy: {payload[1]?.value ? Number(payload[1].value).toFixed(1) : '0'}%
                                 </p>
                               </div>
                             )
@@ -417,7 +417,7 @@ export default function PredictivePage() {
                 </div>
               </DashboardCard>
 
-              <DashboardCard title="Threat Distribution" icon={PieChart}>
+              <DashboardCard title="Threat Distribution" icon={Target}>
                 <div className="h-[300px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -501,7 +501,7 @@ export default function PredictivePage() {
                 title="Analysis Period"
                 value="30 Days"
                 change=""
-                trend="stable"
+                trend="neutral"
                 icon={Clock}
                 color="yellow"
               />

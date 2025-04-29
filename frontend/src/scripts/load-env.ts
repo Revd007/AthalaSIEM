@@ -3,9 +3,9 @@
  * This addresses issues with Next.js rewrites and environment variables
  */
 
-const fs = require('fs');
-const path = require('path');
-const dotenv = require('dotenv');
+import fs from 'fs';
+import path from 'path';
+import dotenv from 'dotenv';
 
 // Path to .env.local file
 const envLocalPath = path.resolve(process.cwd(), '.env.local');
@@ -19,7 +19,7 @@ const defaults = {
 };
 
 // Environment object to store the loaded variables
-const env = {};
+const env: Record<string, string> = {};
 
 // Try to load from .env.local file
 if (fs.existsSync(envLocalPath)) {
@@ -38,7 +38,7 @@ if (fs.existsSync(envLocalPath)) {
       }
     });
   } catch (error) {
-    console.error('Error loading .env.local:', error.message);
+    console.error('Error loading .env.local:', error instanceof Error ? error.message : 'Unknown error');
   }
 }
 
@@ -57,4 +57,4 @@ console.log(`- NEXT_PUBLIC_USE_HTTPS: ${env.NEXT_PUBLIC_USE_HTTPS}`);
 console.log(`- NEXT_PUBLIC_GRPC_URL: ${env.NEXT_PUBLIC_GRPC_URL}`);
 console.log(`- SECURE_CONNECTION: ${env.SECURE_CONNECTION}`);
 
-module.exports = { env }; 
+export { env }; 
