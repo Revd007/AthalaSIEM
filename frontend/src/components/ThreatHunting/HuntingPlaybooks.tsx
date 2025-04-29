@@ -5,56 +5,38 @@ import { DashboardCard } from '@/components/ui/DashboardCard'
 import { Book, Play, Plus, Copy, Download, RefreshCw, Search, Clock, Users } from 'lucide-react'
 import { Editor } from '@monaco-editor/react'
 
-interface Playbook {
+interface HuntingPlaybook {
   id: string
   name: string
   description: string
-  author: string
-  category: string
-  status: 'draft' | 'active' | 'archived'
-  lastRun: string | null
-  lastModified: string
-  steps: PlaybookStep[]
+  tactics: string[]
+  status: 'active' | 'inactive'
+  lastRun: string
+  results: {
+    findings: number
+    alerts: number
+    falsePositives: number
+  }
 }
 
-interface PlaybookStep {
-  id: string
-  type: 'query' | 'analysis' | 'enrichment' | 'action'
-  name: string
-  description: string
-  config: any
+interface HuntingPlaybooksProps {
+  playbooks: HuntingPlaybook[]
+  onPlaybookClick: (playbook: HuntingPlaybook) => void
 }
 
-const mockPlaybooks: Playbook[] = [
+const mockPlaybooks: HuntingPlaybook[] = [
   {
     id: '1',
     name: 'Ransomware Hunt',
     description: 'Detect potential ransomware activity',
-    author: 'Security Team',
-    category: 'Malware',
+    tactics: ['Malware'],
     status: 'active',
     lastRun: new Date().toISOString(),
-    lastModified: new Date().toISOString(),
-    steps: [
-      {
-        id: '1',
-        type: 'query',
-        name: 'File Operations',
-        description: 'Search for suspicious file operations',
-        config: {
-          query: 'source="windows" EventID=4663'
-        }
-      },
-      {
-        id: '2',
-        type: 'enrichment',
-        name: 'Enrich IOCs',
-        description: 'Enrich found indicators',
-        config: {
-          sources: ['virustotal', 'alienvault']
-        }
-      }
-    ]
+    results: {
+      findings: 0,
+      alerts: 0,
+      falsePositives: 0
+    }
   }
 ]
 
@@ -73,8 +55,8 @@ const defaultPlaybook = `{
   ]
 }`
 
-export function HuntingPlaybooks() {
-  const [selectedPlaybook, setSelectedPlaybook] = useState<Playbook | null>(null)
+export function HuntingPlaybooks({ playbooks, onPlaybookClick }: HuntingPlaybooksProps) {
+  const [selectedPlaybook, setSelectedPlaybook] = useState<HuntingPlaybook | null>(null)
   const [playbookContent, setPlaybookContent] = useState(defaultPlaybook)
   const [isRunning, setIsRunning] = useState(false)
 
@@ -101,7 +83,7 @@ export function HuntingPlaybooks() {
 
             {/* Playbooks List */}
             <div className="space-y-2">
-              {mockPlaybooks.map(playbook => (
+              {playbooks.map(playbook => (
                 <div
                   key={playbook.id}
                   onClick={() => setSelectedPlaybook(playbook)}
@@ -131,11 +113,11 @@ export function HuntingPlaybooks() {
                   <div className="mt-3 flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-400">
                     <div className="flex items-center">
                       <Users className="h-4 w-4 mr-1" />
-                      {playbook.author}
+                      {/* Assuming playbook.author is available */}
                     </div>
                     <div className="flex items-center">
                       <Clock className="h-4 w-4 mr-1" />
-                      {new Date(playbook.lastModified).toLocaleDateString()}
+                      {/* Assuming playbook.lastModified is available */}
                     </div>
                   </div>
                 </div>

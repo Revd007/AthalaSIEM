@@ -50,18 +50,11 @@ const mockThreatTypes = [
 const COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981']
 
 export function ThreatIntelligence() {
-  const [selectedFeed, setSelectedFeed] = useState<ThreatFeed | null>(null)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true)
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    setIsRefreshing(false)
-  }
+  const [_selectedFeed, _setSelectedFeed] = useState<string>('')
 
   return (
     <div className="space-y-6">
+      <h2 className="text-2xl font-bold">Threat Intelligence</h2>
       {/* Overview Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatsCard
@@ -119,13 +112,8 @@ export function ThreatIntelligence() {
                 </div>
                 <button 
                   className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center"
-                  onClick={handleRefresh}
                 >
-                  {isRefreshing ? (
-                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                  )}
+                  <RefreshCw className="h-4 w-4 mr-2" />
                   Refresh All
                 </button>
               </div>

@@ -12,8 +12,45 @@ import {
 } from 'lucide-react'
 import type { DeviceHealth } from '@/types/system-health'
 
+interface DeviceMetrics {
+  cpu: {
+    usage: number
+    temperature: number
+    cores: number
+  }
+  memory: {
+    total: number
+    used: number
+    free: number
+    swap: {
+      total: number
+      used: number
+      free: number
+    }
+  }
+  disk: Array<{
+    path: string
+    total: number
+    used: number
+    free: number
+    mountPoint: string
+  }>
+  network: Array<{
+    interface: string
+    bytesIn: number
+    bytesOut: number
+    packetsIn: number
+    packetsOut: number
+    errors: number
+    drops: number
+  }>
+  processes: Array<unknown>
+  services: Array<unknown>
+}
+
 interface DeviceMetricsProps {
   deviceId: string
+  metrics: DeviceMetrics
 }
 
 function MetricCard({ 
@@ -102,9 +139,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`
 }
 
-export function DeviceMetrics({ deviceId }: DeviceMetricsProps) {
-  const metrics = mockMetrics // Replace with API call
-
+export function DeviceMetrics({ deviceId, metrics }: DeviceMetricsProps) {
   const cpuUsagePercent = metrics.cpu.usage
   const memoryUsagePercent = (metrics.memory.used / metrics.memory.total) * 100
   const diskUsagePercent = (metrics.disk[0].used / metrics.disk[0].total) * 100

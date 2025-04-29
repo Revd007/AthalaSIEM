@@ -1,28 +1,35 @@
 import { DashboardCard } from '@/components/ui/DashboardCard'
 import { List, AlertTriangle, ArrowUpRight } from 'lucide-react'
 
-interface Event {
+interface SecurityEvent {
   id: string
   timestamp: string
   type: string
+  severity: string
   source: string
-  severity: 'critical' | 'high' | 'medium' | 'low'
   message: string
+  details: Record<string, unknown>
 }
 
-const mockEvents: Event[] = [
+interface EventsTableProps {
+  events: SecurityEvent[]
+  onEventClick: (event: SecurityEvent) => void
+}
+
+const mockEvents: SecurityEvent[] = [
   {
     id: '1',
     timestamp: new Date().toISOString(),
     type: 'Authentication',
     source: '192.168.1.100',
     severity: 'critical',
-    message: 'Multiple failed login attempts detected'
+    message: 'Multiple failed login attempts detected',
+    details: {}
   },
   // Add more mock events...
 ]
 
-export function EventsTable({ filters }: { filters: any }) {
+export function EventsTable({ events, onEventClick }: EventsTableProps) {
   return (
     <DashboardCard title="Event Logs" icon={List}>
       <div className="overflow-x-auto">
@@ -50,7 +57,7 @@ export function EventsTable({ filters }: { filters: any }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {mockEvents.map(event => (
+            {events.map(event => (
               <tr key={event.id}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                   {new Date(event.timestamp).toLocaleString()}
@@ -74,7 +81,7 @@ export function EventsTable({ filters }: { filters: any }) {
                   {event.message}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <button className="text-blue-500 hover:text-blue-600">
+                  <button className="text-blue-500 hover:text-blue-600" onClick={() => onEventClick(event)}>
                     <ArrowUpRight className="h-4 w-4" />
                   </button>
                 </td>

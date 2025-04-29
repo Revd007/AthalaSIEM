@@ -160,6 +160,18 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
   }
 };
 
+interface ApiError {
+  message: string
+  code: string
+  details?: Record<string, unknown>
+}
+
+interface ApiConfig {
+  baseUrl: string
+  headers: Record<string, string>
+  timeout: number
+}
+
 /**
  * Generic API client for making HTTP requests to the backend
  */
@@ -170,7 +182,9 @@ export const api = {
    * @param options - Optional fetch options
    * @returns Promise with the response data
    */
-  get: <T>(url: string, options?: RequestOptions) => makeRequest<T>(url, { method: 'GET', ...options }),
+  async get<T>(url: string, config?: Partial<ApiConfig>): Promise<ApiResponse<T>> {
+    return makeRequest<T>(url, { method: 'GET', ...config });
+  },
 
   /**
    * Make a POST request to the API
@@ -179,11 +193,9 @@ export const api = {
    * @param options - Optional fetch options
    * @returns Promise with the response data
    */
-  post: <T>(url: string, body?: any, options?: RequestOptions) => makeRequest<T>(url, { 
-    method: 'POST', 
-    body: body ? JSON.stringify(body) : undefined,
-    ...options 
-  }),
+  async post<T>(url: string, data: unknown, config?: Partial<ApiConfig>): Promise<ApiResponse<T>> {
+    return makeRequest<T>(url, { method: 'POST', body: data ? JSON.stringify(data) : undefined, ...config });
+  },
 
   /**
    * Make a PUT request to the API
@@ -192,11 +204,9 @@ export const api = {
    * @param options - Optional fetch options
    * @returns Promise with the response data
    */
-  put: <T>(url: string, body?: any, options?: RequestOptions) => makeRequest<T>(url, { 
-    method: 'PUT', 
-    body: body ? JSON.stringify(body) : undefined,
-    ...options 
-  }),
+  async put<T>(url: string, data: unknown, config?: Partial<ApiConfig>): Promise<ApiResponse<T>> {
+    return makeRequest<T>(url, { method: 'PUT', body: data ? JSON.stringify(data) : undefined, ...config });
+  },
 
   /**
    * Make a DELETE request to the API
@@ -204,7 +214,9 @@ export const api = {
    * @param options - Optional fetch options
    * @returns Promise with the response data
    */
-  delete: <T>(url: string, options?: RequestOptions) => makeRequest<T>(url, { method: 'DELETE', ...options }),
+  async delete<T>(url: string, config?: Partial<ApiConfig>): Promise<ApiResponse<T>> {
+    return makeRequest<T>(url, { method: 'DELETE', ...config });
+  },
 
   /**
    * Make a PATCH request to the API

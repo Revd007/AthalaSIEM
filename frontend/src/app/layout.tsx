@@ -7,6 +7,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from 'sonner'
 import { useEffect } from 'react'
 import './globals.css'
+import { ErrorBoundary, FallbackProps } from 'react-error-boundary'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -18,6 +19,20 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center">
+      <h2 className="text-2xl font-bold mb-4">Something went wrong!</h2>
+      <button
+        onClick={resetErrorBoundary}
+        className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+      >
+        Try again
+      </button>
+    </div>
+  )
+}
 
 export default function RootLayout({
   children,
@@ -48,7 +63,9 @@ export default function RootLayout({
             enableSystem 
             disableTransitionOnChange
           >
-            {children}
+            <ErrorBoundary FallbackComponent={ErrorFallback}>
+              {children}
+            </ErrorBoundary>
             <Toaster richColors closeButton position="top-right" />
           </ThemeProvider>
           <ReactQueryDevtools initialIsOpen={false} />

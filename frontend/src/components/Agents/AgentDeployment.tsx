@@ -1,433 +1,288 @@
 'use client'
 
-import { useState } from 'react'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { useState, useEffect } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Copy, Download, QrCode, Terminal, ArrowRight, Clock } from 'lucide-react'
-import { toast } from 'sonner'
-import { agentService } from '@/services/agent-service'
-import { QRCodeSVG } from 'qrcode.react'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { AlertCircle, Download, Copy, CheckCircle2, XCircle } from 'lucide-react'
+import { useToast } from '@/components/ui/use-toast'
 
 interface CollectorConfig {
-  id: string;
-  name: string;
-  type: string;
-  enabled: boolean;
+  id: string
+  name: string
+  type: string
+  status: string
+  lastSeen: string
+  version: string
+  os: string
+  ip: string
+  location: string
+  resources: {
+    cpu: number
+    memory: number
+    disk: number
+  }
+  logs: Array<{
+    timestamp: string
+    level: string
+    message: string
+  }>
+  alerts: Array<{
+    id: string
+    severity: string
+    message: string
+    timestamp: string
+  }>
 }
 
 interface DeploymentToken {
-  token: string;
-  expiresAt: string;
-  downloadUrl: string;
+  token: string
+  expiresAt: string
+  downloadUrl: string
 }
 
-export function AgentDeployment() {
-  // Installation type state
-  const [installType, setInstallType] = useState<string>('windows')
-  
-  // Agent configuration state
-  const [serverUrl, setServerUrl] = useState<string>('')
-  const [port, setPort] = useState<number>(443)
-  const [agentName, setAgentName] = useState<string>('')
-  const [useSSL, setUseSSL] = useState<boolean>(true)
-  
-  // Collectors configuration state
-  const [collectors, setCollectors] = useState<CollectorConfig[]>([
-    { id: '1', name: 'Windows Event Logs', type: 'windows', enabled: true },
-    { id: '2', name: 'System Metrics', type: 'metrics', enabled: true },
-    { id: '3', name: 'File Integrity Monitoring', type: 'fim', enabled: false },
-    { id: '4', name: 'Network Monitoring', type: 'network', enabled: false },
-  ])
-  
-  // Deployment token state
-  const [token, setToken] = useState<DeploymentToken | null>(null)
-  const [isLoading, setIsLoading] = useState<boolean>(false)
-  const [deployMethod, setDeployMethod] = useState<string>('download')
-  
-  // Function to handle collector toggle
-  const handleCollectorToggle = (id: string, enabled: boolean) => {
-    setCollectors(
-      collectors.map(collector => 
-        collector.id === id ? { ...collector, enabled } : collector
-      )
-    )
-  }
-  
-  // Function to generate deployment token
-  const handleGenerateToken = async () => {
-    setIsLoading(true)
+interface AgentDeploymentProps {
+  agentId: string
+  onDeploy: (config: CollectorConfig) => Promise<void>
+}
+
+export function AgentDeployment({ agentId, onDeploy }: AgentDeploymentProps) {
+  const [config, setConfig] = useState<CollectorConfig>({
+    id: agentId,
+    name: '',
+    type: 'collector',
+    status: 'pending',
+    lastSeen: new Date().toISOString(),
+    version: '1.0.0',
+    os: '',
+    ip: '',
+    location: '',
+    resources: {
+      cpu: 0,
+      memory: 0,
+      disk: 0
+    },
+    logs: [],
+    alerts: []
+  })
+  const [deploymentToken, setDeploymentToken] = useState<DeploymentToken | null>(null)
+  const [isDeploying, setIsDeploying] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const { toast } = useToast()
+
+  const handleDeploy = async () => {
     try {
-      // Create configuration object
-      const agentConfig = {
-        serverUrl: serverUrl || window.location.origin,
-        port: port || 443,
-        name: agentName || `Agent-${Math.floor(Math.random() * 10000)}`,
-        useSSL,
-        collectors: collectors.filter(c => c.enabled).map(c => c.type)
-      }
-      
-      // Call API to generate token with this configuration
-      const response = await agentService.generateDeploymentToken(installType, agentConfig)
-      setToken(response)
-      toast.success('Deployment token generated successfully')
-    } catch (error) {
-      console.error('Error generating token:', error)
-      toast.error('Failed to generate deployment token')
+      setIsDeploying(true)
+      setError(null)
+      await onDeploy(config)
+      // Simulate getting deployment token
+      setDeploymentToken({
+        token: 'mock-token-123',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        downloadUrl: 'https://example.com/download'
+      })
+      toast({
+        title: 'Agent deployed successfully',
+        description: 'The agent has been deployed and is ready to use.',
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to deploy agent')
+      toast({
+        title: 'Deployment failed',
+        description: 'There was an error deploying the agent.',
+        variant: 'destructive',
+      })
     } finally {
-      setIsLoading(false)
+      setIsDeploying(false)
     }
   }
-  
-  // Function to copy to clipboard
-  const copyToClipboard = async (text: string, message: string = 'Copied to clipboard') => {
-    try {
-      await navigator.clipboard.writeText(text)
-      toast.success(message)
-    } catch (error) {
-      toast.error('Failed to copy to clipboard')
-    }
-  }
-  
-  // Function to construct download URL
+
   const getDownloadUrl = () => {
-    if (!token) return ''
-    return `${token.downloadUrl}?token=${token.token}&type=${installType}`
+    if (!deploymentToken) return ''
+    return deploymentToken.downloadUrl
   }
-  
-  // Function to get deployment command
+
   const getDeploymentCommand = () => {
-    if (!token) return ''
-    
-    if (installType === 'windows') {
-      return `powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri '${getDownloadUrl()}' -OutFile 'AthalaAgent-Setup.exe'; Start-Process -Wait -FilePath 'AthalaAgent-Setup.exe' -ArgumentList '/quiet', '/norestart', 'TOKEN=${token.token}'"`
-    } else {
-      return `curl -sSL "${getDownloadUrl()}" | sudo bash -s -- --token=${token.token}`
-    }
+    if (!deploymentToken) return ''
+    return `curl -sSL ${deploymentToken.downloadUrl} | bash -s -- --token ${deploymentToken.token}`
   }
-  
-  // Function to calculate expiration time
+
   const getExpirationTime = () => {
-    if (!token) return ''
-    
-    const expiration = new Date(token.expiresAt)
-    const now = new Date()
-    const diff = expiration.getTime() - now.getTime()
-    
-    // Convert to hours
-    const hours = Math.floor(diff / (1000 * 60 * 60))
-    
-    return `Expires in ${hours} hours`
+    if (!deploymentToken) return ''
+    return new Date(deploymentToken.expiresAt).toLocaleString()
+  }
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    toast({
+      title: 'Copied to clipboard',
+      description: 'The command has been copied to your clipboard.',
+    })
   }
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle>Agent Deployment</CardTitle>
-        <CardDescription>
-          Configure and deploy new agents to your systems
-        </CardDescription>
-      </CardHeader>
-      
-      <CardContent>
-        <Tabs defaultValue="configure" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="configure">1. Configure</TabsTrigger>
-            <TabsTrigger value="generate">2. Generate Token</TabsTrigger>
-            <TabsTrigger value="deploy" disabled={!token}>3. Deploy</TabsTrigger>
-          </TabsList>
-          
-          {/* Configuration Tab */}
-          <TabsContent value="configure" className="space-y-4 py-4">
-            <div className="space-y-4">
-              <div>
-                <Label>Select Installer Type</Label>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Deploy Agent</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Agent Name</Label>
+                <Input
+                  id="name"
+                  value={config.name}
+                  onChange={(e) => setConfig({ ...config, name: e.target.value })}
+                  placeholder="Enter agent name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="type">Agent Type</Label>
                 <Select
-                  value={installType}
-                  onValueChange={(value) => setInstallType(value)}
+                  value={config.type}
+                  onValueChange={(value) => setConfig({ ...config, type: value })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select installer type" />
+                    <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="windows">Windows</SelectItem>
-                    <SelectItem value="linux">Linux</SelectItem>
+                    <SelectItem value="collector">Collector</SelectItem>
+                    <SelectItem value="analyzer">Analyzer</SelectItem>
+                    <SelectItem value="responder">Responder</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-              
-              <Separator className="my-4" />
-              
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <h3 className="text-lg font-medium">Agent Configuration</h3>
-                <p className="text-sm text-muted-foreground">
-                  Pre-configure the agent settings
-                </p>
+                <Label htmlFor="os">Operating System</Label>
+                <Input
+                  id="os"
+                  value={config.os}
+                  onChange={(e) => setConfig({ ...config, os: e.target.value })}
+                  placeholder="Enter OS"
+                />
               </div>
-              
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="serverUrl">Server URL (optional)</Label>
-                  <Input
-                    id="serverUrl"
-                    placeholder="https://your-server.com"
-                    value={serverUrl}
-                    onChange={(e) => setServerUrl(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Leave blank to use current server
-                  </p>
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="port">Port</Label>
-                  <Input
-                    id="port"
-                    type="number"
-                    placeholder="443"
-                    value={port}
-                    onChange={(e) => setPort(parseInt(e.target.value))}
-                  />
-                </div>
-              </div>
-              
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="agentName">Agent Name (optional)</Label>
-                  <Input
-                    id="agentName"
-                    placeholder="Production-Server-01"
-                    value={agentName}
-                    onChange={(e) => setAgentName(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Leave blank to generate automatically
-                  </p>
-                </div>
-                
-                <div className="flex items-center justify-start space-x-2 pt-8">
-                  <Switch
-                    id="useSSL"
-                    checked={useSSL}
-                    onCheckedChange={setUseSSL}
-                  />
-                  <Label htmlFor="useSSL">Use SSL</Label>
-                </div>
-              </div>
-              
-              <Separator className="my-4" />
-              
               <div className="space-y-2">
-                <h3 className="text-lg font-medium">Enable Collectors</h3>
-                <p className="text-sm text-muted-foreground">
-                  Select which data to collect from this agent
-                </p>
-              </div>
-              
-              <div className="space-y-4">
-                {collectors.map((collector) => (
-                  <div key={collector.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`collector-${collector.id}`}
-                      checked={collector.enabled}
-                      onCheckedChange={(checked: boolean | 'indeterminate') => 
-                        handleCollectorToggle(collector.id, checked === true)
-                      }
-                    />
-                    <Label htmlFor={`collector-${collector.id}`}>{collector.name}</Label>
-                    {collector.type === 'windows' && installType !== 'windows' && (
-                      <Badge variant="outline" className="ml-2">
-                        Windows only
-                      </Badge>
-                    )}
-                  </div>
-                ))}
-              </div>
-              
-              <div className="pt-4">
-                <Button onClick={() => document.querySelector('[value="generate"]')?.dispatchEvent(new Event('click'))}>
-                  Next: Generate Token <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
+                <Label htmlFor="location">Location</Label>
+                <Input
+                  id="location"
+                  value={config.location}
+                  onChange={(e) => setConfig({ ...config, location: e.target.value })}
+                  placeholder="Enter location"
+                />
               </div>
             </div>
-          </TabsContent>
-          
-          {/* Generate Token Tab */}
-          <TabsContent value="generate" className="space-y-4 py-4">
+
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <Button
+              onClick={handleDeploy}
+              disabled={isDeploying}
+              className="w-full"
+            >
+              {isDeploying ? 'Deploying...' : 'Deploy Agent'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {deploymentToken && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Deployment Instructions</CardTitle>
+          </CardHeader>
+          <CardContent>
             <div className="space-y-4">
-              <div className="space-y-2">
-                <h3 className="text-lg font-medium">Generate Deployment Token</h3>
-                <p className="text-sm text-muted-foreground">
-                  Create a secure token that will be used to authenticate the agent installation
-                </p>
-              </div>
-              
-              <div className="bg-muted p-4 rounded-md">
-                <h4 className="font-medium mb-2">Configuration Summary</h4>
-                <div className="text-sm space-y-1">
-                  <p><span className="font-medium">Installer Type:</span> {installType}</p>
-                  <p><span className="font-medium">Server URL:</span> {serverUrl || 'Auto (current server)'}</p>
-                  <p><span className="font-medium">Port:</span> {port}</p>
-                  <p><span className="font-medium">Agent Name:</span> {agentName || 'Auto-generated'}</p>
-                  <p><span className="font-medium">Use SSL:</span> {useSSL ? 'Yes' : 'No'}</p>
-                  <p><span className="font-medium">Enabled Collectors:</span> {collectors.filter(c => c.enabled).map(c => c.name).join(', ') || 'None'}</p>
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Deployment Token</p>
+                  <p className="text-sm text-muted-foreground">
+                    Expires: {getExpirationTime()}
+                  </p>
                 </div>
+                <Badge variant="secondary">{deploymentToken.token}</Badge>
               </div>
-              
-              <Button 
-                onClick={handleGenerateToken} 
-                disabled={isLoading}
-                className="w-full"
-              >
-                {isLoading ? 'Generating...' : 'Generate Deployment Token'}
-              </Button>
-              
-              {token && (
-                <div className="pt-4 space-y-4">
-                  <div className="p-4 border rounded-md bg-green-50 dark:bg-green-950">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="font-medium text-green-700 dark:text-green-300">Token Generated</h4>
-                        <p className="text-sm text-green-600 dark:text-green-400">
-                          <Clock className="inline-block mr-1 h-3 w-3" />
-                          {getExpirationTime()}
-                        </p>
-                      </div>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => copyToClipboard(token.token, 'Token copied to clipboard')}
+
+              <Tabs defaultValue="command">
+                <TabsList>
+                  <TabsTrigger value="command">Command</TabsTrigger>
+                  <TabsTrigger value="manual">Manual</TabsTrigger>
+                </TabsList>
+                <TabsContent value="command" className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Input
+                      value={getDeploymentCommand()}
+                      readOnly
+                      className="font-mono text-sm"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => copyToClipboard(getDeploymentCommand())}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Run this command on the target system to deploy the agent.
+                  </p>
+                </TabsContent>
+                <TabsContent value="manual" className="space-y-4">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Download URL</p>
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        value={getDownloadUrl()}
+                        readOnly
+                        className="font-mono text-sm"
+                      />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => copyToClipboard(getDownloadUrl())}
                       >
-                        <Copy className="h-4 w-4 mr-1" /> Copy
+                        <Download className="h-4 w-4" />
                       </Button>
                     </div>
-                    <div className="mt-2 bg-white dark:bg-gray-800 p-2 rounded font-mono text-xs break-all">
-                      {token.token}
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Token</p>
+                    <div className="flex items-center space-x-2">
+                      <Input
+                        value={deploymentToken.token}
+                        readOnly
+                        className="font-mono text-sm"
+                      />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => copyToClipboard(deploymentToken.token)}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
-                  
-                  <Button 
-                    onClick={() => document.querySelector('[value="deploy"]')?.dispatchEvent(new Event('click'))}
-                    className="w-full"
-                  >
-                    Next: Deploy Agent <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          </TabsContent>
-          
-          {/* Deploy Tab */}
-          <TabsContent value="deploy" className="space-y-4 py-4">
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <h3 className="text-lg font-medium">Deploy Agent</h3>
-                <p className="text-sm text-muted-foreground">
-                  Choose how you want to deploy the agent
-                </p>
-              </div>
-              
-              <Tabs value={deployMethod} onValueChange={setDeployMethod} className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="download">
-                    <Download className="h-4 w-4 mr-2" /> Direct Download
-                  </TabsTrigger>
-                  <TabsTrigger value="command">
-                    <Terminal className="h-4 w-4 mr-2" /> Command Line
-                  </TabsTrigger>
-                  <TabsTrigger value="qrcode">
-                    <QrCode className="h-4 w-4 mr-2" /> QR Code
-                  </TabsTrigger>
-                </TabsList>
-                
-                {/* Direct Download */}
-                <TabsContent value="download" className="pt-4">
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-center space-y-4">
-                        <p>Download the installer and run it on your system</p>
-                        <Button onClick={() => window.location.href = getDownloadUrl()}>
-                          <Download className="h-4 w-4 mr-2" /> Download {installType === 'windows' ? 'Windows' : 'Linux'} Installer
-                        </Button>
-                        <p className="text-sm text-muted-foreground">
-                          The token is included in the download URL
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-                
-                {/* Command Line */}
-                <TabsContent value="command" className="pt-4">
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="space-y-4">
-                        <p>Run this command on your target system:</p>
-                        <div className="bg-black text-white p-4 rounded-md font-mono text-sm overflow-x-auto">
-                          {getDeploymentCommand()}
-                        </div>
-                        <Button 
-                          variant="outline" 
-                          onClick={() => copyToClipboard(getDeploymentCommand(), 'Command copied to clipboard')}
-                        >
-                          <Copy className="h-4 w-4 mr-2" /> Copy command
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-                
-                {/* QR Code */}
-                <TabsContent value="qrcode" className="pt-4">
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-center space-y-4">
-                        <p>Scan this QR code to download the installer:</p>
-                        <div className="flex justify-center py-4">
-                          <QRCodeSVG 
-                            value={getDownloadUrl()} 
-                            size={200}
-                            bgColor={"#ffffff"}
-                            fgColor={"#000000"}
-                            level={"L"}
-                            includeMargin={false}
-                          />
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          This QR code contains the download URL with embedded token
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
                 </TabsContent>
               </Tabs>
-              
-              <div className="pt-4 bg-muted p-4 rounded-md">
-                <h4 className="font-medium mb-2">Next Steps</h4>
-                <ol className="list-decimal list-inside space-y-2 text-sm">
-                  <li>Install the agent using your preferred method</li>
-                  <li>The agent will automatically register with your provided configuration</li>
-                  <li>Once registered, the agent will appear in your Agent Management dashboard</li>
-                  <li>You can further configure the agent from the dashboard if needed</li>
-                </ol>
-              </div>
             </div>
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   )
 } 

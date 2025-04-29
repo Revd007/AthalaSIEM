@@ -3,9 +3,21 @@ import { Activity, AlertTriangle, Shield, Clock } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { StatsCard } from './StatsCard'
 
+interface TimeRange {
+  start: Date
+  end: Date
+}
+
+interface SecurityFilters {
+  severity?: string
+  type?: string
+  source?: string
+}
+
 interface SecurityEventsOverviewProps {
-  timeRange: string
-  filters: any
+  timeRange: TimeRange
+  filters: SecurityFilters
+  onFilterChange: (filters: SecurityFilters) => void
 }
 
 const mockData = Array.from({ length: 24 }, (_, i) => ({
@@ -16,7 +28,7 @@ const mockData = Array.from({ length: 24 }, (_, i) => ({
   medium: Math.floor(Math.random() * 300),
 }))
 
-export function SecurityEventsOverview({ timeRange, filters }: SecurityEventsOverviewProps) {
+export function SecurityEventsOverview({ timeRange, filters, onFilterChange }: SecurityEventsOverviewProps) {
   return (
     <div className="space-y-6">
       {/* Stats Cards */}

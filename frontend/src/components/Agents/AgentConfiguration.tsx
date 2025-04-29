@@ -1,42 +1,22 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Agent } from '../../types/agent';
 import { agentService } from '../../services/agent-service';
 import { Button } from '../ui/button';
-import { Card } from '../ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { Textarea } from '../ui/textarea';
 import { useToast } from '../ui/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../ui/select";
 
-// Define the schema shape first
-type AgentConfigForm = {
-  name: string;
-  hostname: string;
-  ipAddress: string;
-  port: number;
-  isEnabled: boolean;
-  collectEventLogs: boolean;
-  collectSystemMetrics: boolean;
-  eventLogsToMonitor?: string;
-  configuration?: Record<string, string>;
-};
-
-// Then create the schema
-const agentConfigSchema: z.ZodType<AgentConfigForm> = z.object({
+// Create the schema
+const agentConfigSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   hostname: z.string().min(1, 'Hostname is required'),
   ipAddress: z.string().ip('Invalid IP address'),
@@ -48,20 +28,34 @@ const agentConfigSchema: z.ZodType<AgentConfigForm> = z.object({
   configuration: z.record(z.string()).optional(),
 });
 
+type AgentConfigFormData = z.infer<typeof agentConfigSchema>;
+
 interface AgentConfigurationProps {
   agent: Agent;
-  onClose: () => void;
+  onUpdate: (agent: Agent) => void;
 }
 
-export function AgentConfiguration({ agent, onClose }: AgentConfigurationProps) {
+export function AgentConfiguration({ agent, onUpdate }: AgentConfigurationProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [config, setConfig] = useState({
+    hostname: agent.hostname || '',
+    ipAddress: agent.ipAddress || '',
+    port: agent.port || 0,
+    isEnabled: agent.isEnabled || false,
+    collectEventLogs: agent.collectEventLogs || false,
+    collectSystemMetrics: agent.collectSystemMetrics || false,
+    eventLogsToMonitor: agent.eventLogsToMonitor || '',
+    configuration: agent.configuration || {}
+  });
+  const [isSaving, setIsSaving] = useState(false);
 
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
-  } = useForm<AgentConfigForm>({
+  } = useForm<AgentConfigFormData>({
     resolver: zodResolver(agentConfigSchema),
     defaultValues: {
       name: agent.name,
@@ -76,77 +70,79 @@ export function AgentConfiguration({ agent, onClose }: AgentConfigurationProps) 
     },
   });
 
-  const onSubmit = async (data: AgentConfigForm) => {
+  const isEnabled = watch('isEnabled');
+  const collectSystemMetrics = watch('collectSystemMetrics');
+  const collectEventLogs = watch('collectEventLogs');
+
+  const onSubmit = async (data: AgentConfigFormData) => {
     try {
-      await agentService.configureAgent(agent.agentId, data);
+      setIsSaving(true);
+      await agentService.configureAgent(agent.agentId as string, data);
       await queryClient.invalidateQueries({ queryKey: ['agents'] });
       toast({
         title: 'Success',
         description: 'Agent configuration updated successfully',
       });
-      onClose();
+      onUpdate({ ...agent, ...data });
     } catch (error) {
       toast({
         title: 'Error',
         description: 'Failed to update agent configuration',
         variant: 'destructive',
       });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      if (!agent.id) {
+        throw new Error('Agent ID is required');
+      }
+      await agentService.configureAgent(agent.id as string, config);
+      await queryClient.invalidateQueries({ queryKey: ['agents'] });
+      toast({
+        title: 'Configuration saved',
+        description: 'Agent configuration has been updated successfully.',
+      });
+      onUpdate({ ...agent, ...config });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to save configuration',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
   return (
-    <Card className="p-6">
-      <h3 className="text-lg font-semibold mb-4">Agent Configuration</h3>
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
-            <Input
-              id="name"
-              {...register('name')}
-              className={errors.name ? 'border-red-500' : ''}
-              aria-describedby="name-description"
-            />
-            <p id="name-description" className="text-sm text-muted-foreground">
-              A unique name for this agent
-            </p>
-            {errors.name && (
-              <p className="text-sm text-red-500">{errors.name.message}</p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="hostname">Hostname</Label>
-            <Input
-              id="hostname"
-              {...register('hostname')}
-              className={errors.hostname ? 'border-red-500' : ''}
-              aria-describedby="hostname-description"
-            />
-            <p id="hostname-description" className="text-sm text-muted-foreground">
-              The hostname where this agent is installed
-            </p>
-            {errors.hostname && (
-              <p className="text-sm text-red-500">{errors.hostname.message}</p>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="ipAddress">IP Address</Label>
-            <Input
-              id="ipAddress"
-              {...register('ipAddress')}
-              className={errors.ipAddress ? 'border-red-500' : ''}
-              aria-describedby="ip-description"
-            />
-            <p id="ip-description" className="text-sm text-muted-foreground">
-              The IP address of the agent
-            </p>
-            {errors.ipAddress && (
-              <p className="text-sm text-red-500">{errors.ipAddress.message}</p>
-            )}
+    <Card>
+      <CardHeader>
+        <CardTitle>Agent Configuration</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="hostname">Hostname</Label>
+              <Input
+                id="hostname"
+                value={config.hostname}
+                onChange={(e) => setConfig({ ...config, hostname: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ipAddress">IP Address</Label>
+              <Input
+                id="ipAddress"
+                value={config.ipAddress}
+                onChange={(e) => setConfig({ ...config, ipAddress: e.target.value })}
+              />
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -154,91 +150,57 @@ export function AgentConfiguration({ agent, onClose }: AgentConfigurationProps) 
             <Input
               id="port"
               type="number"
-              {...register('port', { valueAsNumber: true })}
-              className={errors.port ? 'border-red-500' : ''}
-              aria-describedby="port-description"
+              value={config.port}
+              onChange={(e) => setConfig({ ...config, port: parseInt(e.target.value) || 0 })}
             />
-            <p id="port-description" className="text-sm text-muted-foreground">
-              Port number (1-65535)
-            </p>
-            {errors.port && (
-              <p className="text-sm text-red-500">{errors.port.message}</p>
-            )}
           </div>
-        </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="eventLogsToMonitor">Event Logs to Monitor</Label>
-          <Textarea
-            id="eventLogsToMonitor"
-            {...register('eventLogsToMonitor')}
-            placeholder="Enter event log names separated by commas"
-            aria-describedby="logs-description"
-          />
-          <p id="logs-description" className="text-sm text-muted-foreground">
-            Specify which Windows Event Logs to monitor
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <Label htmlFor="isEnabled">Enabled</Label>
-              <p className="text-sm text-muted-foreground">
-                Enable or disable this agent
-              </p>
-            </div>
+          <div className="flex items-center space-x-2">
             <Switch
               id="isEnabled"
-              {...register('isEnabled')}
+              checked={config.isEnabled}
+              onCheckedChange={(checked) => setConfig({ ...config, isEnabled: checked })}
             />
+            <Label htmlFor="isEnabled">Enable Agent</Label>
           </div>
 
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <Label htmlFor="collectSystemMetrics">System Metrics</Label>
-              <p className="text-sm text-muted-foreground">
-                Collect system performance metrics
-              </p>
-            </div>
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="collectEventLogs"
+              checked={config.collectEventLogs}
+              onCheckedChange={(checked) => setConfig({ ...config, collectEventLogs: checked })}
+            />
+            <Label htmlFor="collectEventLogs">Collect Event Logs</Label>
+          </div>
+
+          <div className="flex items-center space-x-2">
             <Switch
               id="collectSystemMetrics"
-              {...register('collectSystemMetrics')}
+              checked={config.collectSystemMetrics}
+              onCheckedChange={(checked) => setConfig({ ...config, collectSystemMetrics: checked })}
+            />
+            <Label htmlFor="collectSystemMetrics">Collect System Metrics</Label>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="eventLogsToMonitor">Event Logs to Monitor</Label>
+            <Input
+              id="eventLogsToMonitor"
+              value={config.eventLogsToMonitor}
+              onChange={(e) => setConfig({ ...config, eventLogsToMonitor: e.target.value })}
+              placeholder="Comma-separated list of event logs"
             />
           </div>
-        </div>
 
-        <div className="flex items-center justify-between rounded-lg border p-4">
-          <div className="space-y-0.5">
-            <Label htmlFor="collectEventLogs">Event Logs</Label>
-            <p className="text-sm text-muted-foreground">
-              Enable Windows Event Log collection
-            </p>
-          </div>
-          <Switch
-            id="collectEventLogs"
-            {...register('collectEventLogs')}
-          />
-        </div>
-
-        <div className="flex justify-end space-x-2">
-          <Button 
-            type="button" 
-            variant="outline" 
-            onClick={onClose}
-            className="w-24"
+          <Button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="w-full"
           >
-            Cancel
-          </Button>
-          <Button 
-            type="submit" 
-            disabled={isSubmitting}
-            className="w-24"
-          >
-            {isSubmitting ? 'Saving...' : 'Save'}
+            {isSaving ? 'Saving...' : 'Save Configuration'}
           </Button>
         </div>
-      </form>
+      </CardContent>
     </Card>
   );
 }

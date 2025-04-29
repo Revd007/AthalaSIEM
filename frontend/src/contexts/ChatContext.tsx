@@ -1,78 +1,50 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import { Message, AIResponse } from '../types/chat';
-import { processAIResponse } from '../utils/ai';
+'use client'
+
+import { createContext, useContext, useState, ReactNode } from 'react'
+
+interface Message {
+  id: string
+  role: string
+  content: string
+  sender: string
+  timestamp: string
+}
 
 interface ChatContextType {
-  messages: Message[];
-  addMessage: (content: string) => void;
-  clearChat: () => void;
-  isOpen: boolean;
-  toggleChat: () => void;
-  isMinimized: boolean;
-  toggleMinimize: () => void;
+  messages: Message[]
+  addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => void
+  clearMessages: () => void
 }
 
-const ChatContext = createContext<ChatContextType | undefined>(undefined);
+const ChatContext = createContext<ChatContextType | undefined>(undefined)
 
-export function ChatProvider({ children }: { children: React.ReactNode }) {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isOpen, setIsOpen] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
+export function ChatProvider({ children }: { children: ReactNode }) {
+  const [messages, setMessages] = useState<Message[]>([])
 
-  const addMessage = useCallback(async (content: string) => {
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      content,
-      sender: 'user',
-      timestamp: new Date()
-    };
+  const addMessage = (message: Omit<Message, 'id' | 'timestamp'>) => {
+    const newMessage: Message = {
+      ...message,
+      id: Math.random().toString(36).substr(2, 9),
+      timestamp: new Date().toISOString()
+    }
+    setMessages(prev => [...prev, newMessage])
+  }
 
-    setMessages(prev => [...prev, userMessage]);
-
-    // Process AI response
-    const aiResponse = await processAIResponse(content);
-    const aiMessage: Message = {
-      id: crypto.randomUUID(),
-      content: aiResponse.message,
-      sender: 'ai',
-      timestamp: new Date(),
-      suggestions: aiResponse.suggestions
-    };
-
-    setMessages(prev => [...prev, aiMessage]);
-  }, []);
-
-  const clearChat = useCallback(() => {
-    setMessages([]);
-  }, []);
-
-  const toggleChat = useCallback(() => {
-    setIsOpen(prev => !prev);
-  }, []);
-
-  const toggleMinimize = useCallback(() => {
-    setIsMinimized(prev => !prev);
-  }, []);
+  const clearMessages = () => {
+    setMessages([])
+  }
 
   return (
-    <ChatContext.Provider value={{
-      messages,
-      addMessage,
-      clearChat,
-      isOpen,
-      toggleChat,
-      isMinimized,
-      toggleMinimize
-    }}>
+    <ChatContext.Provider value={{ messages, addMessage, clearMessages }}>
       {children}
     </ChatContext.Provider>
-  );
+  )
 }
 
-export const useChat = () => {
-  const context = useContext(ChatContext);
-  if (!context) {
-    throw new Error('useChat must be used within a ChatProvider');
+export function useChat() {
+  const context = useContext(ChatContext)
+  if (context === undefined) {
+    throw new Error('useChat must be used within a ChatProvider')
   }
-  return context;
-};
+  return context
+}

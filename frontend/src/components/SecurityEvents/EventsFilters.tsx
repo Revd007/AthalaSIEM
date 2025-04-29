@@ -5,6 +5,17 @@ const timeRanges = ['1h', '6h', '12h', '24h', '7d', '30d']
 const severityLevels = ['Critical', 'High', 'Medium', 'Low']
 const eventTypes = ['Authentication', 'Network', 'System', 'Application']
 
+interface FilterChangeEvent {
+  target: {
+    name: string
+    value: string | number | boolean
+  }
+}
+
+interface FilterProps {
+  onFilterChange: (filters: Record<string, unknown>) => void
+}
+
 interface EventsFiltersProps {
   filters: any
   onFiltersChange: (filters: any) => void
@@ -19,6 +30,11 @@ export function EventsFilters({
   onTimeRangeChange 
 }: EventsFiltersProps) {
   const [isOpen, setIsOpen] = useState(false)
+
+  const handleFilterChange = (event: FilterChangeEvent) => {
+    const { name, value } = event.target
+    onFiltersChange({ [name]: value })
+  }
 
   return (
     <div className="relative">

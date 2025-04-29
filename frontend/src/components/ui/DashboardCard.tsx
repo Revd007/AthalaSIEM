@@ -1,57 +1,24 @@
 'use client'
 
-import { LucideProps, LucideIcon as Icon } from 'lucide-react'
+import { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-interface DashboardCardProps extends React.HTMLAttributes<HTMLDivElement> {
+interface DashboardCardProps {
+  title: string
+  icon: LucideIcon
   children: React.ReactNode
-  title?: string
-  icon?: Icon
   className?: string
 }
 
-export function DashboardCard({ 
-  children, 
-  title, 
-  icon: Icon, 
-  className,
-  ...props 
-}: DashboardCardProps) {
-  if (!Icon && !title) {
-    return (
-      <div 
-        className={cn(
-          "bg-white dark:bg-gray-800 rounded-lg shadow p-6",
-          className
-        )}
-        {...props}
-      >
-        {children}
-      </div>
-    )
-  }
-
+export function DashboardCard({ title, icon: Icon, children, className }: DashboardCardProps) {
   return (
-    <div 
-      className={cn(
-        "bg-white dark:bg-gray-800 rounded-lg shadow p-6",
-        className
-      )}
-      {...props}
-    >
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-2">
-          {Icon && (
-            <div className="flex-shrink-0">
-              <Icon className="h-6 w-6 text-blue-500" />
-            </div>
-          )}
-          {title && (
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-              {title}
-            </h2>
-          )}
-        </div>
+    <div className={cn(
+      "bg-white dark:bg-gray-800 rounded-lg shadow p-6",
+      className
+    )}>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white">{title}</h3>
+        <Icon className="h-5 w-5 text-gray-500 dark:text-gray-400" />
       </div>
       {children}
     </div>

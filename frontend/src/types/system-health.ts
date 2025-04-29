@@ -77,4 +77,72 @@ export interface DeviceHealth {
     status: 'running' | 'stopped' | 'error'
     uptime: number
   }>
+}
+
+export interface Device {
+  id: string
+  name: string
+  type: string
+  status: string
+  lastSeen: string
+  version: string
+  os: string
+  ip: string
+  location: string
+  resources: {
+    cpu: number
+    memory: number
+    disk: number
+  }
+}
+
+export interface SystemMetrics {
+  cpu: {
+    usage: number
+    temperature: number
+    cores: number
+  }
+  memory: {
+    total: number
+    used: number
+    free: number
+    swap: {
+      total: number
+      used: number
+      free: number
+    }
+  }
+  disk: Array<{
+    path: string
+    total: number
+    used: number
+    free: number
+    mountPoint: string
+  }>
+  network: Array<{
+    interface: string
+    bytesIn: number
+    bytesOut: number
+    packetsIn: number
+    packetsOut: number
+    errors: number
+    drops: number
+  }>
+}
+
+export interface SystemAlert {
+  id: string
+  timestamp: string
+  severity: string
+  message: string
+  source: string
+  status: string
+}
+
+export interface SystemLog {
+  id: string
+  timestamp: string
+  level: string
+  message: string
+  source: string
 } 

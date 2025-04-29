@@ -5,6 +5,7 @@ import { DashboardCard } from '@/components/ui/DashboardCard'
 import { StatsCard } from '@/components/ui/StatsCard'
 import { Shield, AlertTriangle, Target, Zap, RefreshCw, Search, Filter } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
+import { toast } from 'react-hot-toast'
 
 interface ThreatEvent {
   id: string
@@ -18,6 +19,12 @@ interface ThreatEvent {
   mitreTactic: string
   mitreId: string
   details: Record<string, any>
+}
+
+interface ThreatAnalysisError {
+  message: string
+  code: string
+  details?: Record<string, unknown>
 }
 
 const mockThreatData = {
@@ -82,6 +89,11 @@ export function AIThreatAnalyzer() {
     setIsRefreshing(true)
     await new Promise(resolve => setTimeout(resolve, 2000))
     setIsRefreshing(false)
+  }
+
+  const handleError = (error: ThreatAnalysisError) => {
+    console.error('Threat analysis error:', error)
+    toast.error(error.message)
   }
 
   return (

@@ -84,4 +84,22 @@ export const appRouter = router({
   })
 });
 
-export type AppRouter = typeof appRouter; 
+export type AppRouter = typeof appRouter;
+
+export const trpc = {
+  query: {
+    useQuery: (_input: unknown) => {
+      // ... implementation
+    },
+    
+    useInfiniteQuery: (_input: unknown) => {
+      // ... implementation
+    }
+  },
+  
+  mutation: {
+    useMutation: (_input: unknown) => {
+      // ... implementation
+    }
+  }
+} 

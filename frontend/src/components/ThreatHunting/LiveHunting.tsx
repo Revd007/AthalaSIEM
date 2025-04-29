@@ -1,18 +1,37 @@
 'use client'
 
 import { useState } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { useToast } from '@/components/ui/use-toast'
+import { aiAnalysisService } from '@/services/ai-analysis-service'
+import type { AnalysisResult } from '@/types/ai-analysis'
 import { DashboardCard } from '@/components/ui/DashboardCard'
 import { Search, Play, Save, Filter, Clock, AlertTriangle, Activity, Database } from 'lucide-react'
 import { Editor } from '@monaco-editor/react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 interface QueryResult {
+  id: string
+  query: string
+  results: HuntingResult[]
+  timestamp: string
+  status: 'running' | 'completed' | 'failed'
+}
+
+interface HuntingResult extends AnalysisResult {
+  event_type: string
+  severity: string
   timestamp: string
   source: string
-  event_type: string
-  severity: 'critical' | 'high' | 'medium' | 'low'
-  message: string
-  details: Record<string, any>
+  details: Record<string, unknown>
+}
+
+interface LiveHuntingProps {
+  initialResults?: HuntingResult[]
+  onResultClick: (result: HuntingResult) => void
 }
 
 const mockTimelineData = Array.from({ length: 20 }, (_, i) => ({
@@ -23,44 +42,75 @@ const mockTimelineData = Array.from({ length: 20 }, (_, i) => ({
 
 const mockResults: QueryResult[] = [
   {
+    id: '1',
+    query: 'source=* | search severity=high',
+    results: [
+      {
+        id: '1',
+        type: 'threat',
+        event_type: 'process_creation',
+        severity: 'high',
+        timestamp: new Date().toISOString(),
+        source: 'windows-dc1',
+        description: 'Suspicious PowerShell execution detected',
+        recommendations: ['Investigate PowerShell execution', 'Check for malicious commands'],
+        confidence: 0.85,
+        details: {
+          process_name: 'powershell.exe',
+          command_line: 'powershell.exe -enc YWxlcnQoImhlbGxvIik=',
+          user: 'SYSTEM',
+          pid: 4528
+        }
+      },
+      {
+        id: '2',
+        type: 'threat',
+        event_type: 'authentication',
+        severity: 'critical',
+        timestamp: new Date(Date.now() - 5000).toISOString(),
+        source: 'linux-web1',
+        description: 'Multiple failed login attempts detected',
+        recommendations: ['Investigate failed login attempts', 'Check for brute force attacks'],
+        confidence: 0.95,
+        details: {
+          user: 'admin',
+          source_ip: '192.168.1.100',
+          attempts: 5
+        }
+      }
+    ],
     timestamp: new Date().toISOString(),
-    source: 'windows-dc1',
-    event_type: 'process_creation',
-    severity: 'high',
-    message: 'Suspicious PowerShell execution detected',
-    details: {
-      process_name: 'powershell.exe',
-      command_line: 'powershell.exe -enc YWxlcnQoImhlbGxvIik=',
-      user: 'SYSTEM',
-      pid: 4528
-    }
-  },
-  {
-    timestamp: new Date(Date.now() - 5000).toISOString(),
-    source: 'linux-web1',
-    event_type: 'authentication',
-    severity: 'critical',
-    message: 'Multiple failed login attempts',
-    details: {
-      user: 'admin',
-      source_ip: '192.168.1.100',
-      attempts: 5
-    }
+    status: 'completed'
   }
 ]
 
-export function LiveHunting() {
-  const [query, setQuery] = useState('source=* | search severity=high')
-  const [isRunning, setIsRunning] = useState(false)
-  const [results, setResults] = useState<QueryResult[]>(mockResults)
-  const [selectedResult, setSelectedResult] = useState<QueryResult | null>(null)
-  const [timeRange, setTimeRange] = useState('15m')
+export function LiveHunting({ initialResults, onResultClick }: LiveHuntingProps) {
+  const [query, setQuery] = useState('')
+  const [queryResults, setQueryResults] = useState<QueryResult | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
+  const [selectedResult, setSelectedResult] = useState<HuntingResult | null>(null)
+  const { toast } = useToast()
 
-  const handleRunQuery = async () => {
-    setIsRunning(true)
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    setIsRunning(false)
+  const handleSearch = async () => {
+    try {
+      setIsSearching(true)
+      const response = await aiAnalysisService.analyzeThreat({ query })
+      setQueryResults({
+        id: Math.random().toString(36).substr(2, 9),
+        query,
+        results: [response as HuntingResult],
+        timestamp: new Date().toISOString(),
+        status: 'completed'
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to analyze threat',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsSearching(false)
+    }
   }
 
   return (
@@ -108,32 +158,18 @@ export function LiveHunting() {
               {/* Query Controls */}
               <div className="flex justify-between">
                 <div className="space-x-2">
-                  <button 
-                    className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 flex items-center"
-                    onClick={handleRunQuery}
+                  <Button
+                    onClick={handleSearch}
+                    disabled={isSearching}
+                    className="w-full"
                   >
-                    {isRunning ? (
-                      <Activity className="h-4 w-4 mr-2 animate-pulse" />
-                    ) : (
-                      <Play className="h-4 w-4 mr-2" />
-                    )}
-                    {isRunning ? 'Running...' : 'Run Query'}
-                  </button>
+                    {isSearching ? 'Searching...' : 'Search'}
+                  </Button>
                   <button className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center">
                     <Save className="h-4 w-4 mr-2" />
                     Save Query
                   </button>
                 </div>
-                <select
-                  value={timeRange}
-                  onChange={(e) => setTimeRange(e.target.value)}
-                  className="px-4 py-2 border rounded-lg dark:bg-gray-800 dark:border-gray-700"
-                >
-                  <option value="15m">Last 15 minutes</option>
-                  <option value="1h">Last 1 hour</option>
-                  <option value="4h">Last 4 hours</option>
-                  <option value="24h">Last 24 hours</option>
-                </select>
               </div>
 
               {/* Query Editor */}
@@ -206,10 +242,10 @@ export function LiveHunting() {
 
               {/* Results List */}
               <div className="space-y-2">
-                {results.map((result, index) => (
+                {queryResults?.results.map((result: HuntingResult) => (
                   <div
-                    key={index}
-                    onClick={() => setSelectedResult(result)}
+                    key={result.id}
+                    onClick={() => onResultClick(result)}
                     className={`p-4 rounded-lg cursor-pointer border ${
                       selectedResult === result
                         ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
@@ -220,9 +256,9 @@ export function LiveHunting() {
                       <div className="flex-1">
                         <div className="flex items-center space-x-2">
                           <span className={`px-2 py-1 text-xs rounded-full ${
-                            result.severity === 'critical' 
-                              ? 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200'
-                              : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200'
+                            result.severity === 'high' ? 'bg-red-100 text-red-800' :
+                            result.severity === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                            'bg-green-100 text-green-800'
                           }`}>
                             {result.severity}
                           </span>
@@ -231,7 +267,7 @@ export function LiveHunting() {
                           </span>
                         </div>
                         <p className="text-sm text-gray-900 dark:text-white mt-1">
-                          {result.message}
+                          {result.description}
                         </p>
                       </div>
                     </div>

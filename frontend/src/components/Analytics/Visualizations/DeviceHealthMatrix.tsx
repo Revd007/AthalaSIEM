@@ -1,5 +1,5 @@
 import React from 'react';
-import { Server, Activity, Memory, HardDrive } from 'lucide-react';
+import { Server, Activity, Cpu, HardDrive } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface DeviceHealth {
@@ -82,7 +82,7 @@ export function DeviceHealthMatrix() {
               color={getMetricColor(device.metrics.cpu)}
             />
             <MetricCard
-              icon={Memory}
+              icon={Cpu}
               label="Memory"
               value={device.metrics.memory}
               color={getMetricColor(device.metrics.memory)}

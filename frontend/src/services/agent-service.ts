@@ -10,7 +10,10 @@ import type {
   LogEntry,
   AgentMetrics,
   AgentAlert,
-  Severity
+  Severity,
+  AgentConfig,
+  DeploymentToken,
+  AgentLog
 } from '../types/agent';
 import { authService } from './auth-service';
 
@@ -55,6 +58,16 @@ interface DeploymentTokenConfig {
   name?: string;
   group?: string;
   serverAddress?: string;
+  installType?: string;
+  port?: number;
+  useSSL?: boolean;
+  collectors?: string[];
+}
+
+interface AgentService {
+  generateDeploymentToken: (config: DeploymentTokenConfig) => Promise<DeploymentToken>
+  getAgentStatus: (agentId: string) => Promise<AgentStatus>
+  updateAgentConfig: (agentId: string, config: AgentConfig) => Promise<void>
 }
 
 export const agentService = {
@@ -128,11 +141,13 @@ export const agentService = {
   async downloadAgentInstaller(os: string = 'windows'): Promise<void> {
     try {
       const response = await api.get(endpoints.agents.download(os), {
-        responseType: 'blob'
+        headers: {
+          'Accept': 'application/octet-stream'
+        }
       });
 
       // Create a blob from the response and trigger download
-      const blob = new Blob([response.data as BlobPart], { type: 'application/octet-stream' });
+      const blob = new Blob([response.data as ArrayBuffer], { type: 'application/octet-stream' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -180,7 +195,7 @@ export const agentService = {
   },
 
   async restartAgent(agentId: string): Promise<boolean> {
-    await api.post(`${endpoints.agents.details(agentId)}/restart`);
+    await api.post(`${endpoints.agents.details(agentId)}/restart`, {});
     return true;
   },
 
@@ -219,11 +234,11 @@ export const agentService = {
   },
 
   async acknowledgeAlert(agentId: string, alertId: string): Promise<void> {
-    await api.post(`${endpoints.agents.details(agentId)}/alerts/${alertId}/acknowledge`);
+    await api.post(`${endpoints.agents.details(agentId)}/alerts/${alertId}/acknowledge`, {});
   },
 
   async resolveAlert(agentId: string, alertId: string): Promise<void> {
-    await api.post(`${endpoints.agents.details(agentId)}/alerts/${alertId}/resolve`);
+    await api.post(`${endpoints.agents.details(agentId)}/alerts/${alertId}/resolve`, {});
   },
 
   async getAgentProcesses(agentId: string): Promise<Array<{
@@ -265,4 +280,25 @@ export const agentService = {
       }>;
     };
   },
+
+  async deployAgent(config: AgentConfig): Promise<DeploymentToken> {
+    const response = await api.post<DeploymentToken>('/api/agents/deploy', config)
+    return response.data
+  },
+
+  // These functions are duplicates and should be removed
+  // async getAgentLogs(agentId: string): Promise<AgentLog[]> {
+  //   const response = await api.get<AgentLog[]>(`/api/agents/${agentId}/logs`)
+  //   return response.data
+  // }
+
+  // async getAgentAlerts(agentId: string): Promise<AgentAlert[]> {
+  //   const response = await api.get<AgentAlert[]>(`/api/agents/${agentId}/alerts`)
+  //   return response.data
+  // }
+
+  // async getAgentMetrics(agentId: string): Promise<AgentMetrics> {
+  //   const response = await api.get<AgentMetrics>(`/api/agents/${agentId}/metrics`)
+  //   return response.data
+  // }
 }; 

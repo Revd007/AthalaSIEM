@@ -10,6 +10,19 @@ interface TrailLog {
   ipAddress?: string;
 }
 
+interface LogEntry {
+  timestamp: string
+  level: string
+  message: string
+  details: Record<string, unknown>
+}
+
+interface TrailLoggerConfig {
+  level: string
+  format: string
+  destination: string
+}
+
 class TrailLogger {
   private static instance: TrailLogger;
   private apiUrl: string;
@@ -73,7 +86,6 @@ class TrailLogger {
       console.error('Error logging trail:', error);
     }
   }
-}
 
 // Export singleton instance
 export const trailLogger = TrailLogger.getInstance();

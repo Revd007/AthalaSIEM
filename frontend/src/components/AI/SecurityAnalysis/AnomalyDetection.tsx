@@ -5,12 +5,19 @@ import { DashboardCard } from '@/components/ui/DashboardCard'
 import { Activity, AlertTriangle, Brain, LineChart, Settings, RefreshCw } from 'lucide-react'
 import { LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts'
 import { StatsCard } from '@/components/ui/StatsCard'
+import { toast } from 'react-hot-toast'
 
 interface AnomalyScore {
   timestamp: string
   score: number
   threshold: number
   category: string
+}
+
+interface AnomalyDetectionError {
+  message: string
+  code: string
+  details?: Record<string, unknown>
 }
 
 const mockTimeSeriesData = Array.from({ length: 24 }, (_, i) => ({
@@ -58,6 +65,11 @@ export function AnomalyDetection() {
     setIsRefreshing(true)
     await new Promise(resolve => setTimeout(resolve, 2000))
     setIsRefreshing(false)
+  }
+
+  const handleError = (error: AnomalyDetectionError) => {
+    console.error('Anomaly detection error:', error)
+    toast.error(error.message)
   }
 
   return (

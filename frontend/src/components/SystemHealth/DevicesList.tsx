@@ -1,7 +1,7 @@
 'use client'
 
 import { Server, Activity, AlertTriangle } from 'lucide-react'
-import { Card } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { agentService } from '@/services/agent-service'
 import { Agent, AgentStatus } from '@/types/agent'
@@ -9,13 +9,20 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useState, useEffect } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { AlertCircle, RefreshCw, Search } from 'lucide-react'
+import { useToast } from '@/components/ui/use-toast'
+import type { Device } from '@/types/system-health'
 
 interface DevicesListProps {
-  selectedDevice: string | null
-  onDeviceSelect: (deviceId: string) => void
-  typeFilter: string[]
-  searchQuery: string
-  statusFilter: string[]
+  devices: Device[]
+  onDeviceClick: (device: Device) => void
+  onRefresh: () => Promise<void>
+  onSearch: (query: string) => void
+  onFilter: (type: string) => void
 }
 
 const statusConfig: Record<AgentStatus, { color: string; bgColor: string; icon: any }> = {
@@ -52,13 +59,7 @@ const getMetricColor = (value: number) => {
   return 'text-green-500'
 }
 
-export function DevicesList({
-  selectedDevice,
-  onDeviceSelect,
-  typeFilter,
-  searchQuery,
-  statusFilter
-}: DevicesListProps) {
+export function DevicesList({ devices, onDeviceClick, onRefresh, onSearch, onFilter }: DevicesListProps) {
   const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ['agents'],
@@ -93,6 +94,8 @@ export function DevicesList({
   // Add online status detection
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
+  const { toast } = useToast()
+
   useEffect(() => {
     // Update online status
     const handleOnline = () => setIsOnline(true);
@@ -106,6 +109,54 @@ export function DevicesList({
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedType, setSelectedType] = useState('all')
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const handleRefresh = async () => {
+    try {
+      setIsRefreshing(true)
+      await onRefresh()
+      toast({
+        title: 'Devices refreshed',
+        description: 'The device list has been updated.',
+      })
+    } catch (error) {
+      toast({
+        title: 'Refresh failed',
+        description: 'Failed to refresh the device list.',
+        variant: 'destructive',
+      })
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query)
+    onSearch(query)
+  }
+
+  const handleFilter = (type: string) => {
+    setSelectedType(type)
+    onFilter(type)
+  }
+
+  const convertAgentToDevice = (agent: Agent): Device => {
+    return {
+      id: agent.id,
+      name: agent.name,
+      type: agent.type,
+      status: agent.status,
+      lastSeen: agent.lastSeen,
+      version: agent.version,
+      os: agent.os,
+      ip: agent.ip,
+      location: agent.location,
+      resources: agent.resources
+    }
+  }
 
   if (!isOnline) {
     return (
@@ -157,99 +208,86 @@ export function DevicesList({
   }
 
   const filteredAgents = agents.filter(agent => {
-    if (typeFilter.length && !typeFilter.includes(agent.type)) return false
-    if (statusFilter.length && !statusFilter.includes(agent.status)) return false
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      return (
-        agent.name.toLowerCase().includes(query) ||
-        agent.ipAddress.includes(query) ||
-        agent.hostname.toLowerCase().includes(query)
-      )
-    }
+    if (devices.length && !devices.includes(agent)) return false
     return true
   });
 
   return (
-    <Card>
-      <div className="p-4">
-        <h2 className="text-lg font-semibold mb-4">Agents ({filteredAgents.length})</h2>
-        <ScrollArea className="h-[calc(100vh-300px)]">
-          <div className="space-y-2 pr-4">
-            {filteredAgents.map(agent => {
-              const StatusIcon = statusConfig[agent.status]?.icon || Server
-              return (
-                <div
-                  key={agent.agentId}
-                  onClick={() => onDeviceSelect(agent.agentId)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      onDeviceSelect(agent.agentId)
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  aria-selected={selectedDevice === agent.agentId}
-                  className={`w-full p-4 rounded-lg border transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    selectedDevice === agent.agentId
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                      : 'border-gray-200 hover:border-blue-500 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800'
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2">
-                        <div className="font-medium">{agent.name}</div>
-                        <Badge variant="outline" className="text-xs">
-                          {agent.type}
-                        </Badge>
-                      </div>
-                      <div className="text-sm text-gray-500 flex items-center space-x-2">
-                        <span>{agent.ipAddress}</span>
-                        <span>•</span>
-                        <span>{agent.hostname}</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <span 
-                          className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                            statusConfig[agent.status]?.bgColor || statusConfig[AgentStatus.Offline].bgColor
-                          } ${statusConfig[agent.status]?.color || statusConfig[AgentStatus.Offline].color}`}
-                        >
-                          <StatusIcon className="w-3 h-3 mr-1" />
-                          {agent.status}
-                        </span>
-                      </div>
-                      {agent.cpuUsage !== undefined && (
-                        <div className="grid grid-cols-3 gap-4 mt-2">
-                          <div className="text-sm">
-                            <span className="text-gray-500">CPU: </span>
-                            <span className={getMetricColor(agent.cpuUsage)}>{agent.cpuUsage}%</span>
-                          </div>
-                          <div className="text-sm">
-                            <span className="text-gray-500">Memory: </span>
-                            <span className={getMetricColor(agent.memoryUsage || 0)}>{agent.memoryUsage}%</span>
-                          </div>
-                          <div className="text-sm">
-                            <span className="text-gray-500">Disk: </span>
-                            <span className={getMetricColor(agent.diskUsage || 0)}>{agent.diskUsage}%</span>
-                          </div>
-                        </div>
-                      )}
-                      <div className="text-xs text-gray-400 flex items-center space-x-1">
-                        <span>Last seen:</span>
-                        <time dateTime={agent.lastHeartbeat}>
-                          {new Date(agent.lastHeartbeat).toLocaleString()}
-                        </time>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </ScrollArea>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+          <Input
+            placeholder="Search devices..."
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            className="w-64"
+          />
+          <Select value={selectedType} onValueChange={handleFilter}>
+            <SelectTrigger className="w-32">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="collector">Collector</SelectItem>
+              <SelectItem value="analyzer">Analyzer</SelectItem>
+              <SelectItem value="responder">Responder</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+        >
+          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+        </Button>
       </div>
-    </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {devices.map((device) => (
+          <Card key={device.id}>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>{device.name}</span>
+                <Badge variant={device.status === 'online' ? 'success' : 'destructive'}>
+                  {device.status}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Type</span>
+                  <span className="text-sm font-medium">{device.type}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Version</span>
+                  <span className="text-sm font-medium">{device.version}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">OS</span>
+                  <span className="text-sm font-medium">{device.os}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">IP</span>
+                  <span className="text-sm font-medium">{device.ip}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Location</span>
+                  <span className="text-sm font-medium">{device.location}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Last Seen</span>
+                  <span className="text-sm font-medium">
+                    {new Date(device.lastSeen).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
   )
 }

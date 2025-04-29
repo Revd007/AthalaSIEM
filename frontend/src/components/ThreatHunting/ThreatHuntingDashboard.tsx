@@ -30,7 +30,22 @@ const activeHunts = [
   }
 ]
 
-export function ThreatHuntingDashboard() {
+interface ThreatData {
+  id: string
+  timestamp: string
+  type: string
+  severity: string
+  source: string
+  message: string
+  details: Record<string, unknown>
+}
+
+interface ThreatHuntingDashboardProps {
+  data: ThreatData[]
+  onThreatClick: (threat: ThreatData) => void
+}
+
+export function ThreatHuntingDashboard({ data, onThreatClick }: ThreatHuntingDashboardProps) {
   return (
     <div className="space-y-6">
       {/* Hunt Metrics */}

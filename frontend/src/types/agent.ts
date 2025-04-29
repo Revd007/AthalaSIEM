@@ -18,52 +18,115 @@ export interface NewAgentConfig {
   type?: string;
 }
 
+export interface AgentConfig {
+  id: string
+  name: string
+  type: string
+  status: string
+  lastSeen: string
+  version: string
+  os: string
+  ip: string
+  location: string
+  resources: {
+    cpu: number
+    memory: number
+    disk: number
+  }
+  logs: Array<{
+    timestamp: string
+    level: string
+    message: string
+  }>
+  alerts: Array<{
+    id: string
+    severity: string
+    message: string
+    timestamp: string
+  }>
+}
+
+export interface DeploymentToken {
+  token: string
+  expiresAt: string
+  downloadUrl: string
+}
+
 export interface Agent {
-  agentId: string;
-  name: string;
-  hostname: string;
-  ipAddress: string;
-  port: number;
-  os: string;
-  type: string;
-  status: AgentStatus;
-  lastHeartbeat: string;
-  createdAt: string;
-  createdById?: string;
-  apiKey?: string;
-  isEnabled: boolean;
-  configuration?: Record<string, string>;
-  cpuUsage?: number;
-  memoryUsage?: number;
-  diskUsage?: number;
-  collectEventLogs?: boolean;
-  collectSystemMetrics?: boolean;
-  eventLogsToMonitor?: string;
-  version?: string;
-  osInfo?: {
-    platform: string;
-    version: string;
-    architecture: string;
-  };
-  cloudInfo?: {
-    provider: string;
-    region: string;
-    instanceId: string;
-  };
-  metrics?: {
-    cpuUsage: number;
-    memoryUsage: number;
-    diskUsage: number;
-    networkIn?: number;
-    networkOut?: number;
-    processCount?: number;
-    threadCount?: number;
-  };
-  alerts?: {
-    count: number;
-    severity: Severity;
-    lastAlert?: string;
-  };
+  id: string
+  name: string
+  type: string
+  status: string
+  lastSeen: string
+  version: string
+  os: string
+  ip: string
+  location: string
+  hostname: string
+  ipAddress: string
+  port?: number
+  isEnabled: boolean
+  collectEventLogs: boolean
+  collectSystemMetrics: boolean
+  eventLogsToMonitor?: string
+  configuration?: Record<string, string>
+  resources: {
+    cpu: number
+    memory: number
+    disk: number
+  }
+  agentId?: string // For backward compatibility
+}
+
+export interface AgentLog {
+  id: string
+  timestamp: string
+  level: string
+  message: string
+  source: string
+}
+
+export interface AgentAlert {
+  id: string
+  timestamp: string
+  severity: string
+  message: string
+  source: string
+  status: string
+}
+
+export interface AgentMetrics {
+  cpu: {
+    usage: number
+    temperature: number
+    cores: number
+  }
+  memory: {
+    total: number
+    used: number
+    free: number
+    swap: {
+      total: number
+      used: number
+      free: number
+    }
+  }
+  disk: Array<{
+    path: string
+    total: number
+    used: number
+    free: number
+    mountPoint: string
+  }>
+  network: Array<{
+    interface: string
+    bytesIn: number
+    bytesOut: number
+    packetsIn: number
+    packetsOut: number
+    errors: number
+    drops: number
+  }>
 }
 
 export enum HealthStatus {
@@ -125,28 +188,6 @@ export interface PaginatedResult<T> {
   pageCount: number;
   currentPage: number;
   pageSize: number;
-}
-
-export interface AgentMetrics {
-  timestamp: string;
-  cpuUsage: number;
-  memoryUsage: number;
-  diskUsage: number;
-  networkIn?: number;
-  networkOut?: number;
-  processCount?: number;
-  threadCount?: number;
-}
-
-export interface AgentAlert {
-  id: string;
-  agentId: string;
-  timestamp: string;
-  type: string;
-  message: string;
-  severity: Severity;
-  status: 'open' | 'resolved' | 'acknowledged';
-  metadata?: Record<string, any>;
 }
 
 // "id": "48865b6d-944e-40cf-97fa-658315c5804d",
