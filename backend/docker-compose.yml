@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: athala-backend
+    ports:
+      - "9595:9595"  # HTTP
+      - "9596:9596"  # HTTPS
+      - "50051:50051"  # gRPC
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:9595;https://+:9596
+    volumes:
+      - ./appsettings.json:/app/appsettings.json:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:9595/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - athala-network
+
+networks:
+  athala-network:
+    name: athala-network
+    driver: bridge 
