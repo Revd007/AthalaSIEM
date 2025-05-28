@@ -22,31 +22,21 @@ import {
   SelectValue,
 } from "../ui/select";
 
-// Define the schema shape first
-type AgentConfigForm = {
-  name: string;
-  hostname: string;
-  ipAddress: string;
-  port: number;
-  isEnabled: boolean;
-  collectEventLogs: boolean;
-  collectSystemMetrics: boolean;
-  eventLogsToMonitor?: string;
-  configuration?: Record<string, string>;
-};
-
-// Then create the schema
-const agentConfigSchema: z.ZodType<AgentConfigForm> = z.object({
+// Create the schema first
+const agentConfigSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   hostname: z.string().min(1, 'Hostname is required'),
   ipAddress: z.string().ip('Invalid IP address'),
   port: z.number().min(1).max(65535),
-  isEnabled: z.boolean().default(true),
-  collectEventLogs: z.boolean().default(false),
-  collectSystemMetrics: z.boolean().default(false),
+  isEnabled: z.boolean(),
+  collectEventLogs: z.boolean(),
+  collectSystemMetrics: z.boolean(),
   eventLogsToMonitor: z.string().optional(),
   configuration: z.record(z.string()).optional(),
 });
+
+// Infer the type from the schema
+type AgentConfigForm = z.infer<typeof agentConfigSchema>;
 
 interface AgentConfigurationProps {
   agent: Agent;
