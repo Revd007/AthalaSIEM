@@ -3,25 +3,30 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: athala-backend
+      target: development
+    container_name: AthalaSIEM-backend
     ports:
-      - "9595:9595"  # HTTP
-      - "9596:9596"  # HTTPS
+      - "9598:9595"  # HTTP - external 9598, internal 9595
       - "50051:50051"  # gRPC
     environment:
-      - ASPNETCORE_ENVIRONMENT=Production
-      - ASPNETCORE_URLS=http://+:9595;https://+:9596
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:9595
+      - ConnectionStrings__DefaultConnection=Host=host.docker.internal;Port=5432;Database=siem-db;Username=revian_dbsiem;Password=wokolcoy20;
     volumes:
-      - ./appsettings.json:/app/appsettings.json:ro
+      - .:/app
+      - ~/.nuget/packages:/root/.nuget/packages:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:9595/health"]
       interval: 30s
       timeout: 3s
       retries: 3
-      start_period: 10s
+      start_period: 30s
     networks:
       - athala-network
+
+volumes:
+  postgres_data:
 
 networks:
   athala-network:

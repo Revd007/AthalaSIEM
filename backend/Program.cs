@@ -16,7 +16,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Npgsql.EntityFrameworkCore.PostgreSQL;
 using Grpc.Net.Client;
-using Microsoft.AspNetCore.Server.Kestrel.Https;
+// using Microsoft.AspNetCore.Server.Kestrel.Https; // COMMENTED OUT FOR DEVELOPMENT
 using System.Net.Security;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
@@ -84,7 +84,8 @@ builder.Services.AddGrpc(options =>
 // Configure gRPC client
 builder.Services.AddGrpcClient<AthalaSIEM.Agent.SiemService.SiemServiceClient>(options =>
 {
-    options.Address = new Uri(builder.Configuration["GrpcServer:Url"] ?? "https://localhost:9596");
+    // options.Address = new Uri(builder.Configuration["GrpcServer:Url"] ?? "https://localhost:9596"); // COMMENTED OUT FOR DEVELOPMENT
+    options.Address = new Uri("http://localhost:9595"); // CHANGED TO HTTP FOR DEVELOPMENT
 })
 .ConfigureChannel(options =>
 {
@@ -94,12 +95,12 @@ builder.Services.AddGrpcClient<AthalaSIEM.Agent.SiemService.SiemServiceClient>(o
         KeepAlivePingTimeout = TimeSpan.FromSeconds(30),
         PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
         EnableMultipleHttp2Connections = true,
-        SslOptions = new SslClientAuthenticationOptions
-        {
-            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-            CertificateRevocationCheckMode = X509RevocationMode.Online,
-            EncryptionPolicy = EncryptionPolicy.RequireEncryption
-        }
+        // SslOptions = new SslClientAuthenticationOptions // COMMENTED OUT FOR DEVELOPMENT
+        // {
+        //     EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+        //     CertificateRevocationCheckMode = X509RevocationMode.Online,
+        //     EncryptionPolicy = EncryptionPolicy.RequireEncryption
+        // }
     };
 });
 
@@ -113,7 +114,7 @@ builder.Services.AddCors(options =>
                 "http://localhost:9595",  // Backend
                 "http://localhost:7654",  // Development
                 "http://localhost:7655",  // Production
-                "https://localhost:9596", // Secure Production
+                // "https://localhost:9596", // Secure Production // COMMENTED OUT FOR DEVELOPMENT
                 "http://localhost:7657"   // Test
             )
             .AllowAnyMethod()
@@ -130,7 +131,7 @@ builder.Services.AddCors(options =>
                 "http://localhost:9595",
                 "http://localhost:7654",
                 "http://localhost:7655",
-                "https://localhost:9596",
+                // "https://localhost:9596", // COMMENTED OUT FOR DEVELOPMENT
                 "http://localhost:7657"
             )
             .AllowAnyMethod()
@@ -186,20 +187,13 @@ builder.Services.AddAuthorization(options =>
               .RequireClaim("permission", "agent:read"));
 });
 
-// Configure Kestrel
+// Configure Kestrel - Force HTTP only
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
-    // Configure HTTP endpoint
+    // Configure HTTP endpoint only
     serverOptions.ListenAnyIP(9595, listenOptions =>
     {
         listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
-    });
-
-    // Configure HTTPS endpoint
-    serverOptions.ListenAnyIP(9596, listenOptions =>
-    {
-        listenOptions.Protocols = HttpProtocols.Http2;
-        listenOptions.UseHttps();
     });
 });
 
@@ -263,10 +257,10 @@ app.Use(async (context, next) =>
 app.UseCors("AllowFrontend");
 
 // Only apply HTTPS redirection in production environment
-if (!app.Environment.IsDevelopment())
-{
-    app.UseHttpsRedirection();
-}
+// if (!app.Environment.IsDevelopment())
+// {
+//     app.UseHttpsRedirection(); // COMMENTED OUT FOR DEVELOPMENT
+// }
 
 app.UseAuthentication();
 app.UseAuthorization();
