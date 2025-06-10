@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9598';
 
 interface LoginCredentials {
   username: string;
@@ -37,7 +37,7 @@ export interface LoginResponse {
 export const authService = {
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
     try {
-      const response = await fetch(`${API_URL}/auth/login`, {
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -68,7 +68,7 @@ export const authService = {
   },
 
   async register(credentials: RegisterCredentials) {
-    const response = await fetch(`${API_URL}/auth/register`, {
+    const response = await fetch('/api/auth/register', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -93,7 +93,7 @@ export const authService = {
     if (!token) throw new Error('No token found');
 
     try {
-      const response = await fetch(`${API_URL}/auth/me`, {
+      const response = await fetch('/api/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -104,7 +104,7 @@ export const authService = {
         if (response.status === 401) {
           // Try to refresh token
           try {
-            const refreshResponse = await fetch(`${API_URL}/auth/refresh`, {
+            const refreshResponse = await fetch('/api/auth/refresh', {
               method: 'POST',
               credentials: 'include',
               headers: {
@@ -149,7 +149,7 @@ export const authService = {
     if (!token) return;
 
     try {
-      await fetch(`${API_URL}/auth/logout`, {
+      await fetch('/api/auth/logout', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

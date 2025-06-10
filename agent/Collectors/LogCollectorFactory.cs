@@ -41,6 +41,10 @@ namespace AthalaSIEM.Agent.Collectors
                 
                 ["LinuxSyslog"] = () => new LinuxSyslogCollector(
                     _loggerFactory.CreateLogger<LinuxSyslogCollector>(),
+                    _normalizer),
+                
+                ["FileIntegrity"] = () => new FileIntegrityCollector(
+                    _loggerFactory.CreateLogger<FileIntegrityCollector>(),
                     _normalizer)
             };
         }

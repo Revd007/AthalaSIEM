@@ -15,7 +15,7 @@ class TrailLogger {
   private apiUrl: string;
 
   private constructor() {
-    this.apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9595';
+    this.apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9598';
   }
 
   public static getInstance(): TrailLogger {

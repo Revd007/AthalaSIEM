@@ -4,7 +4,7 @@
 
 // Default values in case environment variables aren't set
 const defaults = {
-  NEXT_PUBLIC_API_URL: 'http://localhost:9595',
+  NEXT_PUBLIC_API_URL: 'http://localhost:9598',
   NEXT_PUBLIC_USE_HTTPS: 'false',
   NEXT_PUBLIC_GRPC_URL: 'http://localhost:50051',
   SECURE_CONNECTION: 'false'

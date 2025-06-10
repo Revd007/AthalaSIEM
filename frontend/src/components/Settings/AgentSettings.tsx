@@ -246,7 +246,7 @@ export function AgentSettings() {
   };
 
   const generateInstallCommand = (os: string) => {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9598';
     const downloadUrl = `${baseUrl}/api/agents/download/${os}`;
     const defaultName = os === 'windows' ? 'Windows' : '$(hostname)';
     

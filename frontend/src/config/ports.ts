@@ -18,7 +18,7 @@ export const PORTS = {
    * Backend ports
    */
   BACKEND: {
-    HTTP: 9595,           // HTTP API endpoint
+    HTTP: 9598,           // HTTP API endpoint (external port mapping)
     HTTPS: 9596,          // HTTPS API endpoint
     GRPC: 50051           // gRPC services
   }

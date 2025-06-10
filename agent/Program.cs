@@ -595,6 +595,16 @@ namespace AthalaSIEM.Agent
                                         });
                                     }
                                     break;
+                                case "FileIntegrity":
+                                    services.AddSingleton<ILogCollector>(sp => 
+                                    {
+                                        var collector = new FileIntegrityCollector(
+                                            sp.GetRequiredService<ILogger<FileIntegrityCollector>>(),
+                                            sp.GetRequiredService<ILogNormalizer>());
+                                        collector.Initialize(collectorConfig);
+                                        return collector;
+                                    });
+                                    break;
                             }
                         }
                     }
@@ -800,6 +810,16 @@ namespace AthalaSIEM.Agent
                                     return collector;
                                 });
                             }
+                            break;
+                        case "FileIntegrity":
+                            services.AddSingleton<ILogCollector>(sp => 
+                            {
+                                var collector = new FileIntegrityCollector(
+                                    sp.GetRequiredService<ILogger<FileIntegrityCollector>>(),
+                                    sp.GetRequiredService<ILogNormalizer>());
+                                collector.Initialize(collectorConfig);
+                                return collector;
+                            });
                             break;
                     }
                 }

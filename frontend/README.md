@@ -114,7 +114,7 @@ frontend/
    ```
    Edit `.env.local` with your configuration:
    ```
-   NEXT_PUBLIC_API_URL=http://localhost:9595
+   NEXT_PUBLIC_API_URL=http://localhost:9598
    NEXT_PUBLIC_GRPC_URL=http://localhost:50051
    ```
 
