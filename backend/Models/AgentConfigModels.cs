@@ -142,5 +142,23 @@ namespace Backend.Models
         /// Gets or sets the version of the configuration
         /// </summary>
         public int Version { get; set; } = 1;
+        
+        /// <summary>
+        /// Gets or sets the configuration as JSON string
+        /// </summary>
+        [Column("Configuration")]
+        public string? Configuration { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the last updated timestamp
+        /// </summary>
+        [Column("LastUpdated")]
+        public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
+        
+        /// <summary>
+        /// Gets or sets whether the agent requires restart after configuration change
+        /// </summary>
+        [Column("RequiresRestart")]
+        public bool RequiresRestart { get; set; } = false;
     }
 } 

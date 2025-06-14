@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -10,17 +10,23 @@ using Backend.Models;
 using Backend.Data.Repositories;
 using System.IO;
 using System.Text;
+using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 
 namespace Backend.Services
 {
     /// <summary>
-    /// Service for alert operations
+    /// Enhanced Alert Service with multi-collector support and advanced notification capabilities
     /// </summary>
     public class AlertService : IAlertService
     {
-        private readonly IAlertRepository _alertRepository;
-        private readonly ApplicationDbContext _dbContext;
         private readonly ILogger<AlertService> _logger;
+        private readonly IAlertRepository _alertRepository;
+        private readonly ApplicationDbContext _context;
+        private readonly IThreatIntelligenceService _threatIntelligenceService;
+        private readonly IConfiguration _configuration;
+        private readonly Dictionary<string, CollectorAlertProfile> _collectorProfiles;
+        private readonly Dictionary<string, AlertRule> _activeRules = new();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AlertService"/> class
@@ -28,14 +34,23 @@ namespace Backend.Services
         /// <param name="alertRepository">The alert repository</param>
         /// <param name="dbContext">The database context</param>
         /// <param name="logger">The logger</param>
+        /// <param name="threatIntelligenceService">The threat intelligence service</param>
+        /// <param name="configuration">The configuration</param>
         public AlertService(
             IAlertRepository alertRepository,
             ApplicationDbContext dbContext,
-            ILogger<AlertService> logger)
+            ILogger<AlertService> logger,
+            IThreatIntelligenceService threatIntelligenceService,
+            IConfiguration configuration)
         {
             _alertRepository = alertRepository ?? throw new ArgumentNullException(nameof(alertRepository));
-            _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
+            _context = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _threatIntelligenceService = threatIntelligenceService ?? throw new ArgumentNullException(nameof(threatIntelligenceService));
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+
+            _collectorProfiles = InitializeCollectorProfiles();
+            LoadActiveRules();
         }
 
         /// <inheritdoc/>
@@ -204,7 +219,7 @@ namespace Backend.Services
                 if (alert == null)
                 {
                     _logger.LogWarning("Alert not found: {AlertId}", id);
-                    return null;
+                    return null!;
                 }
 
                 // Parse enum values
@@ -255,7 +270,7 @@ namespace Backend.Services
                 if (alert == null)
                 {
                     _logger.LogWarning("Alert not found: {AlertId}", id);
-                    return null;
+                    return null!;
                 }
 
                 alert.Status = status;
@@ -278,11 +293,11 @@ namespace Backend.Services
         {
             try
             {
-                var alert = await _dbContext.Alert.FindAsync(id);
+                var alert = await _context.Alert.FindAsync(id);
                 if (alert == null)
                 {
                     _logger.LogWarning("Alert not found: {AlertId}", id);
-                    return null;
+                    return null!;
                 }
 
                 // Parse the status
@@ -293,7 +308,7 @@ namespace Backend.Services
                 else
                 {
                     _logger.LogWarning("Invalid status: {Status}", updateStatusDto.Status);
-                    return null;
+                    return null!;
                 }
 
                 alert.UpdatedAt = updateStatusDto.UpdatedAt;
@@ -311,7 +326,7 @@ namespace Backend.Services
                     alert.ResolutionNotes = updateStatusDto.Comment;
                 }
 
-                await _dbContext.SaveChangesAsync();
+                await _context.SaveChangesAsync();
                 _logger.LogInformation("Alert status updated: {AlertId}, {Status}, by {UserId}", id, status, updateStatusDto.UpdatedBy);
 
                 return MapToAlertDto(alert);
@@ -332,7 +347,7 @@ namespace Backend.Services
                 if (alert == null)
                 {
                     _logger.LogWarning("Alert not found: {AlertId}", id);
-                    return null;
+                    return null!;
                 }
 
                 // Alert model doesn't have AssignedToUserId property
@@ -401,7 +416,7 @@ namespace Backend.Services
         /// <inheritdoc/>
         public async Task<Dictionary<string, int>> GetAlertStatsByAgentAsync(DateTime startTime, DateTime endTime)
         {
-            var stats = await _dbContext.Alert
+            var stats = await _context.Alert
                 .Where(a => a.Timestamp >= startTime && a.Timestamp <= endTime)
                 .GroupBy(a => a.AgentId ?? string.Empty)
                 .Select(g => new { AgentId = g.Key, Count = g.Count() })
@@ -413,7 +428,7 @@ namespace Backend.Services
         /// <inheritdoc/>
         public async Task<Dictionary<string, int>> GetAlertStatsBySeverityAsync(DateTime startTime, DateTime endTime)
         {
-            var stats = await _dbContext.Alert
+            var stats = await _context.Alert
                 .Where(a => a.Timestamp >= startTime && a.Timestamp <= endTime)
                 .GroupBy(a => a.Severity)
                 .Select(g => new { Severity = g.Key, Count = g.Count() })
@@ -425,7 +440,7 @@ namespace Backend.Services
         /// <inheritdoc/>
         public async Task<Dictionary<string, int>> GetAlertStatsByStatusAsync(DateTime startTime, DateTime endTime)
         {
-            var stats = await _dbContext.Alert
+            var stats = await _context.Alert
                 .Where(a => a.Timestamp >= startTime && a.Timestamp <= endTime)
                 .GroupBy(a => a.Status)
                 .Select(g => new { Status = g.Key, Count = g.Count() })
@@ -461,7 +476,7 @@ namespace Backend.Services
             }
 
             // Get all alerts within the time range
-            var alerts = await _dbContext.Alert
+            var alerts = await _context.Alert
                 .Where(a => a.Timestamp >= startTime && a.Timestamp <= endTime)
                 .ToListAsync();
 
@@ -517,7 +532,7 @@ namespace Backend.Services
         {
             try
             {
-                var alertsQuery = _dbContext.Alert.AsQueryable();
+                var alertsQuery = _context.Alert.AsQueryable();
 
                 // Apply filters
                 if (!string.IsNullOrEmpty(query.SearchTerm))
@@ -615,7 +630,7 @@ namespace Backend.Services
                 var start = startTime ?? DateTime.UtcNow.AddDays(-30);
                 var end = endTime ?? DateTime.UtcNow;
 
-                var query = _dbContext.Alert.AsQueryable();
+                var query = _context.Alert.AsQueryable();
                 query = query.Where(a => a.Timestamp >= start && a.Timestamp <= end);
 
                 var totalAlerts = await query.CountAsync();
@@ -689,7 +704,7 @@ namespace Backend.Services
                 var end = endTime ?? DateTime.UtcNow;
                 var timeInterval = interval ?? "day";
 
-                var query = _dbContext.Alert.AsQueryable();
+                var query = _context.Alert.AsQueryable();
                 query = query.Where(a => a.Timestamp >= start && a.Timestamp <= end);
 
                 // Define the grouping function based on the interval
@@ -823,14 +838,14 @@ namespace Backend.Services
         {
             try
             {
-                var alert = await _dbContext.Alert.FindAsync(alertId);
+                var alert = await _context.Alert.FindAsync(alertId);
                 if (alert == null)
                 {
                     return Enumerable.Empty<AlertDto>();
                 }
 
                 // Find alerts with the same source, agent, or similar title
-                var relatedAlerts = await _dbContext.Alert
+                var relatedAlerts = await _context.Alert
                     .Where(a => a.Id != alertId && (
                         a.Source == alert.Source ||
                         a.AgentId == alert.AgentId ||
@@ -920,7 +935,7 @@ namespace Backend.Services
         {
             try
             {
-                var alert = await _dbContext.Alert.FindAsync(alertId);
+                var alert = await _context.Alert.FindAsync(alertId);
                 if (alert == null)
                 {
                     throw new KeyNotFoundException($"Alert with ID {alertId} not found");
@@ -930,60 +945,13 @@ namespace Backend.Services
                 // For simplicity, we're just updating the alert
                 alert.UpdatedAt = DateTime.UtcNow;
 
-                await _dbContext.SaveChangesAsync();
+                await _context.SaveChangesAsync();
 
                 return MapToAlertDto(alert);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error adding comment to alert {AlertId}", alertId);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Updates an alert status with additional information
-        /// </summary>
-        /// <param name="id">The alert ID</param>
-        /// <param name="status">The new status</param>
-        /// <param name="userId">The user ID making the change</param>
-        /// <param name="notes">Optional notes about the status change</param>
-        /// <returns>The updated alert</returns>
-        public async Task<AlertDto?> UpdateAlertStatusAsync(string id, AlertStatusModels status, string userId, string? notes = null)
-        {
-            try
-            {
-                var alert = await _alertRepository.GetByIdAsync(id);
-                if (alert == null)
-                {
-                    _logger.LogWarning("Alert not found: {AlertId}", id);
-                    return null;
-                }
-
-                alert.Status = status;
-                alert.UpdatedAt = DateTime.UtcNow;
-
-                // Set the user who updated the status
-                if (status == AlertStatusModels.Acknowledged || status == AlertStatusModels.InProgress)
-                {
-                    alert.AcknowledgedBy = userId;
-                    alert.AcknowledgedAt = DateTime.UtcNow;
-                }
-                else if (status == AlertStatusModels.Resolved || status == AlertStatusModels.Closed || status == AlertStatusModels.FalsePositive)
-                {
-                    alert.ResolvedBy = userId;
-                    alert.ResolvedAt = DateTime.UtcNow;
-                    alert.ResolutionNotes = notes;
-                }
-
-                await _alertRepository.UpdateAsync(alert);
-                _logger.LogInformation("Alert status updated: {AlertId}, {Status}, by {UserId}", id, status, userId);
-
-                return MapToAlertDto(alert);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error updating alert status: {AlertId}, {Status}", id, status);
                 throw;
             }
         }
@@ -1009,7 +977,7 @@ namespace Backend.Services
                 {
                     try
                     {
-                        var alert = await _dbContext.Alert.FindAsync(alertId);
+                        var alert = await _context.Alert.FindAsync(alertId);
                         if (alert == null)
                         {
                             result.FailedCount++;
@@ -1057,7 +1025,7 @@ namespace Backend.Services
                     }
                 }
 
-                await _dbContext.SaveChangesAsync();
+                await _context.SaveChangesAsync();
                 _logger.LogInformation("Bulk updated alert statuses: {SuccessCount} succeeded, {FailureCount} failed", 
                     result.UpdatedCount, result.FailedCount);
 
@@ -1239,5 +1207,740 @@ namespace Backend.Services
                 throw;
             }
         }
+
+        public async Task<AlertModels> CreateAlertAsync(CreateAlertRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Creating alert for collector {CollectorType}", request.CollectorType);
+
+                var profile = _collectorProfiles.GetValueOrDefault(request.CollectorType, _collectorProfiles["General"]);
+                var severity = DetermineAlertSeverity(request, profile);
+
+                var alert = new AlertModels
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    AgentId = request.AgentId,
+                    Title = GenerateAlertTitle(request, profile),
+                    Description = GenerateAlertDescription(request, profile),
+                    Message = request.Message,
+                    Severity = severity,
+                    Status = AlertStatusModels.New,
+                    Source = $"{request.CollectorType}Alert",
+                    Timestamp = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                // Add collector-specific metadata
+                var metadata = new AlertMetadata
+                {
+                    CollectorType = request.CollectorType,
+                    ThreatLevel = request.ThreatLevel,
+                    OriginalLogId = request.LogEntryId,
+                    ThreatIndicators = request.ThreatIndicators ?? new List<string>(),
+                    CollectorSpecificData = request.CollectorSpecificData ?? new Dictionary<string, object>(),
+                    AutoEscalationEnabled = profile.EnableAutoEscalation,
+                    EscalationThresholds = profile.EscalationThresholds,
+                    NotificationChannels = profile.NotificationChannels.ToList()
+                };
+
+                // Store metadata as JSON in a custom field or separate table
+                var metadataJson = JsonSerializer.Serialize(metadata);
+                // For now, we'll store it in the alert's details or create a separate metadata table
+
+                await _alertRepository.AddAsync(alert);
+
+                // Process escalation if needed
+                await ProcessAlertEscalationAsync(alert, profile);
+
+                // Send notifications
+                await SendAlertNotificationsAsync(alert, metadata, profile);
+
+                _logger.LogInformation("Alert created with ID {AlertId} for collector {CollectorType}", 
+                    alert.Id, request.CollectorType);
+
+                return alert;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating alert for collector {CollectorType}", request.CollectorType);
+                throw;
+            }
+        }
+
+        public async Task<AlertModels> ProcessLogEntryAlertAsync(LogEntryModels logEntry)
+        {
+            try
+            {
+                // Determine collector type from log source
+                var collectorType = DetermineCollectorType(logEntry.Source);
+                var profile = _collectorProfiles.GetValueOrDefault(collectorType, _collectorProfiles["General"]);
+
+                // Check if this log entry should generate an alert
+                if (!ShouldGenerateAlert(logEntry, profile))
+                {
+                    return null!;
+                }
+
+                // Perform threat analysis
+                var threatAnalysis = await _threatIntelligenceService.AnalyzeLogEntryAsync(logEntry);
+
+                // Create alert request
+                var alertRequest = new CreateAlertRequest
+                {
+                    AgentId = logEntry.AgentId,
+                    CollectorType = collectorType,
+                    Message = logEntry.Message,
+                    LogEntryId = logEntry.Id,
+                    ThreatLevel = threatAnalysis.ThreatLevel,
+                    ThreatIndicators = threatAnalysis.Indicators.Select(i => i.Type).ToList(),
+                    CollectorSpecificData = ExtractCollectorSpecificData(logEntry, collectorType)
+                };
+
+                return await CreateAlertAsync(alertRequest);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing log entry alert for log {LogId}", logEntry.Id);
+                return null!;
+            }
+        }
+
+        public async Task<List<AlertSummary>> GetCollectorAlertSummaryAsync(DateTime? since = null)
+        {
+            try
+            {
+                var sinceDate = since ?? DateTime.UtcNow.AddDays(-7);
+                
+                var alerts = await _context.Alerts
+                    .Where(a => a.CreatedAt >= sinceDate)
+                    .ToListAsync();
+
+                var summaries = new List<AlertSummary>();
+
+                var collectorGroups = alerts
+                    .GroupBy(a => DetermineCollectorType(a.Source))
+                    .ToList();
+
+                foreach (var group in collectorGroups)
+                {
+                    var collectorType = group.Key;
+                    var collectorAlerts = group.ToList();
+
+                    var summary = new AlertSummary
+                    {
+                        CollectorType = collectorType,
+                        Period = sinceDate,
+                        TotalAlerts = collectorAlerts.Count,
+                        AlertsBySeverity = collectorAlerts
+                            .GroupBy(a => a.Severity)
+                            .ToDictionary(g => g.Key, g => g.Count()),
+                        AlertsByStatus = collectorAlerts
+                            .GroupBy(a => a.Status)
+                            .ToDictionary(g => g.Key, g => g.Count()),
+                        CriticalAlerts = collectorAlerts.Count(a => a.Severity == AlertSeverityModels.Critical),
+                        UnresolvedAlerts = collectorAlerts.Count(a => a.Status != AlertStatusModels.Resolved),
+                        AverageResolutionTime = CalculateAverageResolutionTime(collectorAlerts),
+                        TopAlertSources = GetTopAlertSources(collectorAlerts)
+                    };
+
+                    summaries.Add(summary);
+                }
+
+                return summaries.OrderByDescending(s => s.TotalAlerts).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting collector alert summary");
+                throw;
+            }
+        }
+
+        public async Task<List<AlertCorrelation>> FindAlertCorrelationsAsync(TimeSpan timeWindow, int minimumOccurrences = 2)
+        {
+            try
+            {
+                var correlations = new List<AlertCorrelation>();
+                var cutoffTime = DateTime.UtcNow - timeWindow;
+
+                var recentAlerts = await _context.Alerts
+                    .Where(a => a.CreatedAt >= cutoffTime)
+                    .OrderBy(a => a.CreatedAt)
+                    .ToListAsync();
+
+                // Group by collector type and similar patterns
+                var collectorGroups = recentAlerts
+                    .GroupBy(a => new { 
+                        CollectorType = DetermineCollectorType(a.Source),
+                        Severity = a.Severity,
+                        Pattern = ExtractAlertPattern(a.Message)
+                    })
+                    .Where(g => g.Count() >= minimumOccurrences);
+
+                foreach (var group in collectorGroups)
+                {
+                    var alerts = group.ToList();
+                    var correlation = new AlertCorrelation
+                    {
+                        CollectorType = group.Key.CollectorType,
+                        Pattern = group.Key.Pattern,
+                        Severity = group.Key.Severity,
+                        Occurrences = alerts.Count,
+                        TimeWindow = timeWindow,
+                        FirstAlert = alerts.Min(a => a.CreatedAt),
+                        LastAlert = alerts.Max(a => a.CreatedAt),
+                        AffectedAgents = alerts.Select(a => a.AgentId).Distinct().Count(),
+                        RecommendedActions = GenerateCorrelationRecommendations(group.Key.CollectorType, group.Key.Pattern, alerts)
+                    };
+
+                    correlations.Add(correlation);
+                }
+
+                return correlations.OrderByDescending(c => c.Occurrences).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error finding alert correlations");
+                throw;
+            }
+        }
+
+        public Task<AlertRule> CreateAlertRuleAsync(CreateAlertRuleRequest request)
+        {
+            try
+            {
+                var rule = new AlertRule
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    Name = request.Name,
+                    CollectorType = request.CollectorType,
+                    Condition = request.Condition,
+                    Severity = request.Severity,
+                    Enabled = true,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    NotificationChannels = request.NotificationChannels ?? new List<string>(),
+                    Actions = request.Actions ?? new List<AlertAction>()
+                };
+
+                // Store in database (assuming we have an AlertRules table)
+                // For now, we'll add to active rules dictionary
+                _activeRules[rule.Id] = rule;
+
+                _logger.LogInformation("Created alert rule {RuleId} for collector {CollectorType}", 
+                    rule.Id, request.CollectorType);
+
+                return Task.FromResult(rule);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating alert rule for collector {CollectorType}", request.CollectorType);
+                throw;
+            }
+        }
+
+        private Dictionary<string, CollectorAlertProfile> InitializeCollectorProfiles()
+        {
+            var profiles = new Dictionary<string, CollectorAlertProfile>();
+
+            // Container alerts
+            profiles["Container"] = new CollectorAlertProfile
+            {
+                AlertThresholds = new AlertThresholds
+                {
+                    ErrorLogThreshold = 10,
+                    WarningLogThreshold = 50,
+                    CriticalEventThreshold = 5,
+                    TimeWindowMinutes = 15
+                },
+                EnableAutoEscalation = true,
+                EscalationThresholds = new Dictionary<AlertSeverityModels, TimeSpan>
+                {
+                    { AlertSeverityModels.Critical, TimeSpan.FromMinutes(5) },
+                    { AlertSeverityModels.High, TimeSpan.FromMinutes(15) },
+                    { AlertSeverityModels.Medium, TimeSpan.FromMinutes(60) }
+                },
+                NotificationChannels = new[] { "email", "slack", "teams" },
+                AlertKeywords = new[] { "container", "docker", "kubernetes", "pod", "image", "privilege" },
+                SeverityBoostKeywords = new[] { "privileged", "escape", "breakout", "unauthorized" }
+            };
+
+            // Cloud Services alerts
+            profiles["CloudServices"] = new CollectorAlertProfile
+            {
+                AlertThresholds = new AlertThresholds
+                {
+                    ErrorLogThreshold = 5,
+                    WarningLogThreshold = 20,
+                    CriticalEventThreshold = 3,
+                    TimeWindowMinutes = 10
+                },
+                EnableAutoEscalation = true,
+                EscalationThresholds = new Dictionary<AlertSeverityModels, TimeSpan>
+                {
+                    { AlertSeverityModels.Critical, TimeSpan.FromMinutes(2) },
+                    { AlertSeverityModels.High, TimeSpan.FromMinutes(10) },
+                    { AlertSeverityModels.Medium, TimeSpan.FromMinutes(30) }
+                },
+                NotificationChannels = new[] { "email", "slack", "pagerduty" },
+                AlertKeywords = new[] { "aws", "azure", "gcp", "api", "authentication", "access" },
+                SeverityBoostKeywords = new[] { "credential", "compromise", "breach", "unauthorized", "escalation" }
+            };
+
+            // Database alerts
+            profiles["Database"] = new CollectorAlertProfile
+            {
+                AlertThresholds = new AlertThresholds
+                {
+                    ErrorLogThreshold = 8,
+                    WarningLogThreshold = 30,
+                    CriticalEventThreshold = 3,
+                    TimeWindowMinutes = 20
+                },
+                EnableAutoEscalation = true,
+                EscalationThresholds = new Dictionary<AlertSeverityModels, TimeSpan>
+                {
+                    { AlertSeverityModels.Critical, TimeSpan.FromMinutes(3) },
+                    { AlertSeverityModels.High, TimeSpan.FromMinutes(15) },
+                    { AlertSeverityModels.Medium, TimeSpan.FromMinutes(45) }
+                },
+                NotificationChannels = new[] { "email", "slack" },
+                AlertKeywords = new[] { "sql", "injection", "database", "query", "table", "schema" },
+                SeverityBoostKeywords = new[] { "injection", "drop", "delete", "truncate", "exfiltration" }
+            };
+
+            // IoT alerts
+            profiles["IoT"] = new CollectorAlertProfile
+            {
+                AlertThresholds = new AlertThresholds
+                {
+                    ErrorLogThreshold = 15,
+                    WarningLogThreshold = 100,
+                    CriticalEventThreshold = 5,
+                    TimeWindowMinutes = 30
+                },
+                EnableAutoEscalation = false, // IoT devices can be noisy
+                EscalationThresholds = new Dictionary<AlertSeverityModels, TimeSpan>
+                {
+                    { AlertSeverityModels.Critical, TimeSpan.FromMinutes(10) },
+                    { AlertSeverityModels.High, TimeSpan.FromMinutes(30) }
+                },
+                NotificationChannels = new[] { "email" },
+                AlertKeywords = new[] { "sensor", "device", "iot", "modbus", "mqtt", "scada" },
+                SeverityBoostKeywords = new[] { "compromise", "hijack", "anomaly", "protocol violation" }
+            };
+
+            // File Integrity alerts
+            profiles["FileIntegrity"] = new CollectorAlertProfile
+            {
+                AlertThresholds = new AlertThresholds
+                {
+                    ErrorLogThreshold = 5,
+                    WarningLogThreshold = 20,
+                    CriticalEventThreshold = 2,
+                    TimeWindowMinutes = 5
+                },
+                EnableAutoEscalation = true,
+                EscalationThresholds = new Dictionary<AlertSeverityModels, TimeSpan>
+                {
+                    { AlertSeverityModels.Critical, TimeSpan.FromMinutes(1) },
+                    { AlertSeverityModels.High, TimeSpan.FromMinutes(5) },
+                    { AlertSeverityModels.Medium, TimeSpan.FromMinutes(15) }
+                },
+                NotificationChannels = new[] { "email", "slack", "sms" },
+                AlertKeywords = new[] { "file", "integrity", "modification", "change", "hash" },
+                SeverityBoostKeywords = new[] { "system", "critical", "malware", "ransomware", "rootkit" }
+            };
+
+            // General/Default alerts
+            profiles["General"] = new CollectorAlertProfile
+            {
+                AlertThresholds = new AlertThresholds
+                {
+                    ErrorLogThreshold = 20,
+                    WarningLogThreshold = 100,
+                    CriticalEventThreshold = 10,
+                    TimeWindowMinutes = 60
+                },
+                EnableAutoEscalation = false,
+                EscalationThresholds = new Dictionary<AlertSeverityModels, TimeSpan>
+                {
+                    { AlertSeverityModels.Critical, TimeSpan.FromMinutes(30) },
+                    { AlertSeverityModels.High, TimeSpan.FromMinutes(60) }
+                },
+                NotificationChannels = new[] { "email" },
+                AlertKeywords = new[] { "error", "warning", "failed", "exception" },
+                SeverityBoostKeywords = new[] { "critical", "severe", "emergency" }
+            };
+
+            return profiles;
+        }
+
+        private void LoadActiveRules()
+        {
+            // Load alert rules from database
+            // This is a placeholder - in real implementation, load from AlertRules table
+            _logger.LogInformation("Loaded {Count} active alert rules", _activeRules.Count);
+        }
+
+        private string DetermineCollectorType(string source)
+        {
+            if (source.Contains("Container") || source.Contains("Docker") || source.Contains("Kubernetes"))
+                return "Container";
+            if (source.Contains("AWS") || source.Contains("Azure") || source.Contains("GCP") || source.Contains("CloudServices"))
+                return "CloudServices";
+            if (source.Contains("Database") || source.Contains("SQL") || source.Contains("MySQL") || source.Contains("PostgreSQL") || source.Contains("MongoDB"))
+                return "Database";
+            if (source.Contains("IoT") || source.Contains("Sensor") || source.Contains("SCADA") || source.Contains("Modbus") || source.Contains("MQTT"))
+                return "IoT";
+            if (source.Contains("FIM") || source.Contains("FileIntegrity"))
+                return "FileIntegrity";
+            
+            return "General";
+        }
+
+        private bool ShouldGenerateAlert(LogEntryModels logEntry, CollectorAlertProfile profile)
+        {
+            // Check log level
+            if (logEntry.Level == "Error" || logEntry.Level == "Critical" || logEntry.Level == "Warning")
+            {
+                return true;
+            }
+
+            // Check for alert keywords
+            var message = logEntry.Message?.ToLowerInvariant() ?? "";
+            if (profile.AlertKeywords.Any(keyword => message.Contains(keyword.ToLowerInvariant())))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private AlertSeverityModels DetermineAlertSeverity(CreateAlertRequest request, CollectorAlertProfile profile)
+        {
+            var baseSeverity = request.ThreatLevel switch
+            {
+                ThreatLevel.Critical => AlertSeverityModels.Critical,
+                ThreatLevel.High => AlertSeverityModels.High,
+                ThreatLevel.Medium => AlertSeverityModels.Medium,
+                ThreatLevel.Low => AlertSeverityModels.Low,
+                _ => AlertSeverityModels.Info
+            };
+
+            // Boost severity based on keywords
+            var message = request.Message?.ToLowerInvariant() ?? "";
+            if (profile.SeverityBoostKeywords.Any(keyword => message.Contains(keyword.ToLowerInvariant())))
+            {
+                baseSeverity = baseSeverity switch
+                {
+                    AlertSeverityModels.Info => AlertSeverityModels.Low,
+                    AlertSeverityModels.Low => AlertSeverityModels.Medium,
+                    AlertSeverityModels.Medium => AlertSeverityModels.High,
+                    AlertSeverityModels.High => AlertSeverityModels.Critical,
+                    _ => baseSeverity
+                };
+            }
+
+            return baseSeverity;
+        }
+
+        private string GenerateAlertTitle(CreateAlertRequest request, CollectorAlertProfile profile)
+        {
+            var collectorName = request.CollectorType;
+            var severity = DetermineAlertSeverity(request, profile);
+            
+            return $"{severity} Alert - {collectorName} Security Event";
+        }
+
+        private string GenerateAlertDescription(CreateAlertRequest request, CollectorAlertProfile profile)
+        {
+            var description = $"Security alert generated by {request.CollectorType} collector. ";
+            
+            if (request.ThreatIndicators?.Any() == true)
+            {
+                description += $"Threat indicators detected: {string.Join(", ", request.ThreatIndicators)}. ";
+            }
+
+            description += $"Original message: {request.Message}";
+            
+            return description;
+        }
+
+        private Dictionary<string, object> ExtractCollectorSpecificData(LogEntryModels logEntry, string collectorType)
+        {
+            var data = new Dictionary<string, object>();
+            
+            if (!string.IsNullOrEmpty(logEntry.Details))
+            {
+                try
+                {
+                    var details = JsonSerializer.Deserialize<Dictionary<string, object>>(logEntry.Details);
+                    if (details != null)
+                    {
+                        data = details;
+                    }
+                }
+                catch
+                {
+                    // Ignore JSON parsing errors
+                }
+            }
+
+            // Add collector-specific fields
+            data["collector_type"] = collectorType;
+            data["log_level"] = logEntry.Level;
+            data["agent_id"] = logEntry.AgentId ?? "";
+            data["timestamp"] = logEntry.Timestamp;
+
+            return data;
+        }
+
+        private Task ProcessAlertEscalationAsync(AlertModels alert, CollectorAlertProfile profile)
+        {
+            if (!profile.EscalationThresholds.TryGetValue(alert.Severity, out var escalationTime))
+            {
+                return Task.CompletedTask;
+            }
+
+            // Schedule escalation (in a real implementation, this would use a background job scheduler)
+            _logger.LogInformation("Scheduling escalation for alert {AlertId} in {EscalationTime}", 
+                alert.Id, escalationTime);
+                
+            return Task.CompletedTask;
+        }
+
+        private async Task SendAlertNotificationsAsync(AlertModels alert, AlertMetadata metadata, CollectorAlertProfile profile)
+        {
+            foreach (var channel in profile.NotificationChannels)
+            {
+                try
+                {
+                    await SendNotificationToChannelAsync(alert, metadata, channel);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error sending notification to channel {Channel} for alert {AlertId}", 
+                        channel, alert.Id);
+                }
+            }
+        }
+
+        private Task SendNotificationToChannelAsync(AlertModels alert, AlertMetadata metadata, string channel)
+        {
+            // Placeholder for notification implementation
+            _logger.LogInformation("Sending alert {AlertId} notification to {Channel}", alert.Id, channel);
+            
+            // In real implementation, this would integrate with:
+            // - Email service
+            // - Slack API
+            // - Microsoft Teams API
+            // - PagerDuty API
+            // - SMS service
+            // etc.
+            
+            return Task.CompletedTask;
+        }
+
+        private Task SendResolutionNotificationAsync(AlertModels alert)
+        {
+            _logger.LogInformation("Sending resolution notification for alert {AlertId}", alert.Id);
+            return Task.CompletedTask;
+        }
+
+        private TimeSpan? CalculateAverageResolutionTime(List<AlertModels> alerts)
+        {
+            var resolvedAlerts = alerts.Where(a => a.ResolvedAt.HasValue && a.CreatedAt < a.ResolvedAt).ToList();
+            
+            if (!resolvedAlerts.Any())
+            {
+                return null!;
+            }
+
+            var totalTicks = resolvedAlerts.Sum(a => (a.ResolvedAt!.Value - a.CreatedAt).Ticks);
+            return new TimeSpan(totalTicks / resolvedAlerts.Count);
+        }
+
+        private List<string> GetTopAlertSources(List<AlertModels> alerts)
+        {
+            return alerts
+                .GroupBy(a => a.Source)
+                .OrderByDescending(g => g.Count())
+                .Take(5)
+                .Select(g => g.Key)
+                .ToList();
+        }
+
+        private string ExtractAlertPattern(string message)
+        {
+            // Simple pattern extraction - could be more sophisticated
+            var words = message.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return words.Length > 2 ? string.Join(" ", words.Take(3)) : message;
+        }
+
+        private List<string> GenerateCorrelationRecommendations(string collectorType, string pattern, List<AlertModels> alerts)
+        {
+            // Generate specific recommendations based on correlation patterns
+            var recommendations = new List<string>();
+            
+            // Default recommendations based on collector type
+            recommendations.Add($"Review {collectorType} configuration for pattern: {pattern}");
+            recommendations.Add($"Investigate {alerts.Count} related alerts");
+            
+            return recommendations;
+        }
+
+        public async Task<bool> UpdateAlertStatusAsync(string alertId, AlertStatusModels newStatus, string? notes = null, string? userId = null)
+        {
+            try
+            {
+                var alert = await _alertRepository.GetByIdAsync(alertId);
+                if (alert == null)
+                {
+                    return false;
+                }
+
+                var oldStatus = alert.Status;
+                alert.Status = newStatus;
+                alert.UpdatedAt = DateTime.UtcNow;
+
+                switch (newStatus)
+                {
+                    case AlertStatusModels.Acknowledged:
+                        alert.AcknowledgedBy = userId;
+                        alert.AcknowledgedAt = DateTime.UtcNow;
+                        break;
+                    case AlertStatusModels.Resolved:
+                        alert.ResolvedBy = userId;
+                        alert.ResolvedAt = DateTime.UtcNow;
+                        break;
+                }
+
+                if (!string.IsNullOrEmpty(notes))
+                {
+                    alert.ResolutionNotes = notes;
+                }
+
+                await _alertRepository.UpdateAsync(alert);
+
+                // Log status change
+                _logger.LogInformation("Alert {AlertId} status changed from {OldStatus} to {NewStatus} by {UserId}", 
+                    alertId, oldStatus, newStatus, userId ?? "System");
+
+                // Send status change notifications if needed
+                if (newStatus == AlertStatusModels.Resolved)
+                {
+                    await SendResolutionNotificationAsync(alert);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating alert status for alert {AlertId}", alertId);
+                return false;
+            }
+        }
+    }
+
+    // Data Transfer Objects and Models
+    public class CreateAlertRequest
+    {
+        public string? AgentId { get; set; }
+        public string CollectorType { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public string? LogEntryId { get; set; }
+        public ThreatLevel ThreatLevel { get; set; }
+        public List<string>? ThreatIndicators { get; set; }
+        public Dictionary<string, object>? CollectorSpecificData { get; set; }
+    }
+
+    public class AlertMetadata
+    {
+        public string CollectorType { get; set; } = string.Empty;
+        public ThreatLevel ThreatLevel { get; set; }
+        public string? OriginalLogId { get; set; }
+        public List<string> ThreatIndicators { get; set; } = new();
+        public Dictionary<string, object> CollectorSpecificData { get; set; } = new();
+        public bool AutoEscalationEnabled { get; set; }
+        public Dictionary<AlertSeverityModels, TimeSpan> EscalationThresholds { get; set; } = new();
+        public List<string> NotificationChannels { get; set; } = new();
+    }
+
+    public class CollectorAlertProfile
+    {
+        public AlertThresholds AlertThresholds { get; set; } = new();
+        public bool EnableAutoEscalation { get; set; }
+        public Dictionary<AlertSeverityModels, TimeSpan> EscalationThresholds { get; set; } = new();
+        public string[] NotificationChannels { get; set; } = Array.Empty<string>();
+        public string[] AlertKeywords { get; set; } = Array.Empty<string>();
+        public string[] SeverityBoostKeywords { get; set; } = Array.Empty<string>();
+    }
+
+    public class AlertThresholds
+    {
+        public int ErrorLogThreshold { get; set; }
+        public int WarningLogThreshold { get; set; }
+        public int CriticalEventThreshold { get; set; }
+        public int TimeWindowMinutes { get; set; }
+    }
+
+    public class AlertSummary
+    {
+        public string CollectorType { get; set; } = string.Empty;
+        public DateTime Period { get; set; }
+        public int TotalAlerts { get; set; }
+        public Dictionary<AlertSeverityModels, int> AlertsBySeverity { get; set; } = new();
+        public Dictionary<AlertStatusModels, int> AlertsByStatus { get; set; } = new();
+        public int CriticalAlerts { get; set; }
+        public int UnresolvedAlerts { get; set; }
+        public TimeSpan? AverageResolutionTime { get; set; }
+        public List<string> TopAlertSources { get; set; } = new();
+    }
+
+    public class AlertCorrelation
+    {
+        public string CollectorType { get; set; } = string.Empty;
+        public string Pattern { get; set; } = string.Empty;
+        public AlertSeverityModels Severity { get; set; }
+        public int Occurrences { get; set; }
+        public TimeSpan TimeWindow { get; set; }
+        public DateTime FirstAlert { get; set; }
+        public DateTime LastAlert { get; set; }
+        public int AffectedAgents { get; set; }
+        public List<string> RecommendedActions { get; set; } = new();
+    }
+
+    public class AlertRule
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string CollectorType { get; set; } = string.Empty;
+        public string Condition { get; set; } = string.Empty;
+        public AlertSeverityModels Severity { get; set; }
+        public bool Enabled { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+        public List<string> NotificationChannels { get; set; } = new();
+        public List<AlertAction> Actions { get; set; } = new();
+    }
+
+    public class CreateAlertRuleRequest
+    {
+        public string Name { get; set; } = string.Empty;
+        public string CollectorType { get; set; } = string.Empty;
+        public string Condition { get; set; } = string.Empty;
+        public AlertSeverityModels Severity { get; set; }
+        public List<string>? NotificationChannels { get; set; }
+        public List<AlertAction>? Actions { get; set; }
+    }
+
+    public class AlertAction
+    {
+        public string Type { get; set; } = string.Empty;
+        public Dictionary<string, object> Parameters { get; set; } = new();
     }
 }
+
+

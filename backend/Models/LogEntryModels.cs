@@ -133,5 +133,10 @@ namespace Backend.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public string? StackTrace { get; set; }
+        
+        /// <summary>
+        /// Gets or sets additional details about the log entry
+        /// </summary>
+        public string? Details { get; set; }
     }
 } 

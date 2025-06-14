@@ -251,5 +251,53 @@ namespace Backend.Services
         /// <param name="bulkUpdateDto">The bulk update data</param>
         /// <returns>Bulk update result</returns>
         Task<BulkUpdateResultDto> BulkUpdateAlertStatusAsync(BulkUpdateAlertsDto bulkUpdateDto);
+
+        // New enhanced methods for multi-collector support
+        
+        /// <summary>
+        /// Creates an alert with enhanced collector support
+        /// </summary>
+        /// <param name="request">The enhanced alert request</param>
+        /// <returns>The created alert</returns>
+        Task<AlertModels> CreateAlertAsync(CreateAlertRequest request);
+        
+        /// <summary>
+        /// Processes a log entry and creates alert if needed
+        /// </summary>
+        /// <param name="logEntry">The log entry to process</param>
+        /// <returns>The created alert or null</returns>
+        Task<AlertModels> ProcessLogEntryAlertAsync(LogEntryModels logEntry);
+        
+        /// <summary>
+        /// Gets collector-specific alert summaries
+        /// </summary>
+        /// <param name="since">Optional start date for analysis period</param>
+        /// <returns>List of collector alert summaries</returns>
+        Task<List<AlertSummary>> GetCollectorAlertSummaryAsync(DateTime? since = null);
+        
+        /// <summary>
+        /// Updates alert status with enhanced parameters
+        /// </summary>
+        /// <param name="alertId">The alert ID</param>
+        /// <param name="newStatus">The new status</param>
+        /// <param name="notes">Optional notes</param>
+        /// <param name="userId">Optional user ID</param>
+        /// <returns>True if successful</returns>
+        Task<bool> UpdateAlertStatusAsync(string alertId, AlertStatusModels newStatus, string? notes = null, string? userId = null);
+        
+        /// <summary>
+        /// Finds alert correlations across collectors
+        /// </summary>
+        /// <param name="timeWindow">Time window for correlation analysis</param>
+        /// <param name="minimumOccurrences">Minimum occurrences to consider correlation</param>
+        /// <returns>List of alert correlations</returns>
+        Task<List<AlertCorrelation>> FindAlertCorrelationsAsync(TimeSpan timeWindow, int minimumOccurrences = 2);
+        
+        /// <summary>
+        /// Creates a new alert rule
+        /// </summary>
+        /// <param name="request">The alert rule request</param>
+        /// <returns>The created alert rule</returns>
+        Task<AlertRule> CreateAlertRuleAsync(CreateAlertRuleRequest request);
     }
 } 

@@ -44,6 +44,16 @@ namespace Backend.Models
         public string IPAddress { get; set; } = string.Empty;
         
         /// <summary>
+        /// Gets or sets the IP address of the agent (alias for IPAddress)
+        /// </summary>
+        [NotMapped]
+        public string IpAddress 
+        { 
+            get => IPAddress;
+            set => IPAddress = value;
+        }
+        
+        /// <summary>
         /// Gets or sets the hostname of the machine running the agent
         /// </summary>
         [Column("Hostname")]
@@ -70,6 +80,30 @@ namespace Backend.Models
         }
         
         /// <summary>
+        /// Gets or sets the platform (alias for OperatingSystem)
+        /// </summary>
+        [NotMapped]
+        public string Platform 
+        { 
+            get => OperatingSystem;
+            set => OperatingSystem = value;
+        }
+        
+        /// <summary>
+        /// Gets or sets the OS version
+        /// </summary>
+        [Column("OsVersion")]
+        [MaxLength(100)]
+        public string? OsVersion { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the agent version
+        /// </summary>
+        [Column("AgentVersion")]
+        [MaxLength(50)]
+        public string? AgentVersion { get; set; }
+        
+        /// <summary>
         /// Gets or sets the date and time when the agent was installed
         /// </summary>
         [Column("InstallDate")]
@@ -80,6 +114,16 @@ namespace Backend.Models
         /// </summary>
         [Column("LastConnected")]
         public DateTime LastConnected { get; set; } = DateTime.UtcNow;
+        
+        /// <summary>
+        /// Gets or sets the date and time when the agent was last seen (alias for LastConnected)
+        /// </summary>
+        [NotMapped]
+        public DateTime LastSeen 
+        { 
+            get => LastConnected;
+            set => LastConnected = value;
+        }
         
         /// <summary>
         /// Gets or sets the date and time of the last heartbeat
@@ -210,6 +254,13 @@ namespace Backend.Models
         [Column("EventLogsToMonitor")]
         public string EventLogsToMonitor { get; set; } = "Application,System,Security";
         
+        /// <summary>
+        /// Gets or sets the deployment token ID used to deploy this agent
+        /// </summary>
+        [Column("DeploymentTokenId")]
+        [MaxLength(50)]
+        public string? DeploymentTokenId { get; set; }
+        
         // Helper method to get the default port based on agent type
         public static int GetDefaultPortForAgentType(string agentType)
         {
@@ -278,9 +329,49 @@ namespace Backend.Models
         Windows,
         
         /// <summary>
+        /// Windows agent (alias)
+        /// </summary>
+        WindowsAgent = Windows,
+        
+        /// <summary>
         /// Linux agent
         /// </summary>
         Linux,
+        
+        /// <summary>
+        /// Linux agent (alias)
+        /// </summary>
+        LinuxAgent = Linux,
+        
+        /// <summary>
+        /// Unix agent
+        /// </summary>
+        Unix,
+        
+        /// <summary>
+        /// Unix agent (alias)
+        /// </summary>
+        UnixAgent = Unix,
+        
+        /// <summary>
+        /// Mac agent
+        /// </summary>
+        Mac,
+        
+        /// <summary>
+        /// Mac agent (alias)
+        /// </summary>
+        MacAgent = Mac,
+        
+        /// <summary>
+        /// Container agent
+        /// </summary>
+        Container,
+        
+        /// <summary>
+        /// Container agent (alias)
+        /// </summary>
+        ContainerAgent = Container,
         
         /// <summary>
         /// Syslog agent
@@ -305,7 +396,12 @@ namespace Backend.Models
         /// <summary>
         /// Custom agent
         /// </summary>
-        Custom
+        Custom,
+        
+        /// <summary>
+        /// Generic agent (alias for Custom)
+        /// </summary>
+        GenericAgent = Custom
     }
 
     /// <summary>

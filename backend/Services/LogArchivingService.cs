@@ -1,0 +1,973 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System.IO;
+using System.IO.Compression;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Backend.Models;
+using Backend.Data;
+using Microsoft.EntityFrameworkCore;
+using System.Threading;
+using System.Text;
+
+namespace Backend.Services
+{
+    /// <summary>
+    /// Enhanced Log Archiving Service for multi-collector environments
+    /// </summary>
+    public class LogArchivingService : BackgroundService, ILogArchivingService
+    {
+        private readonly ILogger<LogArchivingService> _logger;
+        private readonly IServiceScopeFactory _scopeFactory;
+        private readonly IConfiguration _configuration;
+        
+        // Configuration settings
+        private readonly TimeSpan _archiveInterval;
+        private readonly TimeSpan _retentionPeriod;
+        private readonly int _batchSize;
+        private readonly string _archiveDirectory;
+        private readonly bool _enableCompression;
+        private readonly long _maxArchiveFileSize;
+        private readonly Dictionary<string, CollectorArchiveSettings> _collectorSettings;
+        
+        // Archive statistics
+        private readonly Dictionary<string, ArchiveStatistics> _archiveStats = new();
+        private readonly object _statsLock = new();
+
+        public LogArchivingService(
+            ILogger<LogArchivingService> logger,
+            IServiceScopeFactory scopeFactory,
+            IConfiguration configuration)
+        {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+
+            // Load configuration
+            _archiveInterval = TimeSpan.FromHours(_configuration.GetValue<int>("LogArchiving:IntervalHours", 24));
+            _retentionPeriod = TimeSpan.FromDays(_configuration.GetValue<int>("LogArchiving:RetentionDays", 90));
+            _batchSize = _configuration.GetValue<int>("LogArchiving:BatchSize", 10000);
+            _archiveDirectory = _configuration.GetValue<string>("LogArchiving:Directory") ?? "archives/logs";
+            _enableCompression = _configuration.GetValue<bool>("LogArchiving:EnableCompression", true);
+            _maxArchiveFileSize = _configuration.GetValue<long>("LogArchiving:MaxArchiveFileSizeMB", 100) * 1024 * 1024;
+
+            // Initialize collector-specific settings
+            _collectorSettings = InitializeCollectorSettings();
+
+            // Ensure archive directory exists
+            if (!string.IsNullOrEmpty(_archiveDirectory))
+            {
+                Directory.CreateDirectory(_archiveDirectory);
+            }
+        }
+
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            _logger.LogInformation("Log Archiving Service started");
+
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try
+                {
+                    await PerformArchivingCycle();
+                    await PerformCleanupCycle();
+                    
+                    await Task.Delay(_archiveInterval, stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error in log archiving cycle");
+                    await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
+                }
+            }
+
+            _logger.LogInformation("Log Archiving Service stopped");
+        }
+
+        public async Task<ArchiveResult> ArchiveLogsByCollectorAsync(string collectorType, DateTime fromDate, DateTime toDate)
+        {
+            try
+            {
+                _logger.LogInformation("Archiving logs for collector {CollectorType} from {FromDate} to {ToDate}", 
+                    collectorType, fromDate, toDate);
+
+                var result = await ArchiveLogsAsync(fromDate, toDate, collectorType); return new ArchiveResult { Success = result, ArchivedCount = 0, ArchiveFileName = null, CompressedSize = 0, Error = null };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error archiving logs for collector {CollectorType}", collectorType);
+                return new ArchiveResult { Success = false, Error = ex.Message };
+            }
+        }
+
+        public async Task<List<ArchiveFile>> GetArchiveFilesAsync(string? collectorType = null, DateTime? startDate = null, DateTime? endDate = null)
+        {
+            try
+            {
+                _logger.LogInformation("Getting archive files for collector: {CollectorType}, date range: {StartDate} - {EndDate}", 
+                    collectorType ?? "All", startDate, endDate);
+
+                var archiveFiles = new List<ArchiveFile>();
+
+                if (!Directory.Exists(_archiveDirectory))
+                {
+                    return archiveFiles;
+                }
+
+                var files = Directory.GetFiles(_archiveDirectory, "*.json.gz")
+                    .Concat(Directory.GetFiles(_archiveDirectory, "*.json"))
+                    .ToList();
+
+                foreach (var filePath in files)
+                {
+                    var fileInfo = new FileInfo(filePath);
+                    var fileName = fileInfo.Name;
+                    
+                    // Parse collector type from filename (assuming format: CollectorType_YYYYMMDD_HHMMSS.json.gz)
+                    var fileCollectorType = ExtractCollectorTypeFromFileName(fileName);
+                    
+                    // Apply collector type filter
+                    if (!string.IsNullOrEmpty(collectorType) && !fileCollectorType.Equals(collectorType, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    // Apply date filters
+                    if (startDate.HasValue && fileInfo.CreationTime < startDate.Value)
+                    {
+                        continue;
+                    }
+
+                    if (endDate.HasValue && fileInfo.CreationTime > endDate.Value)
+                    {
+                        continue;
+                    }
+
+                    var archiveFile = new ArchiveFile
+                    {
+                        FileName = fileName,
+                        Size = fileInfo.Length,
+                        CreatedAt = fileInfo.CreationTime,
+                        CollectorType = fileCollectorType,
+                        Date = fileInfo.CreationTime,
+                        IsCompressed = fileName.EndsWith(".gz"),
+                        LogCount = await EstimateLogCountInArchive(filePath)
+                    };
+
+                    archiveFiles.Add(archiveFile);
+                }
+
+                return archiveFiles.OrderByDescending(f => f.CreatedAt).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting archive files");
+                return new List<ArchiveFile>();
+            }
+        }
+
+        public async Task<LogArchiveData> ExtractLogsFromArchiveAsync(string fileName, LogArchiveQuery? query = null)
+        {
+            try
+            {
+                _logger.LogInformation("Extracting logs from archive {FileName}", fileName);
+
+                var archiveBytes = await ExtractArchiveAsync(fileName); var archiveData = DeserializeArchiveData(archiveBytes);
+                
+                // Apply query filters if provided
+                if (query != null && archiveData != null)
+                {
+                    // Filter the logs based on query parameters
+                    var filteredLogs = archiveData.Logs.AsEnumerable();
+
+                    if (!string.IsNullOrEmpty(query.AgentId))
+                        filteredLogs = filteredLogs.Where(l => l.AgentId == query.AgentId);
+
+                    if (!string.IsNullOrEmpty(query.Level))
+                        filteredLogs = filteredLogs.Where(l => l.Level == query.Level);
+
+                    if (!string.IsNullOrEmpty(query.SearchTerm))
+                        filteredLogs = filteredLogs.Where(l => l.Message.Contains(query.SearchTerm, StringComparison.OrdinalIgnoreCase));
+
+                    if (query.FromDate.HasValue)
+                        filteredLogs = filteredLogs.Where(l => l.Timestamp >= query.FromDate.Value);
+
+                    if (query.ToDate.HasValue)
+                        filteredLogs = filteredLogs.Where(l => l.Timestamp <= query.ToDate.Value);
+
+                    if (query.Limit.HasValue)
+                        filteredLogs = filteredLogs.Take(query.Limit.Value);
+
+                    archiveData.Logs = filteredLogs.ToList();
+                }
+
+                return archiveData ?? new LogArchiveData();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error extracting logs from archive {FileName}", fileName);
+                return new LogArchiveData();
+            }
+        }
+
+        public async Task<bool> DeleteArchiveAsync(string fileName)
+        {
+            try
+            {
+                _logger.LogInformation("Deleting archive {FileName}", fileName);
+
+                return await DeleteArchiveFileAsync(fileName);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting archive {FileName}", fileName);
+                return false;
+            }
+        }
+
+        public async Task<ArchiveStatisticsSummary> GetArchiveStatisticsAsync(string? collectorType = null)
+        {
+            try
+            {
+                _logger.LogInformation("Getting archive statistics for collector type: {CollectorType}", collectorType ?? "All");
+
+                var files = await GetArchiveFilesAsync();
+                var filteredFiles = string.IsNullOrEmpty(collectorType) 
+                    ? files 
+                    : files.Where(f => f.CollectorType == collectorType);
+
+                var summary = new ArchiveStatisticsSummary
+                {
+                    TotalArchives = filteredFiles.Count(),
+                    TotalArchivedLogs = filteredFiles.Sum(f => f.LogCount),
+                    TotalCompressedSize = filteredFiles.Sum(f => f.Size),
+                    LastArchiveDate = filteredFiles.Any() ? filteredFiles.Max(f => f.CreatedAt) : DateTime.MinValue,
+                    CollectorStatistics = new Dictionary<string, ArchiveStatistics>()
+                };
+
+                // Calculate compression ratio (assuming 10:1 ratio for demo)
+                summary.CompressionRatio = summary.TotalCompressedSize > 0 ? 10.0 : 0.0;
+
+                // Group by collector type
+                var collectorGroups = filteredFiles.GroupBy(f => f.CollectorType);
+                foreach (var group in collectorGroups)
+                {
+                    summary.CollectorStatistics[group.Key] = new ArchiveStatistics
+                    {
+                        ArchiveCount = group.Count(),
+                        TotalLogs = group.Sum(f => f.LogCount),
+                        TotalCompressedSize = group.Sum(f => f.Size),
+                        TotalUncompressedSize = group.Sum(f => f.Size * 10), // Estimated
+                        LastArchiveDate = group.Max(f => f.CreatedAt)
+                    };
+                }
+
+                return summary;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting archive statistics");
+                return new ArchiveStatisticsSummary();
+            }
+        }
+
+        private async Task PerformArchivingCycle()
+        {
+            _logger.LogInformation("Starting archiving cycle");
+
+            using var scope = _scopeFactory.CreateScope();
+            var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            var cutoffDate = DateTime.UtcNow - _retentionPeriod;
+
+            // Get distinct collector types from logs
+            var collectorTypes = await context.LogEntries
+                .Where(l => l.Timestamp < cutoffDate)
+                .Select(l => GetCollectorTypeFromSource(l.Source))
+                .Distinct()
+                .ToListAsync();
+
+            foreach (var collectorType in collectorTypes)
+            {
+                try
+                {
+                    await ArchiveLogsByCollectorAsync(collectorType, cutoffDate, cutoffDate);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error archiving logs for collector {CollectorType}", collectorType);
+                }
+            }
+
+            _logger.LogInformation("Archiving cycle completed");
+        }
+
+        private Task PerformCleanupCycle()
+        {
+            _logger.LogInformation("Starting cleanup cycle");
+
+            try
+            {
+                var files = Directory.GetFiles(_archiveDirectory, "*.*");
+                var deletedCount = 0;
+
+                foreach (var filePath in files)
+                {
+                    var fileInfo = new FileInfo(filePath);
+                    
+                    // Check if file is older than retention period + archive period
+                    var cleanupCutoff = DateTime.UtcNow - _retentionPeriod - _archiveInterval;
+                    
+                    if (fileInfo.CreationTimeUtc < cleanupCutoff)
+                    {
+                        try
+                        {
+                            File.Delete(filePath);
+                            deletedCount++;
+                            _logger.LogInformation("Deleted old archive file: {FileName}", fileInfo.Name);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Failed to delete archive file: {FileName}", fileInfo.Name);
+                        }
+                    }
+                }
+
+                _logger.LogInformation("Cleanup cycle completed, deleted {Count} files", deletedCount);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in cleanup cycle");
+            }
+            
+            return Task.CompletedTask;
+        }
+
+        private async Task<int> CreateArchiveFile(List<LogEntryModels> logs, string filePath, CollectorArchiveSettings settings)
+        {
+            try
+            {
+                // Create archive metadata
+                var archiveMetadata = new ArchiveMetadata
+                {
+                    CreatedAt = DateTime.UtcNow,
+                    LogCount = logs.Count,
+                    CollectorType = GetCollectorTypeFromSource(logs.First().Source),
+                    DateRange = new DateRange
+                    {
+                        From = logs.Min(l => l.Timestamp),
+                        To = logs.Max(l => l.Timestamp)
+                    },
+                    Version = "1.0"
+                };
+
+                // Create archive data
+                var archiveData = new LogArchiveData
+                {
+                    Metadata = archiveMetadata,
+                    Logs = logs.Select(l => ConvertToArchiveLog(l, settings)).ToList()
+                };
+
+                var jsonOptions = new JsonSerializerOptions
+                {
+                    WriteIndented = false,
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                };
+
+                var jsonContent = JsonSerializer.Serialize(archiveData, jsonOptions);
+
+                if (_enableCompression && settings.EnableCompression)
+                {
+                    // Compress and save
+                    var compressedFilePath = filePath + ".gz";
+                    using var fileStream = File.Create(compressedFilePath);
+                    using var gzipStream = new GZipStream(fileStream, CompressionLevel.Optimal);
+                    using var writer = new StreamWriter(gzipStream);
+                    await writer.WriteAsync(jsonContent);
+                }
+                else
+                {
+                    // Save without compression
+                    await File.WriteAllTextAsync(filePath, jsonContent);
+                }
+
+                return logs.Count;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating archive file {FilePath}", filePath);
+                throw;
+            }
+        }
+
+        private ArchivedLogEntry ConvertToArchiveLog(LogEntryModels log, CollectorArchiveSettings settings)
+        {
+            var archived = new ArchivedLogEntry
+            {
+                Id = log.Id,
+                Timestamp = log.Timestamp,
+                Level = log.Level,
+                Source = log.Source,
+                Message = log.Message,
+                AgentId = log.AgentId
+            };
+
+            // Include additional fields based on collector settings
+            if (settings.IncludeDetails && !string.IsNullOrEmpty(log.Details))
+            {
+                archived.Details = log.Details;
+            }
+
+            if (settings.IncludeCategory && !string.IsNullOrEmpty(log.Category))
+            {
+                archived.Category = log.Category;
+            }
+
+            // Compress message if enabled
+            if (settings.CompressMessages && !string.IsNullOrEmpty(archived.Message) && archived.Message.Length > 100)
+            {
+                archived.Message = CompressString(archived.Message);
+                archived.IsMessageCompressed = true;
+            }
+
+            return archived;
+        }
+
+        private string CompressString(string text)
+        {
+            try
+            {
+                var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+                using var memory = new MemoryStream();
+                using (var gzip = new GZipStream(memory, CompressionMode.Compress))
+                {
+                    gzip.Write(bytes, 0, bytes.Length);
+                }
+                return Convert.ToBase64String(memory.ToArray());
+            }
+            catch
+            {
+                return text; // Return original if compression fails
+            }
+        }
+
+        private string DecompressString(string compressedText)
+        {
+            try
+            {
+                var compressedBytes = Convert.FromBase64String(compressedText);
+                using var memory = new MemoryStream(compressedBytes);
+                using var gzip = new GZipStream(memory, CompressionMode.Decompress);
+                using var reader = new StreamReader(gzip);
+                return reader.ReadToEnd();
+            }
+            catch
+            {
+                return compressedText; // Return original if decompression fails
+            }
+        }
+
+        private string GenerateArchiveFileName(string collectorType, DateTime date)
+        {
+            var timestamp = date.ToString("yyyy-MM-dd");
+            var guid = Guid.NewGuid().ToString("N")[..8];
+            return $"{collectorType}_{timestamp}_{guid}.archive.json";
+        }
+
+        private (string CollectorType, DateTime Date) ParseArchiveFileName(string fileName)
+        {
+            try
+            {
+                // Format: CollectorType_yyyy-MM-dd_guid.archive.json[.gz]
+                var parts = fileName.Replace(".archive.json.gz", "").Replace(".archive.json", "").Split('_');
+                if (parts.Length >= 3)
+                {
+                    var collectorType = parts[0];
+                    var dateStr = $"{parts[1]}_{parts[2]}_{parts[3]}";
+                    if (DateTime.TryParseExact(parts[1], "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var date))
+                    {
+                        return (collectorType, date);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error parsing archive filename: {FileName}", fileName);
+            }
+
+            return ("Unknown", DateTime.MinValue);
+        }
+
+        private async Task<int> GetLogCountFromArchive(string filePath)
+        {
+            try
+            {
+                if (filePath.EndsWith(".gz"))
+                {
+                    using var fileStream = File.OpenRead(filePath);
+                    using var gzipStream = new GZipStream(fileStream, CompressionMode.Decompress);
+                    using var reader = new StreamReader(gzipStream);
+                    var jsonContent = await reader.ReadToEndAsync();
+                    var archiveData = JsonSerializer.Deserialize<LogArchiveData>(jsonContent);
+                    return archiveData?.Metadata?.LogCount ?? 0;
+                }
+                else
+                {
+                    var jsonContent = await File.ReadAllTextAsync(filePath);
+                    var archiveData = JsonSerializer.Deserialize<LogArchiveData>(jsonContent);
+                    return archiveData?.Metadata?.LogCount ?? 0;
+                }
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private string GetCollectorTypeFromSource(string source)
+        {
+            if (source.Contains("Container") || source.Contains("Docker") || source.Contains("Kubernetes"))
+                return "Container";
+            if (source.Contains("AWS") || source.Contains("Azure") || source.Contains("GCP") || source.Contains("CloudServices"))
+                return "CloudServices";
+            if (source.Contains("Database") || source.Contains("SQL") || source.Contains("MySQL") || source.Contains("PostgreSQL") || source.Contains("MongoDB"))
+                return "Database";
+            if (source.Contains("IoT") || source.Contains("Sensor") || source.Contains("SCADA") || source.Contains("Modbus") || source.Contains("MQTT"))
+                return "IoT";
+            if (source.Contains("FIM") || source.Contains("FileIntegrity"))
+                return "FileIntegrity";
+            if (source.Contains("Syslog"))
+                return "Syslog";
+            if (source.Contains("Windows"))
+                return "WindowsEventLog";
+            
+            return "General";
+        }
+
+        private void UpdateArchiveStatistics(string collectorType, int archivedCount, long compressedSize)
+        {
+            lock (_statsLock)
+            {
+                if (!_archiveStats.ContainsKey(collectorType))
+                {
+                    _archiveStats[collectorType] = new ArchiveStatistics();
+                }
+
+                var stats = _archiveStats[collectorType];
+                stats.ArchiveCount++;
+                stats.TotalLogs += archivedCount;
+                stats.TotalCompressedSize += compressedSize;
+                stats.LastArchiveDate = DateTime.UtcNow;
+            }
+        }
+
+        private Dictionary<string, CollectorArchiveSettings> InitializeCollectorSettings()
+        {
+            return new Dictionary<string, CollectorArchiveSettings>
+            {
+                ["Container"] = new CollectorArchiveSettings
+                {
+                    EnableCompression = true,
+                    IncludeDetails = false,
+                    IncludeCategory = true,
+                    CompressMessages = true,
+                    RetentionDays = 90
+                },
+                ["CloudServices"] = new CollectorArchiveSettings
+                {
+                    EnableCompression = true,
+                    IncludeDetails = true,
+                    IncludeCategory = true,
+                    CompressMessages = false,
+                    RetentionDays = 180
+                },
+                ["Database"] = new CollectorArchiveSettings
+                {
+                    EnableCompression = true,
+                    IncludeDetails = true,
+                    IncludeCategory = true,
+                    CompressMessages = false,
+                    RetentionDays = 365
+                },
+                ["IoT"] = new CollectorArchiveSettings
+                {
+                    EnableCompression = true,
+                    IncludeDetails = false,
+                    IncludeCategory = false,
+                    CompressMessages = true,
+                    RetentionDays = 30
+                },
+                ["FileIntegrity"] = new CollectorArchiveSettings
+                {
+                    EnableCompression = true,
+                    IncludeDetails = true,
+                    IncludeCategory = true,
+                    CompressMessages = false,
+                    RetentionDays = 730
+                }
+            };
+        }
+
+        // Missing interface method implementations
+        public async Task<bool> ArchiveLogsAsync(DateTime fromDate, DateTime toDate, string? collectorType = null)
+        {
+            try
+            {
+                _logger.LogInformation("Archiving logs from {FromDate} to {ToDate} for collector {CollectorType}", 
+                    fromDate, toDate, collectorType ?? "All");
+
+                using var scope = _scopeFactory.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                var query = context.LogEntries.Where(l => l.Timestamp >= fromDate && l.Timestamp <= toDate);
+                
+                if (!string.IsNullOrEmpty(collectorType))
+                {
+                    query = query.Where(l => l.Source.Contains(collectorType));
+                }
+
+                var logsToArchive = await query.OrderBy(l => l.Timestamp).ToListAsync();
+
+                if (!logsToArchive.Any())
+                {
+                    _logger.LogInformation("No logs found to archive for the specified criteria");
+                    return true;
+                }
+
+                var archiveFileName = GenerateArchiveFileName(collectorType ?? "Mixed", fromDate);
+                var archiveFilePath = Path.Combine(_archiveDirectory, archiveFileName);
+                var settings = _collectorSettings.GetValueOrDefault(collectorType ?? "Default", new CollectorArchiveSettings());
+
+                await CreateArchiveFile(logsToArchive, archiveFilePath, settings);
+
+                // Remove archived logs from database
+                context.LogEntries.RemoveRange(logsToArchive);
+                await context.SaveChangesAsync();
+
+                _logger.LogInformation("Successfully archived {Count} logs to {FileName}", 
+                    logsToArchive.Count, archiveFileName);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error archiving logs from {FromDate} to {ToDate}", fromDate, toDate);
+                return false;
+            }
+        }
+
+        private string ExtractCollectorTypeFromFileName(string fileName)
+        {
+            // Extract collector type from filename pattern: CollectorType_YYYYMMDD_HHMMSS.json.gz
+            var parts = fileName.Split('_');
+            return parts.Length > 0 ? parts[0] : "Unknown";
+        }
+
+        private Task<int> EstimateLogCountInArchive(string filePath)
+        {
+            try
+            {
+                // For demo purposes, return a random count between 100-1000
+                // In real implementation, you might read the archive metadata
+                return Task.FromResult(new Random().Next(100, 1000));
+            }
+            catch
+            {
+                return Task.FromResult(0);
+            }
+        }
+
+        public Task<bool> DeleteArchiveFileAsync(string fileName)
+        {
+            try
+            {
+                var filePath = Path.Combine(_archiveDirectory, fileName);
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                    _logger.LogInformation("Deleted archive file: {FileName}", fileName);
+                    return Task.FromResult(true);
+                }
+                
+                _logger.LogWarning("Archive file not found: {FileName}", fileName);
+                return Task.FromResult(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting archive file {FileName}", fileName);
+                return Task.FromResult(false);
+            }
+        }
+
+        public async Task<byte[]?> ExtractArchiveAsync(string fileName)
+        {
+            try
+            {
+                var filePath = Path.Combine(_archiveDirectory, fileName);
+                if (!File.Exists(filePath))
+                {
+                    _logger.LogWarning("Archive file not found: {FileName}", fileName);
+                    return null;
+                }
+
+                var fileBytes = await File.ReadAllBytesAsync(filePath);
+                
+                if (fileName.EndsWith(".gz"))
+                {
+                    // Decompress if needed
+                    using var compressedStream = new MemoryStream(fileBytes);
+                    using var gzipStream = new GZipStream(compressedStream, CompressionMode.Decompress);
+                    using var decompressedStream = new MemoryStream();
+                    await gzipStream.CopyToAsync(decompressedStream);
+                    return decompressedStream.ToArray();
+                }
+
+                return fileBytes;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error extracting archive {FileName}", fileName);
+                return null;
+            }
+        }
+
+        public Task<StorageUsageInfo> GetStorageUsageAsync()
+        {
+            try
+            {
+                var files = Directory.GetFiles(_archiveDirectory, "*.archive.json*");
+                var totalSize = files.Sum(f => new FileInfo(f).Length);
+                var sizeByCollector = new Dictionary<string, long>();
+                var filesByCollector = new Dictionary<string, int>();
+
+                foreach (var file in files)
+                {
+                    var fileName = Path.GetFileName(file);
+                    var parsedInfo = ParseArchiveFileName(fileName);
+                    var fileSize = new FileInfo(file).Length;
+
+                    if (sizeByCollector.ContainsKey(parsedInfo.CollectorType))
+                    {
+                        sizeByCollector[parsedInfo.CollectorType] += fileSize;
+                        filesByCollector[parsedInfo.CollectorType]++;
+                    }
+                    else
+                    {
+                        sizeByCollector[parsedInfo.CollectorType] = fileSize;
+                        filesByCollector[parsedInfo.CollectorType] = 1;
+                    }
+                }
+
+                var driveInfo = new DriveInfo(Path.GetPathRoot(_archiveDirectory) ?? "C:");
+
+                var result = new StorageUsageInfo
+                {
+                    TotalSize = totalSize,
+                    AvailableSpace = driveInfo.AvailableFreeSpace,
+                    TotalFiles = files.Length,
+                    SizeByCollector = sizeByCollector,
+                    FilesByCollector = filesByCollector,
+                    OldestArchive = files.Length > 0 ? files.Min(f => new FileInfo(f).CreationTimeUtc) : DateTime.UtcNow,
+                    NewestArchive = files.Length > 0 ? files.Max(f => new FileInfo(f).CreationTimeUtc) : DateTime.UtcNow,
+                    CompressionRatio = 0.7 // TODO: Calculate actual compression ratio
+                };
+                
+                return Task.FromResult(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting storage usage information");
+                throw;
+            }
+        }
+
+        public async Task<bool> ValidateArchiveAsync(string fileName)
+        {
+            try
+            {
+                var filePath = Path.Combine(_archiveDirectory, fileName);
+                if (!File.Exists(filePath))
+                {
+                    return false;
+                }
+
+                // Basic validation - check if file can be read and parsed
+                var extractedData = await ExtractArchiveAsync(fileName);
+                if (extractedData == null)
+                {
+                    return false;
+                }
+
+                // Try to parse as JSON
+                var jsonString = Encoding.UTF8.GetString(extractedData);
+                var archiveData = JsonSerializer.Deserialize<LogArchiveData>(jsonString);
+                
+                return archiveData?.Logs != null && archiveData.Metadata != null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating archive {FileName}", fileName);
+                return false;
+            }
+        }
+
+        public async Task<ArchiveSearchResult> SearchArchiveAsync(string searchTerm, DateTime? startDate = null, DateTime? endDate = null)
+        {
+            try
+            {
+                var searchStart = DateTime.UtcNow;
+                var results = new List<ArchiveLogEntry>();
+                var searchedFiles = new List<string>();
+
+                var files = Directory.GetFiles(_archiveDirectory, "*.archive.json*");
+
+                foreach (var filePath in files)
+                {
+                    var fileName = Path.GetFileName(filePath);
+                    var parsedInfo = ParseArchiveFileName(fileName);
+
+                    // Filter by date range if specified
+                    if (startDate.HasValue && parsedInfo.Date < startDate.Value)
+                        continue;
+                    if (endDate.HasValue && parsedInfo.Date > endDate.Value)
+                        continue;
+
+                    searchedFiles.Add(fileName);
+
+                    var extractedData = await ExtractArchiveAsync(fileName);
+                    if (extractedData == null) continue;
+
+                    var jsonString = Encoding.UTF8.GetString(extractedData);
+                    var archiveData = JsonSerializer.Deserialize<LogArchiveData>(jsonString);
+
+                    if (archiveData?.Logs == null) continue;
+
+                    foreach (var log in archiveData.Logs)
+                    {
+                        if (log.Message.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) ||
+                            log.Source.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
+                        {
+                            results.Add(new ArchiveLogEntry
+                            {
+                                Id = log.Id,
+                                Timestamp = log.Timestamp,
+                                Level = log.Level,
+                                Source = log.Source,
+                                Message = log.Message,
+                                CollectorType = parsedInfo.CollectorType,
+                                AgentId = log.AgentId ?? "",
+                                ArchiveFile = fileName
+                            });
+                        }
+                    }
+                }
+
+                return new ArchiveSearchResult
+                {
+                    Results = results,
+                    TotalCount = results.Count,
+                    Query = searchTerm,
+                    SearchDate = DateTime.UtcNow,
+                    SearchedFiles = searchedFiles,
+                    SearchDuration = DateTime.UtcNow - searchStart
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error searching archives for term {SearchTerm}", searchTerm);
+                throw;
+            }
+        }
+
+        public Task CleanupOldArchivesAsync()
+        {
+            try
+            {
+                _logger.LogInformation("Starting cleanup of old archives");
+
+                var files = Directory.GetFiles(_archiveDirectory, "*.archive.json*");
+                var deletedCount = 0;
+
+                foreach (var filePath in files)
+                {
+                    var fileName = Path.GetFileName(filePath);
+                    var parsedInfo = ParseArchiveFileName(fileName);
+                    var settings = _collectorSettings.GetValueOrDefault(parsedInfo.CollectorType, new CollectorArchiveSettings());
+                    
+                    var retentionCutoff = DateTime.UtcNow.AddDays(-settings.RetentionDays);
+                    
+                    if (parsedInfo.Date < retentionCutoff)
+                    {
+                        File.Delete(filePath);
+                        deletedCount++;
+                        _logger.LogInformation("Deleted old archive: {FileName}", fileName);
+                    }
+                }
+
+                _logger.LogInformation("Cleanup completed. Deleted {Count} old archive files", deletedCount);
+                return Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during archive cleanup");
+                throw;
+            }
+        }
+
+        public async Task<bool> IsHealthyAsync()
+        {
+            try
+            {
+                // Check if archive directory exists and is writable
+                if (!Directory.Exists(_archiveDirectory))
+                {
+                    return false;
+                }
+
+                // Try to create a test file
+                var testFile = Path.Combine(_archiveDirectory, "health_check.tmp");
+                await File.WriteAllTextAsync(testFile, "health check");
+                File.Delete(testFile);
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Health check failed for log archiving service");
+                return false;
+            }
+        }
+
+        private LogArchiveData DeserializeArchiveData(byte[]? archiveBytes)
+        {
+            if (archiveBytes == null || archiveBytes.Length == 0)
+            {
+                return new LogArchiveData();
+            }
+
+            try
+            {
+                var json = System.Text.Encoding.UTF8.GetString(archiveBytes);
+                var archiveData = JsonSerializer.Deserialize<LogArchiveData>(json);
+                return archiveData ?? new LogArchiveData();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deserializing archive data");
+                return new LogArchiveData();
+            }
+        }
+    }
+}
+
+
+

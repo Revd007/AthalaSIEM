@@ -605,6 +605,46 @@ namespace AthalaSIEM.Agent
                                         return collector;
                                     });
                                     break;
+                                case "Container":
+                                    services.AddSingleton<ILogCollector>(sp => 
+                                    {
+                                        var collector = new ContainerCollector(
+                                            sp.GetRequiredService<ILogger<ContainerCollector>>(),
+                                            sp.GetRequiredService<ILogNormalizer>());
+                                        collector.Initialize(collectorConfig);
+                                        return collector;
+                                    });
+                                    break;
+                                case "CloudServices":
+                                    services.AddSingleton<ILogCollector>(sp => 
+                                    {
+                                        var collector = new CloudServicesCollector(
+                                            sp.GetRequiredService<ILogger<CloudServicesCollector>>(),
+                                            sp.GetRequiredService<ILogNormalizer>());
+                                        collector.Initialize(collectorConfig);
+                                        return collector;
+                                    });
+                                    break;
+                                case "Database":
+                                    services.AddSingleton<ILogCollector>(sp => 
+                                    {
+                                        var collector = new DatabaseCollector(
+                                            sp.GetRequiredService<ILogger<DatabaseCollector>>(),
+                                            sp.GetRequiredService<ILogNormalizer>());
+                                        collector.Initialize(collectorConfig);
+                                        return collector;
+                                    });
+                                    break;
+                                case "IoT":
+                                    services.AddSingleton<ILogCollector>(sp => 
+                                    {
+                                        var collector = new IoTCollector(
+                                            sp.GetRequiredService<ILogger<IoTCollector>>(),
+                                            sp.GetRequiredService<ILogNormalizer>());
+                                        collector.Initialize(collectorConfig);
+                                        return collector;
+                                    });
+                                    break;
                             }
                         }
                     }
@@ -816,6 +856,46 @@ namespace AthalaSIEM.Agent
                             {
                                 var collector = new FileIntegrityCollector(
                                     sp.GetRequiredService<ILogger<FileIntegrityCollector>>(),
+                                    sp.GetRequiredService<ILogNormalizer>());
+                                collector.Initialize(collectorConfig);
+                                return collector;
+                            });
+                            break;
+                        case "Container":
+                            services.AddSingleton<ILogCollector>(sp => 
+                            {
+                                var collector = new ContainerCollector(
+                                    sp.GetRequiredService<ILogger<ContainerCollector>>(),
+                                    sp.GetRequiredService<ILogNormalizer>());
+                                collector.Initialize(collectorConfig);
+                                return collector;
+                            });
+                            break;
+                        case "CloudServices":
+                            services.AddSingleton<ILogCollector>(sp => 
+                            {
+                                var collector = new CloudServicesCollector(
+                                    sp.GetRequiredService<ILogger<CloudServicesCollector>>(),
+                                    sp.GetRequiredService<ILogNormalizer>());
+                                collector.Initialize(collectorConfig);
+                                return collector;
+                            });
+                            break;
+                        case "Database":
+                            services.AddSingleton<ILogCollector>(sp => 
+                            {
+                                var collector = new DatabaseCollector(
+                                    sp.GetRequiredService<ILogger<DatabaseCollector>>(),
+                                    sp.GetRequiredService<ILogNormalizer>());
+                                collector.Initialize(collectorConfig);
+                                return collector;
+                            });
+                            break;
+                        case "IoT":
+                            services.AddSingleton<ILogCollector>(sp => 
+                            {
+                                var collector = new IoTCollector(
+                                    sp.GetRequiredService<ILogger<IoTCollector>>(),
                                     sp.GetRequiredService<ILogNormalizer>());
                                 collector.Initialize(collectorConfig);
                                 return collector;

@@ -9,29 +9,49 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Text.Json;
 using System.Linq;
+using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 
 namespace AthalaSIEM.Agent.Collectors
 {
     /// <summary>
-    /// File Integrity Monitoring collector that monitors file changes
+    /// Enhanced File Integrity Monitoring with multi-collector integration
     /// </summary>
     public class FileIntegrityCollector : ILogCollector
     {
         private readonly ILogger<FileIntegrityCollector> _logger;
         private readonly ILogNormalizer _normalizer;
-        private Timer? _scanTimer;
-        private readonly List<FileSystemWatcher> _watchers = new();
-        private readonly Dictionary<string, FileIntegrityData> _fileBaseline = new();
+        private readonly Dictionary<string, FileSystemWatcher> _watchers = new();
+        private readonly Dictionary<string, FileIntegrityInfo> _knownFiles = new();
         private readonly object _lockObject = new();
         private bool _isRunning;
         private bool _isPaused;
         private string _errorMessage = string.Empty;
         private CollectorSettings _settings = new();
-        private readonly List<string> _monitoredPaths = new();
-        private readonly List<string> _excludePatterns = new();
+        
+        // Enhanced configuration for multi-collector integration
+        private List<string> _monitoredPaths = new();
+        private List<string> _excludePatterns = new();
+        private List<string> _criticalPaths = new();
+        private List<string> _containerPaths = new(); // Container-specific paths
+        private List<string> _databasePaths = new(); // Database-specific paths
+        private List<string> _iotConfigPaths = new(); // IoT device configuration paths
+        private List<string> _cloudConfigPaths = new(); // Cloud service configuration paths
         private bool _realTimeMonitoring = true;
         private int _scanIntervalMinutes = 60;
+        private int _maxEventsPerBatch = 50;
+        private int _batchIntervalSeconds = 10;
+        private int _maxBufferSize = 1000;
+        private bool _enableDetailedLogging = false;
+        private bool _enablePerformanceOptimization = true;
+        private bool _enableThreatIntelligence = true;
+        private bool _enableMultiCollectorIntegration = true;
         
+        private readonly Queue<NormalizedLogEntry> _eventBuffer = new();
+        private Timer? _batchTimer;
+        private Timer? _scanTimer;
+        private CancellationTokenSource? _cancellationTokenSource;
+
         /// <summary>
         /// Event raised when a log is collected
         /// </summary>
@@ -75,22 +95,19 @@ namespace AthalaSIEM.Agent.Collectors
         public void Initialize(CollectorSettings settings)
         {
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
-            _logger.LogInformation("Initializing File Integrity Collector");
+            _logger.LogInformation("Initializing Enhanced File Integrity Collector");
 
             try
             {
-                // Parse settings
                 ParseSettings();
-                
-                // Create baseline if it doesn't exist
-                Task.Run(CreateInitialBaseline);
-                
-                _logger.LogInformation("File Integrity Collector initialized successfully");
+                InitializePathCategories();
+                _logger.LogInformation("Enhanced FIM initialized - Paths: {Count}, Real-time: {RealTime}, Multi-collector: {MultiCollector}", 
+                    _monitoredPaths.Count, _realTimeMonitoring, _enableMultiCollectorIntegration);
             }
             catch (Exception ex)
             {
                 _errorMessage = ex.Message;
-                _logger.LogError(ex, "Failed to initialize File Integrity Collector");
+                _logger.LogError(ex, "Failed to initialize Enhanced File Integrity Collector");
                 throw;
             }
         }
@@ -104,27 +121,30 @@ namespace AthalaSIEM.Agent.Collectors
 
             try
             {
-                _logger.LogInformation("Starting File Integrity Collector");
-                
+                _logger.LogInformation("Starting Enhanced File Integrity Collector");
+                _cancellationTokenSource = new CancellationTokenSource();
+
                 if (_realTimeMonitoring)
                 {
-                    StartFileSystemWatchers();
+                    SetupFileSystemWatchers();
                 }
-                
+
                 // Start periodic full scan
-                int intervalMs = _scanIntervalMinutes * 60 * 1000;
-                _scanTimer = new Timer(async _ => await PerformFullScan(), null, intervalMs, intervalMs);
-                
+                _scanTimer = new Timer(async _ => await PerformFullScanAsync(), null, TimeSpan.Zero, TimeSpan.FromMinutes(_scanIntervalMinutes));
+
+                // Start batch processing timer
+                _batchTimer = new Timer(ProcessEventBatch, null, TimeSpan.FromSeconds(_batchIntervalSeconds), TimeSpan.FromSeconds(_batchIntervalSeconds));
+
                 _isRunning = true;
                 _isPaused = false;
                 _errorMessage = string.Empty;
-                
-                _logger.LogInformation("File Integrity Collector started successfully");
+
+                _logger.LogInformation("Enhanced File Integrity Collector started successfully");
             }
             catch (Exception ex)
             {
                 _errorMessage = ex.Message;
-                _logger.LogError(ex, "Failed to start File Integrity Collector");
+                _logger.LogError(ex, "Failed to start Enhanced File Integrity Collector");
                 throw;
             }
         }
@@ -138,25 +158,31 @@ namespace AthalaSIEM.Agent.Collectors
 
             try
             {
-                _logger.LogInformation("Stopping File Integrity Collector");
+                _logger.LogInformation("Stopping Enhanced File Integrity Collector");
                 
+                _isRunning = false;
+                _cancellationTokenSource?.Cancel();
+                
+                // Stop timers
                 _scanTimer?.Dispose();
-                _scanTimer = null;
+                _batchTimer?.Dispose();
                 
-                // Stop file system watchers
-                foreach (var watcher in _watchers)
+                // Stop file watchers
+                foreach (var watcher in _watchers.Values)
                 {
                     watcher.EnableRaisingEvents = false;
                     watcher.Dispose();
                 }
                 _watchers.Clear();
                 
-                _isRunning = false;
-                _logger.LogInformation("File Integrity Collector stopped");
+                // Process remaining events
+                ProcessEventBatch(null);
+                
+                _logger.LogInformation("Enhanced File Integrity Collector stopped");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error stopping File Integrity Collector");
+                _logger.LogError(ex, "Error stopping Enhanced File Integrity Collector");
             }
         }
 
@@ -165,15 +191,12 @@ namespace AthalaSIEM.Agent.Collectors
         /// </summary>
         public void Pause()
         {
-            if (!_isRunning || _isPaused) return;
-            
             _isPaused = true;
-            foreach (var watcher in _watchers)
+            foreach (var watcher in _watchers.Values)
             {
                 watcher.EnableRaisingEvents = false;
             }
-            
-            _logger.LogInformation("File Integrity Collector paused");
+            _logger.LogInformation("Enhanced File Integrity Collector paused");
         }
 
         /// <summary>
@@ -181,15 +204,12 @@ namespace AthalaSIEM.Agent.Collectors
         /// </summary>
         public void Resume()
         {
-            if (!_isRunning || !_isPaused) return;
-            
             _isPaused = false;
-            foreach (var watcher in _watchers)
+            foreach (var watcher in _watchers.Values)
             {
                 watcher.EnableRaisingEvents = true;
             }
-            
-            _logger.LogInformation("File Integrity Collector resumed");
+            _logger.LogInformation("Enhanced File Integrity Collector resumed");
         }
 
         /// <summary>
@@ -202,8 +222,8 @@ namespace AthalaSIEM.Agent.Collectors
                 IsRunning = _isRunning,
                 IsPaused = _isPaused,
                 LastError = _errorMessage,
-                FilesMonitored = _fileBaseline.Count,
-                WatchersActive = _watchers.Count(w => w.EnableRaisingEvents)
+                FilesMonitored = _knownFiles.Count,
+                WatchersActive = _watchers.Count(w => w.Value.EnableRaisingEvents)
             };
         }
 
@@ -211,46 +231,17 @@ namespace AthalaSIEM.Agent.Collectors
         {
             if (_settings.Properties.ContainsKey("MonitoredPaths"))
             {
-                var paths = _settings.Properties["MonitoredPaths"].Split(',', StringSplitOptions.RemoveEmptyEntries);
-                _monitoredPaths.AddRange(paths.Select(p => p.Trim()));
-            }
-            else
-            {
-                // Default critical system paths
-                if (OperatingSystem.IsWindows())
-                {
-                    _monitoredPaths.AddRange(new[]
-                    {
-                        @"C:\Windows\System32",
-                        @"C:\Program Files",
-                        @"C:\Program Files (x86)"
-                    });
-                }
-                else if (OperatingSystem.IsLinux())
-                {
-                    _monitoredPaths.AddRange(new[]
-                    {
-                        "/etc",
-                        "/bin",
-                        "/sbin",
-                        "/usr/bin",
-                        "/usr/sbin"
-                    });
-                }
+                _monitoredPaths = new List<string>(_settings.Properties["MonitoredPaths"].Split(',').Select(p => p.Trim()));
             }
 
             if (_settings.Properties.ContainsKey("ExcludePatterns"))
             {
-                var patterns = _settings.Properties["ExcludePatterns"].Split(',', StringSplitOptions.RemoveEmptyEntries);
-                _excludePatterns.AddRange(patterns.Select(p => p.Trim()));
+                _excludePatterns = new List<string>(_settings.Properties["ExcludePatterns"].Split(',').Select(p => p.Trim()));
             }
-            else
+
+            if (_settings.Properties.ContainsKey("CriticalPaths"))
             {
-                // Default exclude patterns
-                _excludePatterns.AddRange(new[]
-                {
-                    "*.tmp", "*.log", "*.swp", "*.lock", "*~"
-                });
+                _criticalPaths = new List<string>(_settings.Properties["CriticalPaths"].Split(',').Select(p => p.Trim()));
             }
 
             if (_settings.Properties.ContainsKey("RealTimeMonitoring"))
@@ -262,269 +253,471 @@ namespace AthalaSIEM.Agent.Collectors
             {
                 int.TryParse(_settings.Properties["ScanIntervalMinutes"], out _scanIntervalMinutes);
             }
+
+            if (_settings.Properties.ContainsKey("MaxEventsPerBatch"))
+            {
+                int.TryParse(_settings.Properties["MaxEventsPerBatch"], out _maxEventsPerBatch);
+            }
+
+            if (_settings.Properties.ContainsKey("BatchIntervalSeconds"))
+            {
+                int.TryParse(_settings.Properties["BatchIntervalSeconds"], out _batchIntervalSeconds);
+            }
+
+            if (_settings.Properties.ContainsKey("EnableThreatIntelligence"))
+            {
+                bool.TryParse(_settings.Properties["EnableThreatIntelligence"], out _enableThreatIntelligence);
+            }
+
+            if (_settings.Properties.ContainsKey("EnableMultiCollectorIntegration"))
+            {
+                bool.TryParse(_settings.Properties["EnableMultiCollectorIntegration"], out _enableMultiCollectorIntegration);
+            }
         }
 
-        private async Task CreateInitialBaseline()
+        private void InitializePathCategories()
         {
-            _logger.LogInformation("Creating initial file integrity baseline");
-            
-            try
+            // Container-specific paths
+            _containerPaths.AddRange(new[]
             {
-                foreach (var path in _monitoredPaths)
-                {
-                    if (Directory.Exists(path))
-                    {
-                        await ScanDirectory(path, isBaseline: true);
-                    }
-                    else if (File.Exists(path))
-                    {
-                        await ScanFile(path, isBaseline: true);
-                    }
-                }
-                
-                _logger.LogInformation("Initial baseline created with {Count} files", _fileBaseline.Count);
-            }
-            catch (Exception ex)
+                "/var/lib/docker",
+                "/var/lib/containerd",
+                "/etc/docker",
+                "/etc/kubernetes",
+                "C:\\ProgramData\\Docker",
+                "C:\\ProgramData\\containerd"
+            });
+
+            // Database-specific paths
+            _databasePaths.AddRange(new[]
             {
-                _logger.LogError(ex, "Error creating initial baseline");
-            }
+                "/var/lib/mysql",
+                "/var/lib/postgresql",
+                "/var/lib/mongodb",
+                "/etc/mysql",
+                "/etc/postgresql",
+                "C:\\Program Files\\Microsoft SQL Server",
+                "C:\\Program Files\\MySQL",
+                "C:\\Program Files\\PostgreSQL"
+            });
+
+            // IoT configuration paths
+            _iotConfigPaths.AddRange(new[]
+            {
+                "/etc/iot",
+                "/opt/iot",
+                "/usr/local/iot",
+                "C:\\Program Files\\IoT",
+                "C:\\IoT"
+            });
+
+            // Cloud service configuration paths
+            _cloudConfigPaths.AddRange(new[]
+            {
+                "/root/.aws",
+                "/root/.azure",
+                "/root/.gcp",
+                "C:\\Users\\%USERNAME%\\.aws",
+                "C:\\Users\\%USERNAME%\\.azure"
+            });
         }
 
-        private void StartFileSystemWatchers()
+        private void SetupFileSystemWatchers()
         {
             foreach (var path in _monitoredPaths)
             {
-                if (!Directory.Exists(path)) continue;
-
                 try
                 {
-                    var watcher = new FileSystemWatcher(path)
+                    if (!Directory.Exists(path) && !File.Exists(path))
                     {
-                        IncludeSubdirectories = true,
-                        NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.CreationTime | 
-                                     NotifyFilters.FileName | NotifyFilters.DirectoryName | 
-                                     NotifyFilters.Size | NotifyFilters.Attributes
-                    };
+                        _logger.LogWarning("Monitored path does not exist: {Path}", path);
+                        continue;
+                    }
 
-                    watcher.Changed += OnFileChanged;
-                    watcher.Created += OnFileCreated;
-                    watcher.Deleted += OnFileDeleted;
-                    watcher.Renamed += OnFileRenamed;
-                    watcher.Error += OnWatcherError;
+                    var watcher = new FileSystemWatcher();
+                    
+                    if (File.Exists(path))
+                    {
+                        watcher.Path = Path.GetDirectoryName(path) ?? "";
+                        watcher.Filter = Path.GetFileName(path);
+                    }
+                    else
+                    {
+                        watcher.Path = path;
+                        watcher.Filter = "*.*";
+                    }
+
+                    watcher.IncludeSubdirectories = true;
+                    watcher.NotifyFilter = NotifyFilters.CreationTime | NotifyFilters.LastWrite | 
+                                         NotifyFilters.FileName | NotifyFilters.DirectoryName | 
+                                         NotifyFilters.Size | NotifyFilters.Attributes | 
+                                         NotifyFilters.Security;
+
+                    watcher.Created += OnFileSystemEvent;
+                    watcher.Changed += OnFileSystemEvent;
+                    watcher.Deleted += OnFileSystemEvent;
+                    watcher.Renamed += OnFileSystemRenamed;
+                    watcher.Error += OnFileSystemError;
 
                     watcher.EnableRaisingEvents = true;
-                    _watchers.Add(watcher);
-                    
-                    _logger.LogDebug("Started file system watcher for path: {Path}", path);
+                    _watchers[path] = watcher;
+
+                    _logger.LogInformation("File system watcher setup for: {Path}", path);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to start watcher for path: {Path}", path);
+                    _logger.LogError(ex, "Failed to setup watcher for path: {Path}", path);
                 }
             }
         }
 
-        private async void OnFileChanged(object sender, FileSystemEventArgs e)
+        private void OnFileSystemEvent(object sender, FileSystemEventArgs e)
         {
             if (_isPaused || ShouldExcludeFile(e.FullPath)) return;
-            
+
             try
             {
-                await ProcessFileChange(e.FullPath, "Modified");
+                var fileInfo = new FileInfo(e.FullPath);
+                if (!fileInfo.Exists && e.ChangeType != WatcherChangeTypes.Deleted) return;
+
+                var eventEntry = CreateFileIntegrityEvent(e.FullPath, e.ChangeType.ToString(), null, fileInfo);
+                
+                if (eventEntry != null)
+                {
+                    lock (_lockObject)
+                    {
+                        if (_eventBuffer.Count >= _maxBufferSize)
+                        {
+                            _eventBuffer.Dequeue();
+                        }
+                        _eventBuffer.Enqueue(eventEntry);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing file change: {Path}", e.FullPath);
+                _logger.LogError(ex, "Error processing file system event for: {Path}", e.FullPath);
             }
         }
 
-        private async void OnFileCreated(object sender, FileSystemEventArgs e)
+        private void OnFileSystemRenamed(object sender, RenamedEventArgs e)
         {
             if (_isPaused || ShouldExcludeFile(e.FullPath)) return;
-            
+
             try
             {
-                await ProcessFileChange(e.FullPath, "Created");
+                var fileInfo = new FileInfo(e.FullPath);
+                var eventEntry = CreateFileIntegrityEvent(e.FullPath, "Renamed", e.OldFullPath, fileInfo);
+                
+                if (eventEntry != null)
+                {
+                    lock (_lockObject)
+                    {
+                        if (_eventBuffer.Count >= _maxBufferSize)
+                        {
+                            _eventBuffer.Dequeue();
+                        }
+                        _eventBuffer.Enqueue(eventEntry);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing file creation: {Path}", e.FullPath);
+                _logger.LogError(ex, "Error processing file rename event: {OldPath} -> {NewPath}", e.OldFullPath, e.FullPath);
             }
         }
 
-        private void OnFileDeleted(object sender, FileSystemEventArgs e)
-        {
-            if (_isPaused || ShouldExcludeFile(e.FullPath)) return;
-            
-            try
-            {
-                ProcessFileDelete(e.FullPath);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing file deletion: {Path}", e.FullPath);
-            }
-        }
-
-        private async void OnFileRenamed(object sender, RenamedEventArgs e)
-        {
-            if (_isPaused || ShouldExcludeFile(e.FullPath)) return;
-            
-            try
-            {
-                ProcessFileDelete(e.OldFullPath);
-                await ProcessFileChange(e.FullPath, "Renamed");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing file rename: {OldPath} -> {NewPath}", e.OldFullPath, e.FullPath);
-            }
-        }
-
-        private void OnWatcherError(object sender, ErrorEventArgs e)
+        private void OnFileSystemError(object sender, ErrorEventArgs e)
         {
             _logger.LogError(e.GetException(), "File system watcher error");
         }
 
-        private async Task ProcessFileChange(string filePath, string changeType)
+        private NormalizedLogEntry? CreateFileIntegrityEvent(string filePath, string changeType, string? oldPath, FileInfo? fileInfo)
         {
             try
             {
-                var fileInfo = new FileInfo(filePath);
-                if (!fileInfo.Exists) return;
-
-                var currentHash = await CalculateFileHash(filePath);
-                var currentData = new FileIntegrityData
+                var pathCategory = DeterminePathCategory(filePath);
+                var severity = DetermineSeverity(filePath, changeType, pathCategory);
+                var threatIndicators = _enableThreatIntelligence ? AnalyzeThreatIndicators(filePath, changeType) : new List<string>();
+                
+                var details = new
                 {
-                    FilePath = filePath,
-                    Hash = currentHash,
-                    Size = fileInfo.Length,
-                    LastModified = fileInfo.LastWriteTimeUtc,
-                    Created = fileInfo.CreationTimeUtc,
-                    Attributes = fileInfo.Attributes.ToString()
+                    file_path = filePath,
+                    old_path = oldPath,
+                    change_type = changeType,
+                    path_category = pathCategory,
+                    file_size = fileInfo?.Length ?? 0,
+                    creation_time = fileInfo?.CreationTimeUtc.ToString("O"),
+                    modification_time = fileInfo?.LastWriteTimeUtc.ToString("O"),
+                    attributes = fileInfo?.Attributes.ToString(),
+                    file_hash = GetFileHash(filePath),
+                    threat_indicators = threatIndicators,
+                    collector_integration = _enableMultiCollectorIntegration ? GetCollectorContext(pathCategory) : null
                 };
 
-                lock (_lockObject)
+                return new NormalizedLogEntry
                 {
-                    if (_fileBaseline.TryGetValue(filePath, out var baselineData))
-                    {
-                        if (baselineData.Hash != currentHash)
-                        {
-                            // File has been modified
-                            GenerateIntegrityAlert(filePath, changeType, baselineData, currentData);
-                            _fileBaseline[filePath] = currentData;
-                        }
-                    }
-                    else
-                    {
-                        // New file
-                        GenerateIntegrityAlert(filePath, changeType, null, currentData);
-                        _fileBaseline[filePath] = currentData;
-                    }
-                }
+                    Id = Guid.NewGuid().ToString(),
+                    Timestamp = DateTime.UtcNow,
+                    Level = severity == "High" || severity == "Critical" ? "Warning" : "Information",
+                    Source = $"FIM/{pathCategory}",
+                    Category = "FileIntegrity",
+                    EventId = $"FIM_{changeType.ToUpper()}",
+                    Message = $"File {changeType.ToLower()}: {filePath}",
+                    Details = JsonSerializer.Serialize(details),
+                    Tags = CreateTags(pathCategory, changeType, threatIndicators),
+                    Severity = severity
+                };
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing file change for: {Path}", filePath);
+                _logger.LogError(ex, "Error creating file integrity event for: {Path}", filePath);
+                return null;
             }
         }
 
-        private void ProcessFileDelete(string filePath)
+        private string DeterminePathCategory(string filePath)
         {
-            lock (_lockObject)
+            if (_containerPaths.Any(cp => filePath.StartsWith(cp, StringComparison.OrdinalIgnoreCase)))
+                return "Container";
+            
+            if (_databasePaths.Any(dp => filePath.StartsWith(dp, StringComparison.OrdinalIgnoreCase)))
+                return "Database";
+            
+            if (_iotConfigPaths.Any(ip => filePath.StartsWith(ip, StringComparison.OrdinalIgnoreCase)))
+                return "IoT";
+            
+            if (_cloudConfigPaths.Any(cp => filePath.StartsWith(cp, StringComparison.OrdinalIgnoreCase)))
+                return "CloudServices";
+            
+            if (_criticalPaths.Any(cp => filePath.StartsWith(cp, StringComparison.OrdinalIgnoreCase)))
+                return "Critical";
+            
+            return "General";
+        }
+
+        private string DetermineSeverity(string filePath, string changeType, string pathCategory)
+        {
+            // Critical paths always get high severity
+            if (pathCategory == "Critical") return "Critical";
+            
+            // Container, Database, IoT, and Cloud paths get elevated severity
+            if (pathCategory is "Container" or "Database" or "IoT" or "CloudServices")
             {
-                if (_fileBaseline.TryGetValue(filePath, out var baselineData))
+                return changeType switch
                 {
-                    GenerateIntegrityAlert(filePath, "Deleted", baselineData, null);
-                    _fileBaseline.Remove(filePath);
-                }
+                    "Deleted" => "High",
+                    "Created" => "Medium",
+                    "Changed" => "Medium",
+                    "Renamed" => "Medium",
+                    _ => "Low"
+                };
+            }
+            
+            // System files
+            if (IsSystemFile(filePath))
+            {
+                return changeType switch
+                {
+                    "Deleted" => "High",
+                    "Changed" => "Medium",
+                    _ => "Low"
+                };
+            }
+            
+            return "Low";
+        }
+
+        private List<string> AnalyzeThreatIndicators(string filePath, string changeType)
+        {
+            var indicators = new List<string>();
+            
+            var fileName = Path.GetFileName(filePath).ToLowerInvariant();
+            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            
+            // Suspicious file extensions
+            var suspiciousExtensions = new[] { ".exe", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".jar", ".scr", ".com", ".pif" };
+            if (suspiciousExtensions.Contains(extension))
+            {
+                indicators.Add("suspicious_extension");
+            }
+            
+            // Suspicious file names
+            var suspiciousNames = new[] { "cmd.exe", "powershell.exe", "wscript.exe", "cscript.exe", "regsvr32.exe" };
+            if (suspiciousNames.Any(name => fileName.Contains(name)))
+            {
+                indicators.Add("suspicious_filename");
+            }
+            
+            // Hidden files in suspicious locations
+            if (fileName.StartsWith(".") && changeType == "Created")
+            {
+                indicators.Add("hidden_file_creation");
+            }
+            
+            // Temporary directories
+            if (filePath.Contains("temp") || filePath.Contains("tmp"))
+            {
+                indicators.Add("temp_directory_activity");
+            }
+            
+            return indicators;
+        }
+
+        private object? GetCollectorContext(string pathCategory)
+        {
+            return pathCategory switch
+            {
+                "Container" => new { collector_type = "Container", integration_level = "high", monitoring_scope = "container_configs" },
+                "Database" => new { collector_type = "Database", integration_level = "high", monitoring_scope = "db_configs" },
+                "IoT" => new { collector_type = "IoT", integration_level = "medium", monitoring_scope = "device_configs" },
+                "CloudServices" => new { collector_type = "CloudServices", integration_level = "high", monitoring_scope = "cloud_configs" },
+                _ => null
+            };
+        }
+
+        private List<string> CreateTags(string pathCategory, string changeType, List<string> threatIndicators)
+        {
+            var tags = new List<string> { "fim", "file_integrity", pathCategory.ToLower(), changeType.ToLower() };
+            
+            if (threatIndicators.Any())
+            {
+                tags.Add("threat_detected");
+                tags.AddRange(threatIndicators);
+            }
+            
+            return tags;
+        }
+
+        private bool ShouldExcludeFile(string filePath)
+        {
+            var fileName = Path.GetFileName(filePath);
+            return _excludePatterns.Any(pattern => 
+                Regex.IsMatch(fileName, pattern.Replace("*", ".*"), RegexOptions.IgnoreCase));
+        }
+
+        private bool IsSystemFile(string filePath)
+        {
+            var systemPaths = new[]
+            {
+                "/bin", "/sbin", "/usr/bin", "/usr/sbin", "/etc",
+                "C:\\Windows\\System32", "C:\\Windows\\SysWOW64", "C:\\Program Files"
+            };
+            
+            return systemPaths.Any(sp => filePath.StartsWith(sp, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private string? GetFileHash(string filePath)
+        {
+            try
+            {
+                if (!File.Exists(filePath)) return null;
+                
+                using var sha256 = SHA256.Create();
+                using var stream = File.OpenRead(filePath);
+                var hashBytes = sha256.ComputeHash(stream);
+                return Convert.ToHexString(hashBytes);
+            }
+            catch
+            {
+                return null;
             }
         }
 
-        private async Task PerformFullScan()
+        private async Task PerformFullScanAsync()
         {
             if (_isPaused) return;
             
-            _logger.LogInformation("Starting full file integrity scan");
-            
             try
             {
+                _logger.LogInformation("Starting full file integrity scan");
+                
                 foreach (var path in _monitoredPaths)
                 {
-                    if (Directory.Exists(path))
-                    {
-                        await ScanDirectory(path, isBaseline: false);
-                    }
-                    else if (File.Exists(path))
-                    {
-                        await ScanFile(path, isBaseline: false);
-                    }
+                    if (!Directory.Exists(path) && !File.Exists(path)) continue;
+                    
+                    await ScanPathAsync(path);
                 }
                 
                 _logger.LogInformation("Full file integrity scan completed");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during full scan");
+                _logger.LogError(ex, "Error during full file integrity scan");
             }
         }
 
-        private async Task ScanDirectory(string directoryPath, bool isBaseline)
+        private async Task ScanPathAsync(string path)
         {
             try
             {
-                var files = Directory.GetFiles(directoryPath, "*", SearchOption.AllDirectories);
-                
-                foreach (var file in files)
+                if (File.Exists(path))
                 {
-                    if (ShouldExcludeFile(file)) continue;
-                    await ScanFile(file, isBaseline);
+                    await ScanFileAsync(path);
+                }
+                else if (Directory.Exists(path))
+                {
+                    var files = Directory.GetFiles(path, "*", SearchOption.AllDirectories);
+                    foreach (var file in files)
+                    {
+                        if (ShouldExcludeFile(file)) continue;
+                        await ScanFileAsync(file);
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error scanning directory: {Path}", directoryPath);
+                _logger.LogError(ex, "Error scanning path: {Path}", path);
             }
         }
 
-        private async Task ScanFile(string filePath, bool isBaseline)
+        private async Task ScanFileAsync(string filePath)
         {
             try
             {
                 var fileInfo = new FileInfo(filePath);
                 if (!fileInfo.Exists) return;
-
-                var hash = await CalculateFileHash(filePath);
-                var currentData = new FileIntegrityData
-                {
-                    FilePath = filePath,
-                    Hash = hash,
-                    Size = fileInfo.Length,
-                    LastModified = fileInfo.LastWriteTimeUtc,
-                    Created = fileInfo.CreationTimeUtc,
-                    Attributes = fileInfo.Attributes.ToString()
-                };
-
+                
+                var currentHash = GetFileHash(filePath);
+                if (currentHash == null) return;
+                
                 lock (_lockObject)
                 {
-                    if (isBaseline)
+                    if (_knownFiles.TryGetValue(filePath, out var knownInfo))
                     {
-                        _fileBaseline[filePath] = currentData;
+                        if (knownInfo.Hash != currentHash || 
+                            knownInfo.LastModified != fileInfo.LastWriteTimeUtc ||
+                            knownInfo.Size != fileInfo.Length)
+                        {
+                            var eventEntry = CreateFileIntegrityEvent(filePath, "Changed", null, fileInfo);
+                            if (eventEntry != null && _eventBuffer.Count < _maxBufferSize)
+                            {
+                                _eventBuffer.Enqueue(eventEntry);
+                            }
+                        }
+                        
+                        // Update known file info
+                        _knownFiles[filePath] = new FileIntegrityInfo
+                        {
+                            Hash = currentHash,
+                            LastModified = fileInfo.LastWriteTimeUtc,
+                            Size = fileInfo.Length
+                        };
                     }
                     else
                     {
-                        if (_fileBaseline.TryGetValue(filePath, out var baselineData))
+                        // New file discovered
+                        _knownFiles[filePath] = new FileIntegrityInfo
                         {
-                            if (baselineData.Hash != hash)
-                            {
-                                GenerateIntegrityAlert(filePath, "Modified", baselineData, currentData);
-                                _fileBaseline[filePath] = currentData;
-                            }
-                        }
-                        else
+                            Hash = currentHash,
+                            LastModified = fileInfo.LastWriteTimeUtc,
+                            Size = fileInfo.Length
+                        };
+                        
+                        var eventEntry = CreateFileIntegrityEvent(filePath, "Discovered", null, fileInfo);
+                        if (eventEntry != null && _eventBuffer.Count < _maxBufferSize)
                         {
-                            GenerateIntegrityAlert(filePath, "Created", null, currentData);
-                            _fileBaseline[filePath] = currentData;
+                            _eventBuffer.Enqueue(eventEntry);
                         }
                     }
                 }
@@ -535,99 +728,39 @@ namespace AthalaSIEM.Agent.Collectors
             }
         }
 
-        private async Task<string> CalculateFileHash(string filePath)
+        private void ProcessEventBatch(object? state)
         {
+            if (_eventBuffer.Count == 0) return;
+            
             try
             {
-                using var stream = File.OpenRead(filePath);
-                using var sha256 = SHA256.Create();
-                var hashBytes = await sha256.ComputeHashAsync(stream);
-                return Convert.ToHexString(hashBytes);
-            }
-            catch
-            {
-                return string.Empty;
-            }
-        }
-
-        private bool ShouldExcludeFile(string filePath)
-        {
-            var fileName = Path.GetFileName(filePath);
-            
-            foreach (var pattern in _excludePatterns)
-            {
-                if (IsMatch(fileName, pattern))
-                {
-                    return true;
-                }
-            }
-            
-            return false;
-        }
-
-        private static bool IsMatch(string fileName, string pattern)
-        {
-            // Simple wildcard matching
-            if (pattern.Contains('*'))
-            {
-                var regex = pattern.Replace("*", ".*").Replace("?", ".");
-                return System.Text.RegularExpressions.Regex.IsMatch(fileName, $"^{regex}$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-            }
-            
-            return string.Equals(fileName, pattern, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private void GenerateIntegrityAlert(string filePath, string changeType, FileIntegrityData? baseline, FileIntegrityData? current)
-        {
-            try
-            {
-                var alertData = new Dictionary<string, object>
-                {
-                    ["change_type"] = changeType,
-                    ["file_path"] = filePath,
-                    ["timestamp"] = DateTime.UtcNow
-                };
-
-                if (baseline != null)
-                {
-                    alertData["baseline_hash"] = baseline.Hash;
-                    alertData["baseline_size"] = baseline.Size;
-                    alertData["baseline_modified"] = baseline.LastModified;
-                }
-
-                if (current != null)
-                {
-                    alertData["current_hash"] = current.Hash;
-                    alertData["current_size"] = current.Size;
-                    alertData["current_modified"] = current.LastModified;
-                    alertData["file_attributes"] = current.Attributes;
-                }
-
-                var logEntry = new NormalizedLogEntry
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    Timestamp = DateTime.UtcNow,
-                    Level = LogLevel.Warning.ToString(),
-                    Source = "FileIntegrityMonitoring",
-                    Category = "Security",
-                    EventId = "FIM001",
-                    Message = $"File integrity change detected: {changeType} - {filePath}",
-                    Details = JsonSerializer.Serialize(alertData),
-                    Tags = new List<string> { "FIM", "FileIntegrity", changeType },
-                    Severity = changeType == "Deleted" ? "High" : "Medium"
-                };
-
-                // Normalize the log entry
-                var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
+                var eventsToProcess = new List<NormalizedLogEntry>();
                 
-                // Raise the LogCollected event
-                LogCollected?.Invoke(this, normalizedEntry);
+                lock (_lockObject)
+                {
+                    var count = Math.Min(_maxEventsPerBatch, _eventBuffer.Count);
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (_eventBuffer.Count > 0)
+                        {
+                            eventsToProcess.Add(_eventBuffer.Dequeue());
+                        }
+                    }
+                }
                 
-                _logger.LogWarning("File integrity alert: {ChangeType} - {FilePath}", changeType, filePath);
+                foreach (var eventEntry in eventsToProcess)
+                {
+                    LogCollected?.Invoke(this, eventEntry);
+                }
+                
+                if (_enableDetailedLogging && eventsToProcess.Count > 0)
+                {
+                    _logger.LogInformation("Processed {Count} file integrity events", eventsToProcess.Count);
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error generating integrity alert for: {Path}", filePath);
+                _logger.LogError(ex, "Error processing event batch");
             }
         }
 
@@ -637,25 +770,23 @@ namespace AthalaSIEM.Agent.Collectors
         public void Dispose()
         {
             StopAsync().Wait();
-            foreach (var watcher in _watchers)
+            
+            _scanTimer?.Dispose();
+            _batchTimer?.Dispose();
+            _cancellationTokenSource?.Dispose();
+            
+            foreach (var watcher in _watchers.Values)
             {
                 watcher?.Dispose();
             }
-            _scanTimer?.Dispose();
         }
-    }
 
-    /// <summary>
-    /// File integrity data structure
-    /// </summary>
-    internal class FileIntegrityData
-    {
-        public string FilePath { get; set; } = string.Empty;
-        public string Hash { get; set; } = string.Empty;
-        public long Size { get; set; }
-        public DateTime LastModified { get; set; }
-        public DateTime Created { get; set; }
-        public string Attributes { get; set; } = string.Empty;
+        private class FileIntegrityInfo
+        {
+            public string Hash { get; set; } = string.Empty;
+            public DateTime LastModified { get; set; }
+            public long Size { get; set; }
+        }
     }
 
     /// <summary>

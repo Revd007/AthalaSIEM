@@ -217,10 +217,17 @@ builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IInstallerService, InstallerService>();
 
+// Register new enhanced services for multi-collector support
+builder.Services.AddScoped<IThreatIntelligenceService, ThreatIntelligenceService>();
+builder.Services.AddScoped<ILogArchivingService, LogArchivingService>();
+
 // Register background services
 builder.Services.AddHostedService<Backend.Services.Background.AgentMonitoringService>();
 builder.Services.AddHostedService<Backend.Services.Background.LogCleanupService>();
 builder.Services.AddHostedService<Backend.Services.Background.AlertCleanupService>();
+
+// Register the new log archiving background service
+builder.Services.AddHostedService<LogArchivingService>();
 
 var app = builder.Build();
 

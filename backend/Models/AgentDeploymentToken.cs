@@ -7,17 +7,35 @@ namespace AthalaSIEM.Backend.Models
     public class AgentDeploymentToken
     {
         [Key]
+        public string Id { get; set; } = Guid.NewGuid().ToString();
+        
+        public string Name { get; set; } = string.Empty;
+        
+        public string? Description { get; set; }
+        
+        public string PlatformType { get; set; } = string.Empty;
+
         public string Token { get; set; } = string.Empty;
 
         public string CreatedById { get; set; } = string.Empty;
+        
+        public string? CreatedBy { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-        public DateTime ExpiresAt { get; set; }
+        public DateTime? ExpiresAt { get; set; }
 
         public bool IsUsed { get; set; }
+        
+        public bool IsActive { get; set; } = true;
+        
+        public int UsageCount { get; set; } = 0;
+        
+        public int? MaxUsage { get; set; }
 
         public DateTime? UsedAt { get; set; }
+        
+        public DateTime? LastUsed { get; set; }
 
         public string? UsedByAgentId { get; set; }
 
@@ -32,6 +50,8 @@ namespace AthalaSIEM.Backend.Models
 
         // Store collectors configuration as JSON
         public string CollectorsJson { get; set; } = "[]";
+        
+        public string? Configuration { get; set; }
 
         // Helper methods for collectors
         public void SetCollectors(string[] collectors)

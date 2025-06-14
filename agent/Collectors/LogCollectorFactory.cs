@@ -39,12 +39,32 @@ namespace AthalaSIEM.Agent.Collectors
                     _loggerFactory.CreateLogger<WindowsEventLogCollector>(),
                     _normalizer),
                 
-                ["LinuxSyslog"] = () => new LinuxSyslogCollector(
-                    _loggerFactory.CreateLogger<LinuxSyslogCollector>(),
+                ["Syslog"] = () => new SyslogCollector(
+                    _loggerFactory.CreateLogger<SyslogCollector>(),
+                    _normalizer),
+                
+                ["LinuxSyslog"] = () => new SyslogCollector(
+                    _loggerFactory.CreateLogger<SyslogCollector>(),
                     _normalizer),
                 
                 ["FileIntegrity"] = () => new FileIntegrityCollector(
                     _loggerFactory.CreateLogger<FileIntegrityCollector>(),
+                    _normalizer),
+
+                ["Container"] = () => new ContainerCollector(
+                    _loggerFactory.CreateLogger<ContainerCollector>(),
+                    _normalizer),
+
+                ["CloudServices"] = () => new CloudServicesCollector(
+                    _loggerFactory.CreateLogger<CloudServicesCollector>(),
+                    _normalizer),
+
+                ["Database"] = () => new DatabaseCollector(
+                    _loggerFactory.CreateLogger<DatabaseCollector>(),
+                    _normalizer),
+
+                ["IoT"] = () => new IoTCollector(
+                    _loggerFactory.CreateLogger<IoTCollector>(),
                     _normalizer)
             };
         }
@@ -129,6 +149,15 @@ namespace AthalaSIEM.Agent.Collectors
             }
             
             return _collectorFactories.ContainsKey(collectorType);
+        }
+
+        /// <summary>
+        /// Gets all supported collector types
+        /// </summary>
+        /// <returns>List of supported collector types</returns>
+        public IEnumerable<string> GetSupportedCollectorTypes()
+        {
+            return _collectorFactories.Keys;
         }
     }
 
