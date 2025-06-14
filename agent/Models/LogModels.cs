@@ -116,9 +116,19 @@ namespace AthalaSIEM.Agent.Models
         public string ContentHash { get; set; } = string.Empty;
         
         /// <summary>
+        /// Gets or sets the log level (Error, Warning, Information, Debug, etc.)
+        /// </summary>
+        public string Level { get; set; } = "Information";
+        
+        /// <summary>
         /// Gets or sets the log severity
         /// </summary>
         public string Severity { get; set; } = "Information";
+        
+        /// <summary>
+        /// Gets or sets the event ID
+        /// </summary>
+        public string EventId { get; set; } = string.Empty;
         
         /// <summary>
         /// Gets or sets the log category
@@ -149,6 +159,16 @@ namespace AthalaSIEM.Agent.Models
         /// Gets or sets the log format
         /// </summary>
         public string Format { get; set; } = "Raw";
+        
+        /// <summary>
+        /// Gets or sets detailed information as JSON string
+        /// </summary>
+        public string Details { get; set; } = string.Empty;
+        
+        /// <summary>
+        /// Gets or sets tags associated with the log entry
+        /// </summary>
+        public List<string> Tags { get; set; } = new List<string>();
         
         /// <summary>
         /// Gets or sets additional fields associated with the log

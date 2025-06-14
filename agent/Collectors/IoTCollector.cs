@@ -2,6 +2,8 @@ using AthalaSIEM.Agent.Models;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -50,9 +52,11 @@ namespace AthalaSIEM.Agent.Collectors
 
         public event EventHandler<NormalizedLogEntry>? LogCollected;
         public string CollectorType => "IoT";
+        public CollectorStatus Status => _isRunning ? (_isPaused ? CollectorStatus.Paused : CollectorStatus.Running) : 
+                                        (!string.IsNullOrEmpty(_errorMessage) ? CollectorStatus.Error : CollectorStatus.Stopped);
+        public string ErrorMessage => _errorMessage;
         public bool IsRunning => _isRunning;
         public bool IsPaused => _isPaused;
-        public string LastError => _errorMessage;
         public CollectorSettings Settings => _settings;
 
         public IoTCollector(ILogger<IoTCollector> logger, ILogNormalizer normalizer)
@@ -61,7 +65,7 @@ namespace AthalaSIEM.Agent.Collectors
             _normalizer = normalizer ?? throw new ArgumentNullException(nameof(normalizer));
         }
 
-        public void Initialize(CollectorSettings settings)
+        public bool Initialize(CollectorSettings settings)
         {
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _logger.LogInformation("Initializing IoT Collector");
@@ -71,12 +75,13 @@ namespace AthalaSIEM.Agent.Collectors
                 ParseSettings();
                 _logger.LogInformation("IoT Collector initialized - Modbus: {Modbus}, MQTT: {Mqtt}, OPC-UA: {OpcUa}, SCADA: {Scada}", 
                     _enableModbusLogs, _enableMqttLogs, _enableOpcUaLogs, _enableScadaLogs);
+                return true;
             }
             catch (Exception ex)
             {
                 _errorMessage = ex.Message;
                 _logger.LogError(ex, "Failed to initialize IoT Collector");
-                throw;
+                return false;
             }
         }
 
@@ -153,16 +158,66 @@ namespace AthalaSIEM.Agent.Collectors
             }
         }
 
-        public void Pause()
+        public Task PauseAsync()
         {
             _isPaused = true;
             _logger.LogInformation("IoT Collector paused");
+            return Task.CompletedTask;
         }
 
-        public void Resume()
+        public Task ResumeAsync()
         {
             _isPaused = false;
             _logger.LogInformation("IoT Collector resumed");
+            return Task.CompletedTask;
+        }
+
+        public async Task<int> CollectLogsAsync(CancellationToken cancellationToken)
+        {
+            if (_isPaused || !_isRunning)
+                return 0;
+
+            int collectedCount = 0;
+
+            try
+            {
+                if (_enableModbusLogs)
+                {
+                    await CollectModbusLogs();
+                    collectedCount++;
+                }
+
+                if (_enableMqttLogs)
+                {
+                    await CollectMqttLogs();
+                    collectedCount++;
+                }
+
+                if (_enableOpcUaLogs)
+                {
+                    await CollectOpcUaLogs();
+                    collectedCount++;
+                }
+
+                if (_enableScadaLogs)
+                {
+                    await CollectScadaLogs();
+                    collectedCount++;
+                }
+
+                if (_enableSensorLogs)
+                {
+                    await CollectSensorLogs();
+                    collectedCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error collecting IoT logs");
+                _errorMessage = ex.Message;
+            }
+
+            return collectedCount;
         }
 
         private void ParseSettings()
@@ -319,7 +374,7 @@ namespace AthalaSIEM.Agent.Collectors
 
                         if (!_isPaused)
                         {
-                            var message = new string(buffer, 0, bytesRead);
+                            var message = new StringBuilder().Append(buffer, 0, bytesRead).ToString();
                             await ProcessIoTMessage(message, client.Client.RemoteEndPoint?.ToString() ?? "unknown", "TCP");
                         }
                     }
@@ -473,8 +528,7 @@ namespace AthalaSIEM.Agent.Collectors
                 var logEntry = ParseIoTMessage(message, sourceEndpoint, protocol);
                 if (logEntry != null)
                 {
-                    var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                    LogCollected?.Invoke(this, normalizedEntry);
+                    LogCollected?.Invoke(this, logEntry);
                 }
             }
             catch (Exception ex)
@@ -495,8 +549,7 @@ namespace AthalaSIEM.Agent.Collectors
                     var logEntry = ParseModbusLog(modbusEvent);
                     if (logEntry != null)
                     {
-                        var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                        LogCollected?.Invoke(this, normalizedEntry);
+                        LogCollected?.Invoke(this, logEntry);
                     }
                 }
             }
@@ -518,8 +571,7 @@ namespace AthalaSIEM.Agent.Collectors
                     var logEntry = ParseMqttLog(mqttEvent);
                     if (logEntry != null)
                     {
-                        var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                        LogCollected?.Invoke(this, normalizedEntry);
+                        LogCollected?.Invoke(this, logEntry);
                     }
                 }
             }
@@ -541,8 +593,7 @@ namespace AthalaSIEM.Agent.Collectors
                     var logEntry = ParseOpcUaLog(opcEvent);
                     if (logEntry != null)
                     {
-                        var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                        LogCollected?.Invoke(this, normalizedEntry);
+                        LogCollected?.Invoke(this, logEntry);
                     }
                 }
             }
@@ -564,8 +615,7 @@ namespace AthalaSIEM.Agent.Collectors
                     var logEntry = ParseScadaLog(scadaEvent);
                     if (logEntry != null)
                     {
-                        var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                        LogCollected?.Invoke(this, normalizedEntry);
+                        LogCollected?.Invoke(this, logEntry);
                     }
                 }
             }
@@ -587,8 +637,7 @@ namespace AthalaSIEM.Agent.Collectors
                     var logEntry = ParseSensorLog(sensorEvent);
                     if (logEntry != null)
                     {
-                        var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                        LogCollected?.Invoke(this, normalizedEntry);
+                        LogCollected?.Invoke(this, logEntry);
                     }
                 }
             }
@@ -888,7 +937,7 @@ namespace AthalaSIEM.Agent.Collectors
                     event_type = "alarm",
                     alarm_level = "Warning",
                     description = "High temperature detected in zone 3",
-                    operator = "operator1"
+                    @operator = "operator1"
                 }
             };
         }

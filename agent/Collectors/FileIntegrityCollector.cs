@@ -63,6 +63,17 @@ namespace AthalaSIEM.Agent.Collectors
         public string CollectorType => "FileIntegrity";
 
         /// <summary>
+        /// Gets the status of the collector
+        /// </summary>
+        public CollectorStatus Status => _isRunning ? (_isPaused ? CollectorStatus.Paused : CollectorStatus.Running) : 
+                                        (!string.IsNullOrEmpty(_errorMessage) ? CollectorStatus.Error : CollectorStatus.Stopped);
+
+        /// <summary>
+        /// Gets the error message if the collector is in an error state
+        /// </summary>
+        public string ErrorMessage => _errorMessage;
+
+        /// <summary>
         /// Gets a value indicating whether the collector is running
         /// </summary>
         public bool IsRunning => _isRunning;
@@ -71,11 +82,6 @@ namespace AthalaSIEM.Agent.Collectors
         /// Gets a value indicating whether the collector is paused
         /// </summary>
         public bool IsPaused => _isPaused;
-
-        /// <summary>
-        /// Gets the last error message
-        /// </summary>
-        public string LastError => _errorMessage;
 
         /// <summary>
         /// Gets the collector settings
@@ -92,7 +98,8 @@ namespace AthalaSIEM.Agent.Collectors
         /// Initializes the collector with the specified settings
         /// </summary>
         /// <param name="settings">Collector settings</param>
-        public void Initialize(CollectorSettings settings)
+        /// <returns>True if initialization was successful, otherwise false</returns>
+        public bool Initialize(CollectorSettings settings)
         {
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _logger.LogInformation("Initializing Enhanced File Integrity Collector");
@@ -103,12 +110,13 @@ namespace AthalaSIEM.Agent.Collectors
                 InitializePathCategories();
                 _logger.LogInformation("Enhanced FIM initialized - Paths: {Count}, Real-time: {RealTime}, Multi-collector: {MultiCollector}", 
                     _monitoredPaths.Count, _realTimeMonitoring, _enableMultiCollectorIntegration);
+                return true;
             }
             catch (Exception ex)
             {
                 _errorMessage = ex.Message;
                 _logger.LogError(ex, "Failed to initialize Enhanced File Integrity Collector");
-                throw;
+                return false;
             }
         }
 
@@ -189,7 +197,7 @@ namespace AthalaSIEM.Agent.Collectors
         /// <summary>
         /// Pauses the collector
         /// </summary>
-        public void Pause()
+        public Task PauseAsync()
         {
             _isPaused = true;
             foreach (var watcher in _watchers.Values)
@@ -197,12 +205,13 @@ namespace AthalaSIEM.Agent.Collectors
                 watcher.EnableRaisingEvents = false;
             }
             _logger.LogInformation("Enhanced File Integrity Collector paused");
+            return Task.CompletedTask;
         }
 
         /// <summary>
         /// Resumes the collector
         /// </summary>
-        public void Resume()
+        public Task ResumeAsync()
         {
             _isPaused = false;
             foreach (var watcher in _watchers.Values)
@@ -210,6 +219,34 @@ namespace AthalaSIEM.Agent.Collectors
                 watcher.EnableRaisingEvents = true;
             }
             _logger.LogInformation("Enhanced File Integrity Collector resumed");
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Collects logs on demand
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>The number of logs collected</returns>
+        public async Task<int> CollectLogsAsync(CancellationToken cancellationToken)
+        {
+            if (_isPaused || !_isRunning)
+                return 0;
+
+            int collectedCount = 0;
+
+            try
+            {
+                await PerformFullScanAsync();
+                collectedCount = _eventBuffer.Count;
+                ProcessEventBatch(null);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error collecting file integrity logs");
+                _errorMessage = ex.Message;
+            }
+
+            return collectedCount;
         }
 
         /// <summary>

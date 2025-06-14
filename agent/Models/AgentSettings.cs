@@ -147,7 +147,7 @@ namespace AthalaSIEM.Agent.Models
         /// <summary>
         /// Type of collector (e.g., WindowsEventLog, LinuxSyslog)
         /// </summary>
-        public required string Type { get; set; }
+        public string Type { get; set; } = string.Empty;
 
         /// <summary>
         /// Whether the collector is enabled

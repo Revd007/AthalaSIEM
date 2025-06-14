@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Text.RegularExpressions;
 using System.Net.Http;
 using System.Diagnostics;
+using System.Linq;
 
 namespace AthalaSIEM.Agent.Collectors
 {
@@ -39,9 +40,11 @@ namespace AthalaSIEM.Agent.Collectors
 
         public event EventHandler<NormalizedLogEntry>? LogCollected;
         public string CollectorType => "Container";
+        public CollectorStatus Status => _isRunning ? (_isPaused ? CollectorStatus.Paused : CollectorStatus.Running) : 
+                                        (!string.IsNullOrEmpty(_errorMessage) ? CollectorStatus.Error : CollectorStatus.Stopped);
+        public string ErrorMessage => _errorMessage;
         public bool IsRunning => _isRunning;
         public bool IsPaused => _isPaused;
-        public string LastError => _errorMessage;
         public CollectorSettings Settings => _settings;
 
         public ContainerCollector(ILogger<ContainerCollector> logger, ILogNormalizer normalizer)
@@ -50,7 +53,7 @@ namespace AthalaSIEM.Agent.Collectors
             _normalizer = normalizer ?? throw new ArgumentNullException(nameof(normalizer));
         }
 
-        public void Initialize(CollectorSettings settings)
+        public bool Initialize(CollectorSettings settings)
         {
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _logger.LogInformation("Initializing Container Collector");
@@ -60,12 +63,13 @@ namespace AthalaSIEM.Agent.Collectors
                 ParseSettings();
                 _logger.LogInformation("Container Collector initialized - Docker: {Docker}, K8s: {K8s}", 
                     _enableDockerLogs, _enableKubernetesLogs);
+                return true;
             }
             catch (Exception ex)
             {
                 _errorMessage = ex.Message;
                 _logger.LogError(ex, "Failed to initialize Container Collector");
-                throw;
+                return false;
             }
         }
 
@@ -126,16 +130,55 @@ namespace AthalaSIEM.Agent.Collectors
             }
         }
 
-        public void Pause()
+        public Task PauseAsync()
         {
             _isPaused = true;
             _logger.LogInformation("Container Collector paused");
+            return Task.CompletedTask;
         }
 
-        public void Resume()
+        public Task ResumeAsync()
         {
             _isPaused = false;
             _logger.LogInformation("Container Collector resumed");
+            return Task.CompletedTask;
+        }
+
+        public async Task<int> CollectLogsAsync(CancellationToken cancellationToken)
+        {
+            if (_isPaused || !_isRunning)
+                return 0;
+
+            int collectedCount = 0;
+
+            try
+            {
+                if (_enableDockerLogs)
+                {
+                    await CollectDockerContainerLogs();
+                    collectedCount++;
+                }
+
+                if (_enableKubernetesLogs)
+                {
+                    await CollectKubernetesPodLogs();
+                    collectedCount++;
+                }
+
+                if (_enableContainerEvents)
+                {
+                    await CollectDockerEvents();
+                    await CollectKubernetesEvents();
+                    collectedCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error collecting container logs");
+                _errorMessage = ex.Message;
+            }
+
+            return collectedCount;
         }
 
         private void ParseSettings()
@@ -349,8 +392,7 @@ namespace AthalaSIEM.Agent.Collectors
                     var logEntry = ParseContainerLogLine(line, containerName, stream);
                     if (logEntry != null)
                     {
-                        var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                        LogCollected?.Invoke(this, normalizedEntry);
+                        LogCollected?.Invoke(this, logEntry);
                     }
                 }
                 catch (Exception ex)
@@ -410,8 +452,7 @@ namespace AthalaSIEM.Agent.Collectors
                     var logEntry = ParseKubernetesLogLine(line, podName, namespace_, containerName);
                     if (logEntry != null)
                     {
-                        var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                        LogCollected?.Invoke(this, normalizedEntry);
+                        LogCollected?.Invoke(this, logEntry);
                     }
                 }
             }
@@ -446,8 +487,7 @@ namespace AthalaSIEM.Agent.Collectors
                     var logEntry = ParseDockerEvent(eventLine);
                     if (logEntry != null)
                     {
-                        var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                        LogCollected?.Invoke(this, normalizedEntry);
+                        LogCollected?.Invoke(this, logEntry);
                     }
                 }
             }
@@ -621,8 +661,7 @@ namespace AthalaSIEM.Agent.Collectors
                     var logEntry = ParseKubernetesEvent(eventElement);
                     if (logEntry != null)
                     {
-                        var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                        LogCollected?.Invoke(this, normalizedEntry);
+                        LogCollected?.Invoke(this, logEntry);
                     }
                 }
             }

@@ -11,7 +11,6 @@ using AthalaSIEM.Agent.Models;
 using AthalaSIEM.Agent.Collectors;
 using AthalaSIEM.Agent.Communication;
 using AthalaSIEM.Agent.Security;
-using AthalaSIEM.Agent.Configuration;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
@@ -460,22 +459,23 @@ namespace AthalaSIEM.Agent
         private static async Task ShowConfigurationUI(IServiceProvider services, string token = "")
         {
             var logger = services.GetRequiredService<ILogger<Program>>();
-            logger.LogInformation("Showing configuration UI{0}", 
+            logger.LogInformation("Configuration UI requested{0}", 
                 !string.IsNullOrEmpty(token) ? " with deployment token" : "");
             
-            var configLauncher = services.GetRequiredService<AgentConfigurationLauncher>();
+            // Since we removed the Windows Forms configuration UI, just log the request
+            // In a production environment, you might want to implement a console-based configuration
+            // or web-based configuration interface
             
-            // Use the token-enabled method if a token is provided
-            bool isConfigured = await configLauncher.ShowConfigurationFormAsync(token, true);
+            Console.WriteLine("Configuration UI is not available in this version.");
+            Console.WriteLine("Please configure the agent by editing the appsettings.json file directly.");
             
-            if (isConfigured)
+            if (!string.IsNullOrEmpty(token))
             {
-                logger.LogInformation("Agent successfully configured");
+                Console.WriteLine($"Deployment token provided: {token}");
+                Console.WriteLine("You can use this token to configure the agent manually.");
             }
-            else
-            {
-                logger.LogWarning("Agent configuration incomplete. Agent may not function correctly.");
-            }
+            
+            logger.LogInformation("Configuration UI request completed");
         }
         
         /// <summary>
@@ -561,9 +561,6 @@ namespace AthalaSIEM.Agent
                     services.AddSingleton<IEncryptionService, AesEncryptionService>();
                     services.AddSingleton<ILogForwarder, GrpcLogForwarder>();
                     
-                    // Register configuration UI services
-                    services.AddSingleton<AgentConfigurationLauncher>();
-
                     // Register and initialize log collectors
                     var collectors = agentSettings?.Collectors ?? new List<CollectorSettings>();
                     foreach (var collectorConfig in collectors)
@@ -817,9 +814,6 @@ namespace AthalaSIEM.Agent
             services.AddSingleton<IEncryptionService, AesEncryptionService>();
             services.AddSingleton<ILogForwarder, GrpcLogForwarder>();
             
-            // Register configuration UI services
-            services.AddSingleton<AgentConfigurationLauncher>();
-
             // Register and initialize log collectors
             var collectors = agentSettings?.Collectors ?? new List<CollectorSettings>();
             foreach (var collectorConfig in collectors)

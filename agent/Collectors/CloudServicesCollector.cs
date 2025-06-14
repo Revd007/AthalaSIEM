@@ -2,6 +2,8 @@ using AthalaSIEM.Agent.Models;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
@@ -53,10 +55,9 @@ namespace AthalaSIEM.Agent.Collectors
 
         public event EventHandler<NormalizedLogEntry>? LogCollected;
         public string CollectorType => "CloudServices";
-        public bool IsRunning => _isRunning;
-        public bool IsPaused => _isPaused;
-        public string LastError => _errorMessage;
-        public CollectorSettings Settings => _settings;
+        public CollectorStatus Status => _isRunning ? (_isPaused ? CollectorStatus.Paused : CollectorStatus.Running) : 
+                                        (!string.IsNullOrEmpty(_errorMessage) ? CollectorStatus.Error : CollectorStatus.Stopped);
+        public string ErrorMessage => _errorMessage;
 
         public CloudServicesCollector(ILogger<CloudServicesCollector> logger, ILogNormalizer normalizer)
         {
@@ -65,7 +66,7 @@ namespace AthalaSIEM.Agent.Collectors
             _httpClient = new HttpClient();
         }
 
-        public void Initialize(CollectorSettings settings)
+        public bool Initialize(CollectorSettings settings)
         {
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _logger.LogInformation("Initializing Cloud Services Collector");
@@ -75,12 +76,13 @@ namespace AthalaSIEM.Agent.Collectors
                 ParseSettings();
                 _logger.LogInformation("Cloud Services Collector initialized - AWS: {AWS}, Azure: {Azure}, GCP: {GCP}", 
                     _enableAwsCloudTrail, _enableAzureActivityLogs, _enableGcpAuditLogs);
+                return true;
             }
             catch (Exception ex)
             {
                 _errorMessage = ex.Message;
                 _logger.LogError(ex, "Failed to initialize Cloud Services Collector");
-                throw;
+                return false;
             }
         }
 
@@ -141,16 +143,56 @@ namespace AthalaSIEM.Agent.Collectors
             }
         }
 
-        public void Pause()
+        public Task PauseAsync()
         {
             _isPaused = true;
             _logger.LogInformation("Cloud Services Collector paused");
+            return Task.CompletedTask;
         }
 
-        public void Resume()
+        public Task ResumeAsync()
         {
             _isPaused = false;
             _logger.LogInformation("Cloud Services Collector resumed");
+            return Task.CompletedTask;
+        }
+
+        public async Task<int> CollectLogsAsync(CancellationToken cancellationToken)
+        {
+            if (_isPaused || !_isRunning)
+                return 0;
+
+            int collectedCount = 0;
+
+            try
+            {
+                if (_enableAwsCloudTrail || _enableAwsS3Logs)
+                {
+                    await CollectAwsCloudTrailLogs();
+                    if (_enableAwsS3Logs)
+                        await CollectAwsS3Logs();
+                    collectedCount++;
+                }
+
+                if (_enableAzureActivityLogs)
+                {
+                    await CollectAzureActivityLogs();
+                    collectedCount++;
+                }
+
+                if (_enableGcpAuditLogs)
+                {
+                    await CollectGcpAuditLogs();
+                    collectedCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error collecting cloud service logs");
+                _errorMessage = ex.Message;
+            }
+
+            return collectedCount;
         }
 
         private void ParseSettings()
@@ -342,8 +384,7 @@ namespace AthalaSIEM.Agent.Collectors
                     var logEntry = ParseAwsCloudTrailEvent(awsEvent);
                     if (logEntry != null)
                     {
-                        var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                        LogCollected?.Invoke(this, normalizedEntry);
+                        LogCollected?.Invoke(this, logEntry);
                     }
                 }
             }
@@ -368,8 +409,7 @@ namespace AthalaSIEM.Agent.Collectors
                     var logEntry = ParseAwsS3Event(s3Event);
                     if (logEntry != null)
                     {
-                        var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                        LogCollected?.Invoke(this, normalizedEntry);
+                        LogCollected?.Invoke(this, logEntry);
                     }
                 }
             }
@@ -393,8 +433,7 @@ namespace AthalaSIEM.Agent.Collectors
                     var logEntry = ParseAzureActivityEvent(azureEvent);
                     if (logEntry != null)
                     {
-                        var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                        LogCollected?.Invoke(this, normalizedEntry);
+                        LogCollected?.Invoke(this, logEntry);
                     }
                 }
             }
@@ -418,8 +457,7 @@ namespace AthalaSIEM.Agent.Collectors
                     var logEntry = ParseGcpAuditEvent(gcpEvent);
                     if (logEntry != null)
                     {
-                        var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                        LogCollected?.Invoke(this, normalizedEntry);
+                        LogCollected?.Invoke(this, logEntry);
                     }
                 }
             }

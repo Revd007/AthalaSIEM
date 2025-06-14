@@ -49,9 +49,11 @@ namespace AthalaSIEM.Agent.Collectors
         
         public event EventHandler<NormalizedLogEntry>? LogCollected;
         public string CollectorType => "Syslog";
+        public CollectorStatus Status => _isRunning ? (_isPaused ? CollectorStatus.Paused : CollectorStatus.Running) : 
+                                        (!string.IsNullOrEmpty(_errorMessage) ? CollectorStatus.Error : CollectorStatus.Stopped);
+        public string ErrorMessage => _errorMessage;
         public bool IsRunning => _isRunning;
         public bool IsPaused => _isPaused;
-        public string LastError => _errorMessage;
         public CollectorSettings Settings => _settings;
 
         public SyslogCollector(ILogger<SyslogCollector> logger, ILogNormalizer normalizer)
@@ -62,7 +64,7 @@ namespace AthalaSIEM.Agent.Collectors
             InitializeDevicePatterns();
         }
 
-        public void Initialize(CollectorSettings settings)
+        public bool Initialize(CollectorSettings settings)
         {
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _logger.LogInformation("Initializing Universal Syslog Collector");
@@ -72,12 +74,13 @@ namespace AthalaSIEM.Agent.Collectors
                 ParseSettings();
                 _logger.LogInformation("Universal Syslog Collector initialized - UDP: {UdpEnabled}:{UdpPort}, TCP: {TcpEnabled}:{TcpPort}", 
                     _enableUdp, _udpPort, _enableTcp, _tcpPort);
+                return true;
             }
             catch (Exception ex)
             {
                 _errorMessage = ex.Message;
                 _logger.LogError(ex, "Failed to initialize Universal Syslog Collector");
-                throw;
+                return false;
             }
         }
 
@@ -140,16 +143,28 @@ namespace AthalaSIEM.Agent.Collectors
             }
         }
 
-        public void Pause()
+        public Task PauseAsync()
         {
             _isPaused = true;
             _logger.LogInformation("Universal Syslog Collector paused");
+            return Task.CompletedTask;
         }
 
-        public void Resume()
+        public Task ResumeAsync()
         {
             _isPaused = false;
             _logger.LogInformation("Universal Syslog Collector resumed");
+            return Task.CompletedTask;
+        }
+
+        public async Task<int> CollectLogsAsync(CancellationToken cancellationToken)
+        {
+            if (_isPaused || !_isRunning)
+                return 0;
+
+            // For syslog collector, we don't actively collect logs on demand
+            // Instead, we return the count of messages currently in the queue
+            return _messageQueue.Count;
         }
 
         private void ParseSettings()
@@ -378,7 +393,7 @@ namespace AthalaSIEM.Agent.Collectors
 
             var deviceType = DetectDeviceType(hostname, appName, rawMessage);
 
-            return new NormalizedLogEntry
+            var logEntry = new NormalizedLogEntry
             {
                 Id = Guid.NewGuid().ToString(),
                 Timestamp = ParseTimestamp(timestamp),
@@ -408,6 +423,9 @@ namespace AthalaSIEM.Agent.Collectors
                 Tags = new List<string> { "syslog", protocol.ToLower(), deviceType.Type, GetFacilityName(facility) },
                 Severity = GetSeverityLevel(severity)
             };
+
+            LogCollected?.Invoke(this, logEntry);
+            return logEntry;
         }
 
         private NormalizedLogEntry ParseRfc3164Message(Match match, string rawMessage, string sourceIp, string protocol)
@@ -422,7 +440,7 @@ namespace AthalaSIEM.Agent.Collectors
 
             var deviceType = DetectDeviceType(hostname, "", rawMessage);
 
-            return new NormalizedLogEntry
+            var logEntry = new NormalizedLogEntry
             {
                 Id = Guid.NewGuid().ToString(),
                 Timestamp = ParseTimestamp(timestamp),
@@ -449,13 +467,16 @@ namespace AthalaSIEM.Agent.Collectors
                 Tags = new List<string> { "syslog", protocol.ToLower(), deviceType.Type, GetFacilityName(facility) },
                 Severity = GetSeverityLevel(severity)
             };
+
+            LogCollected?.Invoke(this, logEntry);
+            return logEntry;
         }
 
         private NormalizedLogEntry ParseNonStandardMessage(string message, string sourceIp, string protocol)
         {
             var deviceType = DetectDeviceType("", "", message);
 
-            return new NormalizedLogEntry
+            var logEntry = new NormalizedLogEntry
             {
                 Id = Guid.NewGuid().ToString(),
                 Timestamp = DateTime.UtcNow,
@@ -476,6 +497,9 @@ namespace AthalaSIEM.Agent.Collectors
                 Tags = new List<string> { "syslog", protocol.ToLower(), deviceType.Type, "nonstandard" },
                 Severity = "Medium"
             };
+
+            LogCollected?.Invoke(this, logEntry);
+            return logEntry;
         }
 
         private DeviceTypeInfo DetectDeviceType(string hostname, string appName, string message)
@@ -617,8 +641,7 @@ namespace AthalaSIEM.Agent.Collectors
                 {
                     if (_messageQueue.TryDequeue(out var logEntry))
                     {
-                        var normalizedEntry = _normalizer.NormalizeLogEntry(logEntry);
-                        LogCollected?.Invoke(this, normalizedEntry);
+                        LogCollected?.Invoke(this, logEntry);
                     }
                     else
                     {
