@@ -62,7 +62,7 @@ namespace Backend.Services
             // Ensure archive directory exists
             if (!string.IsNullOrEmpty(_archiveDirectory))
             {
-                Directory.CreateDirectory(_archiveDirectory);
+            Directory.CreateDirectory(_archiveDirectory);
             }
         }
 
@@ -131,7 +131,7 @@ namespace Backend.Services
                 {
                     var fileInfo = new FileInfo(filePath);
                     var fileName = fileInfo.Name;
-                    
+
                     // Parse collector type from filename (assuming format: CollectorType_YYYYMMDD_HHMMSS.json.gz)
                     var fileCollectorType = ExtractCollectorTypeFromFileName(fileName);
                     
@@ -245,8 +245,8 @@ namespace Backend.Services
                     ? files 
                     : files.Where(f => f.CollectorType == collectorType);
 
-                var summary = new ArchiveStatisticsSummary
-                {
+                    var summary = new ArchiveStatisticsSummary
+                    {
                     TotalArchives = filteredFiles.Count(),
                     TotalArchivedLogs = filteredFiles.Sum(f => f.LogCount),
                     TotalCompressedSize = filteredFiles.Sum(f => f.Size),
@@ -269,9 +269,9 @@ namespace Backend.Services
                         TotalUncompressedSize = group.Sum(f => f.Size * 10), // Estimated
                         LastArchiveDate = group.Max(f => f.CreatedAt)
                     };
-                }
+                    }
 
-                return summary;
+                    return summary;
             }
             catch (Exception ex)
             {
@@ -289,12 +289,15 @@ namespace Backend.Services
 
             var cutoffDate = DateTime.UtcNow - _retentionPeriod;
 
-            // Get distinct collector types from logs
-            var collectorTypes = await context.LogEntries
+            // Get distinct sources from logs first, then convert to collector types
+            var sources = await context.LogEntries
                 .Where(l => l.Timestamp < cutoffDate)
-                .Select(l => GetCollectorTypeFromSource(l.Source))
+                .Select(l => l.Source)
                 .Distinct()
                 .ToListAsync();
+
+            // Convert sources to collector types on the client side
+            var collectorTypes = sources.Select(GetCollectorTypeFromSource).Distinct().ToList();
 
             foreach (var collectorType in collectorTypes)
             {
@@ -575,42 +578,42 @@ namespace Backend.Services
             return new Dictionary<string, CollectorArchiveSettings>
             {
                 ["Container"] = new CollectorArchiveSettings
-                {
-                    EnableCompression = true,
+            {
+                EnableCompression = true,
                     IncludeDetails = false,
-                    IncludeCategory = true,
-                    CompressMessages = true,
+                IncludeCategory = true,
+                CompressMessages = true,
                     RetentionDays = 90
                 },
                 ["CloudServices"] = new CollectorArchiveSettings
-                {
-                    EnableCompression = true,
-                    IncludeDetails = true,
-                    IncludeCategory = true,
+            {
+                EnableCompression = true,
+                IncludeDetails = true,
+                IncludeCategory = true,
                     CompressMessages = false,
                     RetentionDays = 180
                 },
                 ["Database"] = new CollectorArchiveSettings
-                {
-                    EnableCompression = true,
-                    IncludeDetails = true,
-                    IncludeCategory = true,
+            {
+                EnableCompression = true,
+                IncludeDetails = true,
+                IncludeCategory = true,
                     CompressMessages = false,
                     RetentionDays = 365
                 },
                 ["IoT"] = new CollectorArchiveSettings
-                {
-                    EnableCompression = true,
+            {
+                EnableCompression = true,
                     IncludeDetails = false,
                     IncludeCategory = false,
-                    CompressMessages = true,
+                CompressMessages = true,
                     RetentionDays = 30
                 },
                 ["FileIntegrity"] = new CollectorArchiveSettings
-                {
-                    EnableCompression = true,
-                    IncludeDetails = true,
-                    IncludeCategory = true,
+            {
+                EnableCompression = true,
+                IncludeDetails = true,
+                IncludeCategory = true,
                     CompressMessages = false,
                     RetentionDays = 730
                 }

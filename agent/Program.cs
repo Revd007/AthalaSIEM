@@ -121,8 +121,8 @@ namespace AthalaSIEM.Agent
 },
 ""Agent"": {
   ""AgentName"": ""AthalaSIEM Agent"",
-  ""BackendApiUrl"": ""https://localhost:9596"",
-  ""BackendGrpcUrl"": ""https://localhost:50051""
+  ""BackendApiUrl"": ""http://localhost:9595"",
+  ""BackendGrpcUrl"": ""http://localhost:9595""
 }
 }";
                     File.WriteAllText(fallbackConfigPath, minimalConfig);
@@ -157,8 +157,8 @@ namespace AthalaSIEM.Agent
   },
   ""Agent"": {
     ""AgentName"": ""AthalaSIEM Agent"",
-    ""BackendApiUrl"": ""https://localhost:9596"",
-    ""BackendGrpcUrl"": ""https://localhost:50051""
+    ""BackendApiUrl"": ""http://localhost:9595"",
+    ""BackendGrpcUrl"": ""http://localhost:9595""
   }
 }";
                             File.WriteAllText(fallbackPath, minimalConfig);
@@ -650,7 +650,7 @@ namespace AthalaSIEM.Agent
                     services.AddGrpcClient<SiemService.SiemServiceClient>((services, options) =>
                     {
                         var settings = hostContext.Configuration.GetSection("Agent").Get<AgentSettings>();
-                        options.Address = new Uri(settings?.BackendGrpcUrl ?? "https://localhost:9596");
+                        options.Address = new Uri(settings?.BackendGrpcUrl ?? "http://localhost:9595");
                     })
                     .ConfigurePrimaryHttpMessageHandler(() =>
                     {
@@ -659,6 +659,20 @@ namespace AthalaSIEM.Agent
                             ServerCertificateCustomValidationCallback = 
                                 HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
                         };
+                    })
+                    .ConfigureChannel(options =>
+                    {
+                        // Configure for HTTP/2 gRPC communication
+                        options.HttpHandler = new SocketsHttpHandler
+                        {
+                            KeepAlivePingDelay = TimeSpan.FromSeconds(60),
+                            KeepAlivePingTimeout = TimeSpan.FromSeconds(30),
+                            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
+                            EnableMultipleHttp2Connections = true
+                        };
+                        
+                        // Allow insecure connections for development
+                        options.UnsafeUseInsecureChannelCallCredentials = true;
                     })
                     .AddPolicyHandler(GetRetryPolicy());
 
@@ -903,7 +917,7 @@ namespace AthalaSIEM.Agent
             services.AddGrpcClient<SiemService.SiemServiceClient>((services, options) =>
             {
                 var settings = configuration.GetSection("Agent").Get<AgentSettings>();
-                options.Address = new Uri(settings?.BackendGrpcUrl ?? "https://localhost:9596");
+                options.Address = new Uri(settings?.BackendGrpcUrl ?? "http://localhost:9595");
             })
             .ConfigurePrimaryHttpMessageHandler(() =>
             {
@@ -912,6 +926,20 @@ namespace AthalaSIEM.Agent
                     ServerCertificateCustomValidationCallback = 
                         HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
                 };
+            })
+            .ConfigureChannel(options =>
+            {
+                // Configure for HTTP/2 gRPC communication
+                options.HttpHandler = new SocketsHttpHandler
+                {
+                    KeepAlivePingDelay = TimeSpan.FromSeconds(60),
+                    KeepAlivePingTimeout = TimeSpan.FromSeconds(30),
+                    PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
+                    EnableMultipleHttp2Connections = true
+                };
+                
+                // Allow insecure connections for development
+                options.UnsafeUseInsecureChannelCallCredentials = true;
             })
             .AddPolicyHandler(GetRetryPolicy());
         }

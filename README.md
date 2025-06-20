@@ -86,7 +86,7 @@ cd "C:\Program Files\AthalaSIEM\Agent"
 ```
 
 #### Linux
-```bash
+   ```bash
 # Download and extract
 wget https://github.com/yourusername/AthalaSIEM/releases/latest/download/athala-agent-linux-x64.tar.gz
 sudo tar -xzf athala-agent-linux-x64.tar.gz -C /opt/athala-agent
@@ -100,7 +100,7 @@ sudo systemctl enable athala-agent
 
 Edit `appsettings.json`:
 
-```json
+   ```json
 {
   "AgentSettings": {
     "AgentName": "Production-Agent-01",
@@ -146,7 +146,7 @@ Start-Service "AthalaSIEM Agent"
 ```
 
 #### Linux
-```bash
+   ```bash
 # Start as service
 sudo systemctl start athala-agent
 
@@ -196,7 +196,7 @@ sudo systemctl start athala-agent
 
 ### Environment Variables
 
-```bash
+   ```bash
 # Database
 ATHALA_DB_CONNECTION="Server=localhost;Database=AthalaSIEM;Trusted_Connection=true;"
 
@@ -275,7 +275,7 @@ ATHALA_GRPC_TLS="true"
 
 ### 1. Build for Production
 
-```bash
+   ```bash
 dotnet publish -c Release -o ./publish
 ```
 
@@ -289,7 +289,7 @@ EXPOSE 80 443 50051
 ENTRYPOINT ["dotnet", "AthalaSIEM.Backend.dll"]
 ```
 
-```bash
+   ```bash
 docker build -t athala-siem-backend .
 docker run -d -p 9595:80 -p 9596:443 -p 50051:50051 athala-siem-backend
 ```
@@ -305,13 +305,13 @@ docker run -d -p 9595:80 -p 9596:443 -p 50051:50051 athala-siem-backend
 ### 4. Cloud Deployment
 
 #### Azure App Service
-```bash
+   ```bash
 az webapp create --resource-group myResourceGroup --plan myAppServicePlan --name athala-siem-backend --runtime "DOTNETCORE|8.0"
 az webapp deployment source config-zip --resource-group myResourceGroup --name athala-siem-backend --src publish.zip
-```
+   ```
 
 #### AWS Elastic Beanstalk
-```bash
+   ```bash
 eb init athala-siem-backend --platform "64bit Amazon Linux 2 v2.2.0 running .NET Core"
 eb create production
 eb deploy
@@ -380,17 +380,17 @@ eb deploy
 ## 🧪 Testing
 
 ### Unit Tests
-```bash
+   ```bash
 dotnet test --configuration Release --logger trx --results-directory TestResults
-```
+   ```
 
 ### Integration Tests
-```bash
+   ```bash
 dotnet test --configuration Release --filter Category=Integration
-```
+   ```
 
 ### Load Testing
-```bash
+   ```bash
 # Using NBomber for load testing
 dotnet run --project LoadTests --configuration Release
 ```

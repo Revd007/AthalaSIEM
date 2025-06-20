@@ -22,7 +22,7 @@ namespace AthalaSIEM.Agent.Models
         /// <summary>
         /// Backend gRPC URL
         /// </summary>
-        public string BackendGrpcUrl { get; set; } = "https://localhost:50051";
+        public string BackendGrpcUrl { get; set; } = "http://localhost:9595";
 
         /// <summary>
         /// Backend URL (for backward compatibility)

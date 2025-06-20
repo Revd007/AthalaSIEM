@@ -31,6 +31,9 @@ using Serilog.Events;
 using Microsoft.Extensions.Options;
 using Swashbuckle.AspNetCore.Filters;
 
+// Enable HTTP/2 over HTTP (without TLS) for gRPC
+AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure logging
@@ -187,11 +190,20 @@ builder.Services.AddAuthorization(options =>
               .RequireClaim("permission", "agent:read"));
 });
 
-// Configure Kestrel - Force HTTP only
+// Configure Kestrel - Support HTTP/2 over HTTP for gRPC
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
-    // Configure HTTP endpoint only
+    // Configure HTTP endpoint with HTTP/2 support for gRPC
     serverOptions.ListenAnyIP(9595, listenOptions =>
+    {
+        listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
+        
+        // Enable HTTP/2 over HTTP (without TLS) for gRPC
+        listenOptions.UseConnectionLogging();
+    });
+    
+    // Allow HTTP/2 over HTTP (insecure) for development
+    serverOptions.ConfigureEndpointDefaults(listenOptions =>
     {
         listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
     });

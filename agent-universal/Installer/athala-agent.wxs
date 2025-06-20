@@ -42,7 +42,7 @@
     <!-- Define the components to install -->
     <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
       <Component Id="AgentExecutable" Guid="0d615a60-cf57-40e2-bce5-6ef5327db491">
-        <File Id="AgentEXE" Source="$(var.SourceDir)\AthalaSIEM.Agent.exe" KeyPath="yes" />
+        <File Id="AgentEXE" Source="$(var.SourceDir)\athala-agent.exe" KeyPath="yes" />
 
         <!-- Create Windows Service but don't start it -->
         <ServiceInstall Id="ServiceInstaller"
@@ -73,9 +73,9 @@
 
       <!-- Application path registry -->
       <Component Id="AppPathRegistry" Guid="0d615a60-cf57-40e2-bce5-6ef5327db498">
-        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\AthalaSIEM.Agent.exe"
-                      Value="[INSTALLFOLDER]AthalaSIEM.Agent.exe" Type="string" KeyPath="yes" />
-        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\AthalaSIEM.Agent.exe"
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\athala-agent.exe"
+                      Value="[INSTALLFOLDER]athala-agent.exe" Type="string" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\athala-agent.exe"
                       Name="Path" Value="[INSTALLFOLDER]" Type="string" />
       </Component>
 
@@ -92,7 +92,7 @@
         <Shortcut Id="ConfigureAgentShortcut"
                   Name="Configure Athala SIEM Agent"
                   Description="Configure Athala SIEM Agent settings"
-                  Target="[INSTALLFOLDER]AthalaSIEM.Agent.exe"
+                  Target="[INSTALLFOLDER]athala-agent.exe"
                   Arguments="--config"
                   WorkingDirectory="INSTALLFOLDER" />
 
@@ -195,7 +195,7 @@
     </UI>
 
     <!-- Icon for application -->
-    <Icon Id="AthalaSIEMIcon.ico" SourceFile="$(var.SourceDir)\AthalaSIEM.Agent.exe" />
+    <Icon Id="AthalaSIEMIcon.ico" SourceFile="$(var.SourceDir)\athala-agent.exe" />
     <Property Id="ARPPRODUCTICON" Value="AthalaSIEMIcon.ico" />
 
     <!-- Feature Definition -->

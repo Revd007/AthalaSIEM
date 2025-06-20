@@ -616,8 +616,8 @@ namespace Backend.Services
                     {
                         Type = "FileIntegrityViolation",
                         Value = "File integrity check failed",
-                        Source = "FileIntegrity",
-                        Confidence = 0.9,
+                            Source = "FileIntegrity",
+                            Confidence = 0.9,
                         Severity = "High"
                     });
                 }
@@ -629,10 +629,10 @@ namespace Backend.Services
                     {
                         Type = "UnauthorizedFileChange",
                         Value = "Unauthorized file modification detected",
-                        Source = "FileIntegrity",
+                            Source = "FileIntegrity",
                         Confidence = 0.8,
                         Severity = "Medium"
-                    });
+                        });
                 }
 
                 // Check for system file changes
@@ -666,9 +666,9 @@ namespace Backend.Services
             try
             {
                 // Extract potential IOCs from log entry
-                var message = logEntry.Message ?? "";
-                var details = logEntry.Details ?? "";
-                
+            var message = logEntry.Message ?? "";
+            var details = logEntry.Details ?? "";
+            
                 // Check for IP addresses
                 var ipPattern = @"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b";
                 var ipMatches = System.Text.RegularExpressions.Regex.Matches(message + " " + details, ipPattern);
@@ -684,15 +684,15 @@ namespace Backend.Services
                         {
                             var threat = _threatCache[key];
                             result.Indicators.Add(new ThreatIndicatorMatch
-                            {
-                                Type = "MaliciousIP",
+                    {
+                        Type = "MaliciousIP",
                                 Value = ipAddress,
                                 Source = threat.Source ?? "ThreatIntel",
                                 Confidence = 0.9,
                                 Severity = threat.Severity
-                            });
-                        }
-                    }
+                    });
+                }
+            }
                 }
 
                 // Check for domain names
@@ -1404,9 +1404,9 @@ namespace Backend.Services
                         Source = "General",
                         Confidence = 0.6,
                         Severity = "Medium"
-                    });
-                }
-            }
+            });
+        }
+    }
 
             result.CollectorSpecificAnalysis["General"] = new
             {
