@@ -3,14 +3,24 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using AthalaSIEM.UniversalAgent;
+using AthalaSIEM.Agent.Core;
+using AthalaSIEM.UniversalAgent.Services;
 using System.ServiceProcess;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Threading;
 
 namespace AthalaSIEM.UniversalAgent
 {
+    public class CollectorConfiguration
+    {
+        public string Type { get; set; } = "";
+        public bool Enabled { get; set; } = true;
+        public Dictionary<string, object> Properties { get; set; } = new();
+    }
+
     public class Program
     {
         public static void Main(string[] args)
@@ -25,7 +35,7 @@ namespace AthalaSIEM.UniversalAgent
                         return;
                     case "--console":
                     case "-c":
-                        RunConsoleMode();
+                        RunConsoleMode(args);
                         return;
                     case "--install":
                         InstallService();
@@ -35,6 +45,9 @@ namespace AthalaSIEM.UniversalAgent
                         return;
                     case "--test-connection":
                         TestConnection();
+                        return;
+                    case "--config":
+                        ShowConfiguration();
                         return;
                 }
             }
@@ -51,62 +64,80 @@ namespace AthalaSIEM.UniversalAgent
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
+                    // Register ManageEngine-style pipeline services
+                    services.AddSingleton<CollectorManager>();
+                    services.AddSingleton<LogProcessor>();
+                    services.AddSingleton<BackendCommunicationService>();
+                    services.AddHttpClient<BackendCommunicationService>();
+                    
+                    // Register the main service
                     services.AddHostedService<UniversalAgentService>();
+                    
+                    // Configure logging
                     services.AddLogging(builder =>
                     {
                         builder.AddConsole();
                         builder.AddEventLog();
+                        builder.SetMinimumLevel(LogLevel.Information);
                     });
                 });
 
         private static void ShowHelp()
         {
-            Console.WriteLine("Athala SIEM Universal Agent v1.0.0");
+            Console.WriteLine("🛡️ Athala SIEM Universal Agent v1.0.0");
+            Console.WriteLine("Following ManageEngine EventLog Analyzer architecture patterns");
+            Console.WriteLine();
+            Console.WriteLine("⚠️  IMPORTANT: Administrator privileges required for Security Event Log access!");
+            Console.WriteLine("    Without Security logs, this is NOT a functional SIEM agent.");
+            Console.WriteLine();
             Console.WriteLine("Usage: athala-agent.exe [options]");
             Console.WriteLine();
             Console.WriteLine("Options:");
             Console.WriteLine("  --help, -h           Show this help message");
-            Console.WriteLine("  --console, -c        Run in console mode");
+            Console.WriteLine("  --console, -c        Run in console mode for testing");
             Console.WriteLine("  --install            Install as Windows service");
             Console.WriteLine("  --uninstall          Uninstall Windows service");
-            Console.WriteLine("  --test-connection    Test connection to backend");
+            Console.WriteLine("  --test-connection    Test connection to backend API");
+            Console.WriteLine("  --config             Show current configuration");
             Console.WriteLine();
             Console.WriteLine("Default: Run as Windows service");
+            Console.WriteLine();
+            Console.WriteLine("Examples:");
+            Console.WriteLine("  # Run as Administrator for full SIEM functionality:");
+            Console.WriteLine("  athala-agent.exe --console");
+            Console.WriteLine("  athala-agent.exe --test-connection");
+            Console.WriteLine("  athala-agent.exe --install");
         }
 
-        private static void RunConsoleMode()
+        private static void RunConsoleMode(string[] args)
         {
-            Console.WriteLine("Running in console mode. Press Ctrl+C to exit.");
-            
-            var configuration = new ConfigurationBuilder()
-                .SetBasePath(Directory.GetCurrentDirectory())
-                .AddJsonFile("appsettings.json", optional: false)
-                .Build();
+            Console.WriteLine("🛡️ Athala SIEM Universal Agent - Console Mode");
+            Console.WriteLine("Press Ctrl+C to exit.");
+            Console.WriteLine();
 
-            var serviceCollection = new ServiceCollection();
-            serviceCollection.AddLogging(builder =>
+            try
             {
-                builder.AddConsole();
-                builder.SetMinimumLevel(LogLevel.Information);
-            });
+                // Build the same host as the service but run in console
+                var host = CreateHostBuilder(args)
+                    .UseConsoleLifetime()
+                    .Build();
 
-            var serviceProvider = serviceCollection.BuildServiceProvider();
-            var logger = serviceProvider.GetRequiredService<ILogger<Program>>();
+                // Setup cancellation
+                var cancellationTokenSource = new CancellationTokenSource();
+                Console.CancelKeyPress += (sender, e) =>
+                {
+                    Console.WriteLine("\n🛑 Shutdown requested...");
+                    cancellationTokenSource.Cancel();
+                    e.Cancel = true;
+                };
 
-            logger.LogInformation("Universal Agent started in console mode");
-
-            // Keep running until Ctrl+C
-            Console.CancelKeyPress += (sender, e) =>
+                // Run the agent
+                host.RunAsync(cancellationTokenSource.Token).Wait();
+            }
+            catch (Exception ex)
             {
-                logger.LogInformation("Shutting down...");
-                e.Cancel = false;
-            };
-
-            // Simulate agent work
-            while (true)
-            {
-                logger.LogInformation("Agent heartbeat at {Time}", DateTime.Now);
-                Thread.Sleep(30000); // 30 seconds
+                Console.WriteLine($"❌ Error running agent: {ex.Message}");
+                Console.WriteLine($"Details: {ex}");
             }
         }
 
@@ -140,35 +171,126 @@ namespace AthalaSIEM.UniversalAgent
 
         private static void TestConnection()
         {
-            Console.WriteLine("Testing connection to backend...");
+            Console.WriteLine("🔗 Testing connection to backend...");
+            Console.WriteLine();
             
             var configuration = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
                 .AddJsonFile("appsettings.json", optional: false)
                 .Build();
 
-            var backendUrl = configuration["BackendUrl"] ?? "http://localhost:9595";
+            var backendUrl = configuration["BackendApiUrl"] ?? "http://localhost:9595";
+            var agentName = configuration["Agent:Name"] ?? Environment.MachineName;
+            var apiKey = configuration["Agent:ApiKey"] ?? "";
+            
+            Console.WriteLine($"Agent Name: {agentName}");
             Console.WriteLine($"Backend URL: {backendUrl}");
+            Console.WriteLine($"API Key: {(string.IsNullOrEmpty(apiKey) ? "Not configured" : "Configured")}");
+            Console.WriteLine();
             
             try
             {
                 using var client = new HttpClient();
                 client.Timeout = TimeSpan.FromSeconds(10);
                 
+                if (!string.IsNullOrEmpty(apiKey))
+                {
+                    client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
+                }
+
+                Console.WriteLine("Testing health endpoint...");
                 var response = client.GetAsync($"{backendUrl}/api/health").Result;
                 
                 if (response.IsSuccessStatusCode)
                 {
-                    Console.WriteLine("✓ Connection successful!");
+                    Console.WriteLine("✅ Health check successful!");
+                    
+                    // Test agent registration endpoint
+                    Console.WriteLine("Testing agent registration...");
+                    var registrationData = new
+                    {
+                        AgentId = Environment.MachineName,
+                        AgentName = agentName,
+                        Version = "1.0.0",
+                        Platform = Environment.OSVersion.Platform.ToString()
+                    };
+                    
+                    var json = System.Text.Json.JsonSerializer.Serialize(registrationData);
+                    var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                    var regResponse = client.PostAsync($"{backendUrl}/api/agents/register", content).Result;
+                    
+                    if (regResponse.IsSuccessStatusCode)
+                    {
+                        Console.WriteLine("✅ Agent registration test successful!");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"⚠️ Agent registration test failed: {regResponse.StatusCode}");
+                    }
                 }
                 else
                 {
-                    Console.WriteLine($"✗ Connection failed: {response.StatusCode}");
+                    Console.WriteLine($"❌ Health check failed: {response.StatusCode}");
+                    Console.WriteLine($"Response: {response.Content.ReadAsStringAsync().Result}");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"✗ Connection failed: {ex.Message}");
+                Console.WriteLine($"❌ Connection test failed: {ex.Message}");
+                Console.WriteLine("💡 Possible issues:");
+                Console.WriteLine("   - Backend server is not running");
+                Console.WriteLine("   - Incorrect backend URL in appsettings.json");
+                Console.WriteLine("   - Network connectivity issues");
+                Console.WriteLine("   - Firewall blocking the connection");
+            }
+        }
+        
+        private static void ShowConfiguration()
+        {
+            Console.WriteLine("📋 Current Configuration");
+            Console.WriteLine("========================");
+            
+            try
+            {
+                var configuration = new ConfigurationBuilder()
+                    .SetBasePath(Directory.GetCurrentDirectory())
+                    .AddJsonFile("appsettings.json", optional: false)
+                    .Build();
+
+                Console.WriteLine($"Backend API URL: {configuration["BackendApiUrl"] ?? "Not configured"}");
+                Console.WriteLine($"Agent Name: {configuration["Agent:Name"] ?? Environment.MachineName}");
+                Console.WriteLine($"Agent ID: {configuration["Agent:Id"] ?? Environment.MachineName}");
+                Console.WriteLine($"API Key: {(string.IsNullOrEmpty(configuration["Agent:ApiKey"]) ? "Not configured" : "Configured")}");
+                Console.WriteLine($"Batch Size: {configuration["Agent:BatchSize"] ?? "100"}");
+                Console.WriteLine($"Batch Interval: {configuration["Agent:BatchIntervalSeconds"] ?? "30"} seconds");
+                Console.WriteLine();
+                
+                // Show collectors configuration
+                var collectorsConfig = configuration.GetSection("Collectors");
+                if (collectorsConfig.Exists())
+                {
+                    Console.WriteLine("Configured Collectors:");
+                    try
+                    {
+                        var collectors = collectorsConfig.Get<List<CollectorConfiguration>>();
+                        foreach (var collector in collectors ?? new List<CollectorConfiguration>())
+                        {
+                            Console.WriteLine($"  - {collector.Type}: {(collector.Enabled ? "Enabled" : "Disabled")}");
+                        }
+                    }
+                    catch
+                    {
+                        Console.WriteLine("  - Error reading collector configuration");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("Collectors: Using default configuration (Windows Event Log)");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Error reading configuration: {ex.Message}");
             }
         }
     }

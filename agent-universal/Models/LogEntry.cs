@@ -1,0 +1,158 @@
+using System;
+using System.Collections.Generic;
+
+namespace AthalaSIEM.UniversalAgent.Models
+{
+    /// <summary>
+    /// Enhanced Log Entry model following ManageEngine EventLog Analyzer patterns
+    /// Supports structured data extraction, security relevance, and enrichment
+    /// </summary>
+    public class LogEntry
+    {
+        public DateTime Timestamp { get; set; }
+        public string Source { get; set; } = "";
+        public string Level { get; set; } = "";
+        public string Message { get; set; } = "";
+        public string? EventId { get; set; }
+        public string Category { get; set; } = "";
+        public string SecurityRelevance { get; set; } = "Medium"; // Critical, High, Medium, Low
+        public Dictionary<string, object> Properties { get; set; } = new Dictionary<string, object>();
+        
+        // Correlation and analysis fields
+        public string CollectorType { get; set; } = "";
+        public string AgentId { get; set; } = "";
+        public DateTime CollectionTime { get; set; } = DateTime.UtcNow;
+        
+        // Parsed fields for better analysis (ManageEngine pattern)
+        public string? ComputerName { get; set; }
+        public string? Username { get; set; }
+        public string? ProcessName { get; set; }
+        public int? ProcessId { get; set; }
+        public string? IpAddress { get; set; }
+        
+        // Hash for integrity verification
+        public string? LogHash { get; set; }
+        
+        // Index for search and correlation
+        public string? SearchIndex { get; set; }
+    }
+
+    /// <summary>
+    /// Enhanced log entry for Windows Event Logs specifically
+    /// Includes Windows-specific properties and parsing
+    /// </summary>
+    public class WindowsLogEntry : LogEntry
+    {
+        public int? RecordId { get; set; }
+        public string? LogName { get; set; } // Security, System, Application
+        public string? ProviderName { get; set; }
+        public int? ThreadId { get; set; }
+        public string? UserId { get; set; }
+        public string? Keywords { get; set; }
+        public int? Task { get; set; }
+        public int? Opcode { get; set; }
+        public string? ActivityId { get; set; }
+        public string? RelatedActivityId { get; set; }
+        
+        // Security-specific fields
+        public string? LogonType { get; set; }
+        public string? AuthenticationPackage { get; set; }
+        public string? WorkstationName { get; set; }
+        public string? TargetDomainName { get; set; }
+        public string? TargetUserName { get; set; }
+    }
+
+    /// <summary>
+    /// Syslog entry for Linux/Unix systems
+    /// Following RFC 5424 standard with ManageEngine enhancements
+    /// </summary>
+    public class SyslogEntry : LogEntry
+    {
+        public int Facility { get; set; }
+        public int Severity { get; set; }
+        public string? Hostname { get; set; }
+        public string? AppName { get; set; }
+        public string? ProcId { get; set; }
+        public string? MsgId { get; set; }
+        public Dictionary<string, string>? StructuredData { get; set; }
+    }
+
+    /// <summary>
+    /// IIS Log entry for web server monitoring
+    /// Following W3C Extended Log Format with security focus
+    /// </summary>
+    public class IISLogEntry : LogEntry
+    {
+        public string? ClientIP { get; set; }
+        public string? Method { get; set; }
+        public string? UriStem { get; set; }
+        public string? UriQuery { get; set; }
+        public int? Port { get; set; }
+        public new string? Username { get; set; }
+        public string? UserAgent { get; set; }
+        public string? Referer { get; set; }
+        public int? HttpStatus { get; set; }
+        public int? HttpSubStatus { get; set; }
+        public int? Win32Status { get; set; }
+        public long? BytesSent { get; set; }
+        public long? BytesReceived { get; set; }
+        public int? TimeTaken { get; set; }
+        
+        // Security analysis fields
+        public bool IsSuspiciousRequest { get; set; }
+        public string? ThreatCategory { get; set; }
+        public string? AttackSignature { get; set; }
+    }
+
+    /// <summary>
+    /// Database audit log entry
+    /// For SQL Server, Oracle, MySQL audit monitoring
+    /// </summary>
+    public class DatabaseLogEntry : LogEntry
+    {
+        public string? DatabaseName { get; set; }
+        public string? SchemaName { get; set; }
+        public string? ObjectName { get; set; }
+        public string? StatementType { get; set; } // SELECT, INSERT, UPDATE, DELETE, etc.
+        public string? LoginName { get; set; }
+        public string? ApplicationName { get; set; }
+        public string? ClientHostname { get; set; }
+        public string? ServerPrincipalName { get; set; }
+        public string? DatabasePrincipalName { get; set; }
+        public bool IsSuccess { get; set; }
+        public string? ErrorNumber { get; set; }
+        public string? SessionId { get; set; }
+        
+        // Security analysis
+        public bool IsPrivilegedOperation { get; set; }
+        public bool IsSensitiveData { get; set; }
+        public string? RiskLevel { get; set; }
+    }
+
+    /// <summary>
+    /// Cloud service log entry (AWS, Azure, GCP)
+    /// For cloud infrastructure monitoring
+    /// </summary>
+    public class CloudLogEntry : LogEntry
+    {
+        public string? CloudProvider { get; set; } // AWS, Azure, GCP
+        public string? ServiceName { get; set; }
+        public string? Region { get; set; }
+        public string? AccountId { get; set; }
+        public string? ResourceId { get; set; }
+        public string? ResourceType { get; set; }
+        public string? ApiVersion { get; set; }
+        public string? RequestId { get; set; }
+        public string? SourceIpAddress { get; set; }
+        public string? UserAgent { get; set; }
+        public string? EventName { get; set; }
+        public string? ErrorCode { get; set; }
+        public string? ErrorMessage { get; set; }
+        
+        // Security analysis
+        public bool IsAdminAction { get; set; }
+        public bool IsResourceCreation { get; set; }
+        public bool IsResourceDeletion { get; set; }
+        public bool IsConfigurationChange { get; set; }
+    }
+} 
