@@ -29,7 +29,7 @@ namespace AthalaSIEM.UniversalAgent.Services
         private readonly object _queueLock = new();
         private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
 
-        private string _backendUrl = "";
+        private string _managerUrl = "";
         private string _agentId = "";
         private string _apiKey = "";
         private int _batchSize;
@@ -73,7 +73,7 @@ namespace AthalaSIEM.UniversalAgent.Services
         {
             try
             {
-                _logger.LogInformation("Initializing connection to backend: {BackendUrl}", _backendUrl);
+                _logger.LogInformation("Initializing connection to SIEM Manager: {ManagerUrl}", _managerUrl);
 
                 // Test connection
                 var isHealthy = await TestConnectionAsync();
@@ -91,18 +91,18 @@ namespace AthalaSIEM.UniversalAgent.Services
                         StatusMessage = "Connected to backend successfully"
                     });
 
-                    _logger.LogInformation("Successfully connected to backend");
+                    _logger.LogInformation("Successfully connected to SIEM Manager");
                     return true;
                 }
                 else
                 {
-                    _logger.LogError("Failed to connect to backend");
+                    _logger.LogError("Failed to connect to SIEM Manager");
                     return false;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error initializing backend connection");
+                _logger.LogError(ex, "Error initializing SIEM Manager connection");
                 return false;
             }
         }
@@ -154,13 +154,13 @@ namespace AthalaSIEM.UniversalAgent.Services
         }
 
         /// <summary>
-        /// Test connection to backend API
+        /// Test connection to SIEM Manager API
         /// </summary>
         public async Task<bool> TestConnectionAsync()
         {
             try
             {
-                var response = await _httpClient.GetAsync($"{_backendUrl}/api/health");
+                var response = await _httpClient.GetAsync($"{_managerUrl}/api/health");
                 var isHealthy = response.IsSuccessStatusCode;
                 
                 if (isHealthy != _isConnected)
@@ -177,7 +177,7 @@ namespace AthalaSIEM.UniversalAgent.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error testing backend connection");
+                _logger.LogError(ex, "Error testing SIEM Manager connection");
                 
                 if (_isConnected)
                 {
@@ -201,7 +201,7 @@ namespace AthalaSIEM.UniversalAgent.Services
             return new CommunicationHealth
             {
                 IsConnected = _isConnected,
-                BackendUrl = _backendUrl,
+                ManagerUrl = _managerUrl,
                 QueuedLogs = QueuedLogs,
                 TotalLogsSent = TotalLogsSent,
                 TotalSendErrors = TotalSendErrors,
@@ -214,7 +214,13 @@ namespace AthalaSIEM.UniversalAgent.Services
 
         private void LoadConfiguration()
         {
-            _backendUrl = _configuration["BackendApiUrl"] ?? "http://localhost:9595";
+            // Build Manager URL from IP and Port (SIEM standard)
+            var managerIP = _configuration["SiemManager:ManagerIP"] ?? "192.168.1.100";
+            var managerPort = _configuration.GetValue<int>("SiemManager:ManagerPort", 9595);
+            var useHTTPS = _configuration.GetValue<bool>("SiemManager:UseHTTPS", false);
+            var protocol = useHTTPS ? "https" : "http";
+            
+            _managerUrl = $"{protocol}://{managerIP}:{managerPort}";
             _agentId = _configuration["Agent:Id"] ?? Environment.MachineName;
             _apiKey = _configuration["Agent:ApiKey"] ?? "";
             _batchSize = _configuration.GetValue<int>("Agent:BatchSize", 100);
@@ -249,7 +255,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                 var json = JsonSerializer.Serialize(registrationData);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PostAsync($"{_backendUrl}/api/agents/register", content);
+                var response = await _httpClient.PostAsync($"{_managerUrl}/api/agents/register", content);
                 
                 if (response.IsSuccessStatusCode)
                 {
@@ -286,7 +292,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                     var json = JsonSerializer.Serialize(heartbeatData);
                     var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                    var response = await _httpClient.PostAsync($"{_backendUrl}/api/agents/heartbeat", content);
+                    var response = await _httpClient.PostAsync($"{_managerUrl}/api/agents/heartbeat", content);
                     
                     if (!response.IsSuccessStatusCode)
                     {
@@ -402,7 +408,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                 
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PostAsync($"{_backendUrl}/api/logs/batch", content);
+                var response = await _httpClient.PostAsync($"{_managerUrl}/api/logs/batch", content);
                 
                 if (response.IsSuccessStatusCode)
                 {
@@ -456,7 +462,7 @@ namespace AthalaSIEM.UniversalAgent.Services
     public class CommunicationHealth
     {
         public bool IsConnected { get; set; }
-        public string BackendUrl { get; set; } = "";
+        public string ManagerUrl { get; set; } = "";
         public long QueuedLogs { get; set; }
         public long TotalLogsSent { get; set; }
         public long TotalSendErrors { get; set; }

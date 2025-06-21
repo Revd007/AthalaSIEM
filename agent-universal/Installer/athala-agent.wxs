@@ -1,81 +1,70 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
   
-  <Package Name="AthalaSIEM Universal Agent"
-           Language="1033"
-           Version="1.0.0.0"
-           Manufacturer="Athala Security Systems"
-           UpgradeCode="A7B8C9D0-1234-5678-9ABC-DEF012345678"
-           Description="Enterprise SIEM log collection agent following ManageEngine patterns">
+  <Package Name="AthalaSIEM Universal Agent" 
+           Language="1033" 
+           Version="1.0.0.0" 
+           Manufacturer="Athala Security Systems" 
+           UpgradeCode="A7B8C9D0-1234-5678-9ABC-DEF012345678">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of AthalaSIEM Universal Agent is already installed." />
+    <MediaTemplate EmbedCab="yes" />
 
-    <!-- Major upgrade handling -->
-    <MajorUpgrade DowngradeErrorMessage="A newer version of AthalaSIEM Universal Agent is already installed. Please uninstall the current version first." />
-    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
-
-    <!-- Installation properties -->
+    <!-- Installation properties (like Splunk UF) -->
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
     <Property Id="MSIUSEREALADMINDETECTION" Value="1" />
-    <Property Id="MSIFASTINSTALL" Value="7" />
     
-    <!-- Configuration properties (like Splunk UF) -->
-    <Property Id="BACKEND_URL" Value="http://localhost:9595" />
-    <Property Id="AGENT_NAME" Value="[ComputerName]" />
+    <!-- Configuration properties for enterprise deployment -->
+    <Property Id="MANAGER_IP" Value="192.168.1.100" />
+    <Property Id="MANAGER_PORT" Value="9595" />
+    <Property Id="AGENT_NAME" Value="AthalaSIEM-Agent" />
     <Property Id="DEPLOYMENT_TOKEN" Secure="yes" />
-    <Property Id="USE_SSL" Value="0" />
     <Property Id="AUTO_START" Value="1" />
-    <Property Id="ENABLE_SECURITY_LOGS" Value="1" />
-    <Property Id="BATCH_SIZE" Value="100" />
-    <Property Id="BATCH_INTERVAL" Value="30" />
 
-    <!-- Allow command line configuration (like other SIEM agents) -->
-    <SetProperty Id="BACKEND_URL" Value="[SERVERURL]" After="AppSearch" Condition="SERVERURL" />
+    <!-- Command line parameter support (like other SIEM agents) -->
+    <SetProperty Id="MANAGER_IP" Value="[MANAGERIP]" After="AppSearch" Condition="MANAGERIP" />
+    <SetProperty Id="MANAGER_PORT" Value="[MANAGERPORT]" After="AppSearch" Condition="MANAGERPORT" />
     <SetProperty Id="AGENT_NAME" Value="[NAME]" After="AppSearch" Condition="NAME" />
     <SetProperty Id="DEPLOYMENT_TOKEN" Value="[TOKEN]" After="AppSearch" Condition="TOKEN" />
-    <SetProperty Id="USE_SSL" Value="1" After="AppSearch" Condition="SSL=1" />
-    <SetProperty Id="AUTO_START" Value="0" After="AppSearch" Condition="NOSTART=1" />
 
-    <!-- Directory structure (like enterprise SIEM tools) -->
-    <StandardDirectory Id="ProgramFilesFolder">
+    <!-- Directory structure (64-bit application) -->
+    <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="ManufacturerFolder" Name="Athala Security">
         <Directory Id="INSTALLFOLDER" Name="SIEM Universal Agent">
-          <Directory Id="BINFOLDER" Name="bin" />
-          <Directory Id="CONFIGFOLDER" Name="config" />
           <Directory Id="LOGSFOLDER" Name="logs" />
-          <Directory Id="DATAFOLDER" Name="data" />
-          <Directory Id="DOCSFOLDER" Name="docs" />
+          <Directory Id="CONFIGFOLDER" Name="config" />
         </Directory>
       </Directory>
     </StandardDirectory>
-
+      
     <!-- Start Menu -->
     <StandardDirectory Id="ProgramMenuFolder">
       <Directory Id="ApplicationProgramsFolder" Name="AthalaSIEM Universal Agent" />
     </StandardDirectory>
 
-    <!-- Main executable and dependencies -->
-    <ComponentGroup Id="MainApplication" Directory="INSTALLFOLDER">
+    <!-- Main application files -->
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      
+      <!-- Main executable and all dependencies -->
       <Component Id="MainExecutable" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB491">
-        <File Id="AgentEXE" Source="$(var.SourceDir)\athala-agent.exe" KeyPath="yes">
-          <Shortcut Id="DesktopShortcut" Directory="DesktopFolder" Name="AthalaSIEM Agent Console" 
-                    Description="Run AthalaSIEM Universal Agent in console mode" 
-                    Arguments="--console" WorkingDirectory="INSTALLFOLDER" />
-        </File>
+        <File Id="AgentEXE" Source="$(var.SourceDir)\athala-agent.exe" KeyPath="yes" />
+        <File Id="AgentDLL" Source="$(var.SourceDir)\athala-agent.dll" />
+        <File Id="RuntimeConfig" Source="$(var.SourceDir)\athala-agent.runtimeconfig.json" />
+        <File Id="DepsJson" Source="$(var.SourceDir)\athala-agent.deps.json" />
 
-        <!-- Windows Service Configuration -->
-        <ServiceInstall Id="AgentService"
+        <!-- Windows Service (like Splunk/Wazuh) -->
+        <ServiceInstall Id="ServiceInstaller"
                         Type="ownProcess"
                         Name="AthalaSIEMUniversalAgent"
                         DisplayName="AthalaSIEM Universal Agent"
-                        Description="Enterprise SIEM log collection agent with ManageEngine EventLog Analyzer patterns. Collects Windows Event Logs, Syslog, and application logs for security monitoring."
+                        Description="Enterprise SIEM log collection agent. Collects Windows Event Logs for security monitoring."
                         Start="auto"
                         Account="LocalSystem"
                         ErrorControl="normal"
                         Interactive="no"
                         Vital="yes">
           
-          <!-- Service recovery configuration -->
+          <!-- Service recovery like enterprise tools -->
           <util:ServiceConfig
              FirstFailureActionType="restart"
              SecondFailureActionType="restart"
@@ -84,8 +73,7 @@
              ResetPeriodInDays="1" />
         </ServiceInstall>
 
-        <!-- Service control -->
-        <ServiceControl Id="AgentServiceControl"
+        <ServiceControl Id="StartService"
                         Name="AthalaSIEMUniversalAgent"
                         Start="install"
                         Stop="both"
@@ -93,268 +81,100 @@
                         Wait="yes" />
       </Component>
 
-      <!-- .NET Runtime Dependencies -->
-      <Component Id="RuntimeDependencies" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB492">
-        <File Id="RuntimeConfig" Source="$(var.SourceDir)\athala-agent.runtimeconfig.json" />
-        <File Id="RuntimeDeps" Source="$(var.SourceDir)\athala-agent.deps.json" />
-        <!-- Add all necessary .NET 8 runtime files here -->
+      <!-- Runtime Files Component - Will be populated by build script -->
+      <Component Id="RuntimeFilesComponent" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB496">
+        <CreateFolder />
+      </Component>
+
+      <!-- Application registry (for CLI access) -->
+      <Component Id="AppPathRegistry" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB493">
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\athala-agent.exe"
+                      Value="[INSTALLFOLDER]athala-agent.exe" Type="string" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\athala-agent.exe"
+                      Name="Path" Value="[INSTALLFOLDER]" Type="string" />
       </Component>
     </ComponentGroup>
 
-    <!-- Configuration files -->
-    <ComponentGroup Id="ConfigurationFiles" Directory="CONFIGFOLDER">
-      <Component Id="MainConfig" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB493">
-        <File Id="AppSettings" Source="$(var.SourceDir)\appsettings.json" KeyPath="yes" />
-        <File Id="AppSettingsProd" Source="$(var.SourceDir)\appsettings.Production.json" />
-      </Component>
-
-      <Component Id="SampleConfigs" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB494">
-        <File Id="ConfigSample" Source="$(var.SourceDir)\config\appsettings.sample.json" />
-        <File Id="SecurityConfig" Source="$(var.SourceDir)\config\security-config.json" />
-        <File Id="CollectorsConfig" Source="$(var.SourceDir)\config\collectors-config.json" />
-      </Component>
-    </ComponentGroup>
-
-    <!-- Documentation -->
-    <ComponentGroup Id="Documentation" Directory="DOCSFOLDER">
-      <Component Id="UserDocs" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB495">
-        <File Id="ReadmeMD" Source="$(var.SourceDir)\README.md" />
-        <File Id="InstallGuide" Source="$(var.SourceDir)\INSTALLATION-GUIDE.md" />
-        <File Id="DeploymentGuide" Source="$(var.SourceDir)\README-DEPLOYMENT.md" />
-      </Component>
-
-      <Component Id="TechnicalDocs" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB496">
-        <File Id="ArchitectureDocs" Source="$(var.SourceDir)\source\README.md" />
-      </Component>
-    </ComponentGroup>
-
-    <!-- Log and data directories -->
-    <ComponentGroup Id="RuntimeDirectories">
-      <Component Id="LogDirectory" Directory="LOGSFOLDER" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB497">
-        <CreateFolder>
-          <Permission User="Everyone" GenericAll="yes" />
-          <Permission User="SYSTEM" GenericAll="yes" />
-          <Permission User="Administrators" GenericAll="yes" />
-        </CreateFolder>
-        <RemoveFolder Id="RemoveLogsFolder" Directory="LOGSFOLDER" On="uninstall" />
-        <RegistryValue Root="HKCU" Key="Software\AthalaSecurity\UniversalAgent" Name="LogsPath" Value="[LOGSFOLDER]" Type="string" KeyPath="yes" />
-      </Component>
-
-      <Component Id="DataDirectory" Directory="DATAFOLDER" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB498">
-        <CreateFolder>
-          <Permission User="SYSTEM" GenericAll="yes" />
-          <Permission User="Administrators" GenericAll="yes" />
-          <Permission User="Users" GenericRead="yes" />
-        </CreateFolder>
-        <RemoveFolder Id="RemoveDataFolder" Directory="DATAFOLDER" On="uninstall" />
-        <RegistryValue Root="HKCU" Key="Software\AthalaSecurity\UniversalAgent" Name="DataPath" Value="[DATAFOLDER]" Type="string" KeyPath="yes" />
-      </Component>
-    </ComponentGroup>
-
-    <!-- Registry entries -->
-    <ComponentGroup Id="RegistryEntries">
-      <Component Id="ApplicationRegistry" Directory="INSTALLFOLDER" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB499">
-        <!-- Application information -->
-        <RegistryKey Root="HKLM" Key="SOFTWARE\AthalaSecurity\UniversalAgent">
-          <RegistryValue Name="InstallPath" Value="[INSTALLFOLDER]" Type="string" />
-          <RegistryValue Name="Version" Value="1.0.0" Type="string" />
-          <RegistryValue Name="InstallDate" Value="[Date]" Type="string" />
-          <RegistryValue Name="BackendUrl" Value="[BACKEND_URL]" Type="string" />
-          <RegistryValue Name="AgentName" Value="[AGENT_NAME]" Type="string" />
-          <RegistryValue Name="UseSSL" Value="[USE_SSL]" Type="integer" />
-        </RegistryKey>
-
-        <!-- Add to Windows Programs list -->
-        <RegistryKey Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{A7B8C9D0-1234-5678-9ABC-DEF012345678}">
-          <RegistryValue Name="DisplayName" Value="AthalaSIEM Universal Agent" Type="string" />
-          <RegistryValue Name="DisplayVersion" Value="1.0.0" Type="string" />
-          <RegistryValue Name="Publisher" Value="Athala Security Systems" Type="string" />
-          <RegistryValue Name="InstallLocation" Value="[INSTALLFOLDER]" Type="string" />
-          <RegistryValue Name="EstimatedSize" Value="51200" Type="integer" />
-          <RegistryValue Name="HelpLink" Value="https://docs.athala-siem.com" Type="string" />
-          <RegistryValue Name="URLInfoAbout" Value="https://www.athala-siem.com" Type="string" />
-        </RegistryKey>
-
-        <!-- Application path for CLI access -->
-        <RegistryKey Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\athala-agent.exe">
-          <RegistryValue Value="[INSTALLFOLDER]athala-agent.exe" Type="string" />
-          <RegistryValue Name="Path" Value="[INSTALLFOLDER]" Type="string" />
-        </RegistryKey>
-      </Component>
-
-      <!-- Environment variables -->
-      <Component Id="EnvironmentVariables" Directory="INSTALLFOLDER" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB500">
-        <Environment Id="PathEnv" Name="PATH" Value="[INSTALLFOLDER]" Permanent="no" Part="last" Action="set" System="yes" />
-        <Environment Id="AgentHome" Name="ATHALA_AGENT_HOME" Value="[INSTALLFOLDER]" Permanent="no" Action="set" System="yes" />
-      </Component>
-    </ComponentGroup>
-
-    <!-- Start Menu shortcuts -->
+    <!-- Start Menu shortcuts (simple like enterprise tools) -->
     <ComponentGroup Id="StartMenuShortcuts" Directory="ApplicationProgramsFolder">
-      <Component Id="ApplicationShortcuts" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB501">
+      <Component Id="ApplicationShortcuts" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB494">
         
-        <!-- Agent Console -->
+        <!-- Agent Console (for testing) -->
         <Shortcut Id="ConsoleShortcut"
                   Name="Agent Console"
-                  Description="Run AthalaSIEM Universal Agent in console mode for testing"
+                  Description="Run agent in console mode"
                   Target="[INSTALLFOLDER]athala-agent.exe"
                   Arguments="--console"
                   WorkingDirectory="INSTALLFOLDER" />
 
-        <!-- Configuration Tool -->
-        <Shortcut Id="ConfigShortcut"
-                  Name="Agent Configuration"
-                  Description="Show current agent configuration"
-                  Target="[INSTALLFOLDER]athala-agent.exe"
-                  Arguments="--config"
-                  WorkingDirectory="INSTALLFOLDER" />
-
         <!-- Test Connection -->
-        <Shortcut Id="TestConnectionShortcut"
-                  Name="Test Backend Connection"
-                  Description="Test connection to SIEM backend"
+        <Shortcut Id="TestShortcut"
+                  Name="Test Connection"
+                  Description="Test backend connection"
                   Target="[INSTALLFOLDER]athala-agent.exe"
                   Arguments="--test-connection"
                   WorkingDirectory="INSTALLFOLDER" />
 
-        <!-- Documentation -->
-        <Shortcut Id="DocsShortcut"
-                  Name="Documentation"
-                  Description="AthalaSIEM Universal Agent documentation"
-                  Target="[DOCSFOLDER]README.md" />
-
-        <!-- Logs Folder -->
+        <!-- View Logs -->
         <Shortcut Id="LogsShortcut"
                   Name="View Logs"
-                  Description="Open agent logs directory"
+                  Description="Open logs folder"
                   Target="[LOGSFOLDER]" />
 
-        <!-- Uninstall -->
-        <Shortcut Id="UninstallShortcut"
-                  Name="Uninstall AthalaSIEM Agent"
-                  Description="Uninstall AthalaSIEM Universal Agent"
-                  Target="[SystemFolder]msiexec.exe"
-                  Arguments="/x {A7B8C9D0-1234-5678-9ABC-DEF012345678}" />
-
         <RemoveFolder Id="CleanUpShortCut" Directory="ApplicationProgramsFolder" On="uninstall" />
-        <RegistryValue Root="HKCU" Key="Software\AthalaSecurity\UniversalAgent" Name="StartMenuCreated" Type="integer" Value="1" KeyPath="yes" />
+        <RegistryValue Root="HKCU" Key="Software\AthalaSecurity\UniversalAgent" Name="installed" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </ComponentGroup>
 
-    <!-- Feature definition -->
-    <Feature Id="CompleteFeature" Title="AthalaSIEM Universal Agent" Level="1" ConfigurableDirectory="INSTALLFOLDER"
-             Description="Complete AthalaSIEM Universal Agent installation with all components.">
-      
-      <Feature Id="CoreFeature" Title="Core Agent" Level="1" AllowAdvertise="no"
-               Description="Main agent executable and core components (required).">
-        <ComponentGroupRef Id="MainApplication" />
-        <ComponentGroupRef Id="RuntimeDirectories" />
-        <ComponentGroupRef Id="RegistryEntries" />
-      </Feature>
+    <!-- Create log directories -->
+    <ComponentGroup Id="LogComponents" Directory="LOGSFOLDER">
+      <Component Id="LogFolderComponent" Guid="0D615A60-CF57-40E2-BCE5-6EF5327DB495">
+        <CreateFolder>
+          <Permission User="Everyone" GenericAll="yes" />
+        </CreateFolder>
+      </Component>
+    </ComponentGroup>
 
-      <Feature Id="ConfigurationFeature" Title="Configuration Files" Level="1" AllowAdvertise="no"
-               Description="Configuration files and samples.">
-        <ComponentGroupRef Id="ConfigurationFiles" />
-      </Feature>
-
-      <Feature Id="DocumentationFeature" Title="Documentation" Level="1" AllowAdvertise="no"
-               Description="User guides, installation instructions, and technical documentation.">
-        <ComponentGroupRef Id="Documentation" />
-      </Feature>
-
-      <Feature Id="ShortcutsFeature" Title="Start Menu Shortcuts" Level="1" AllowAdvertise="no"
-               Description="Start menu shortcuts for easy access to agent tools.">
-        <ComponentGroupRef Id="StartMenuShortcuts" />
-      </Feature>
+    <!-- Feature definition (simple like enterprise tools) -->
+    <Feature Id="CompleteFeature" Title="AthalaSIEM Universal Agent" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+      <ComponentGroupRef Id="StartMenuShortcuts" />
+      <ComponentGroupRef Id="LogComponents" />
     </Feature>
 
-    <!-- Custom UI like enterprise SIEM tools -->
-    <UI>
-      <ui:WixUI Id="WixUI_FeatureTree" />
-      
-      <!-- Custom dialogs -->
-      <Dialog Id="AgentConfigDlg" Width="400" Height="320" Title="AthalaSIEM Agent Configuration">
-        
-        <!-- Title -->
-        <Control Id="Title" Type="Text" X="20" Y="15" Width="360" Height="15" Transparent="yes" NoPrefix="yes">
-          <Text>AthalaSIEM Universal Agent Setup</Text>
-        </Control>
+    <!-- Professional GUI installer (NOT silent by default) -->
+    <!-- WiX v5 simplified UI approach -->
 
-        <Control Id="Description" Type="Text" X="25" Y="35" Width="340" Height="30" Transparent="yes" NoPrefix="yes">
-          <Text>Configure your AthalaSIEM agent connection settings. These can be changed later in appsettings.json.</Text>
-        </Control>
-
-        <!-- Backend URL -->
-        <Control Id="BackendUrlLabel" Type="Text" X="20" Y="70" Width="120" Height="15">
-          <Text>SIEM Backend URL:</Text>
-        </Control>
-        <Control Id="BackendUrlEdit" Type="Edit" X="150" Y="70" Width="200" Height="18" Property="BACKEND_URL" />
-
-        <!-- Agent Name -->
-        <Control Id="AgentNameLabel" Type="Text" X="20" Y="100" Width="120" Height="15">
-          <Text>Agent Name:</Text>
-        </Control>
-        <Control Id="AgentNameEdit" Type="Edit" X="150" Y="100" Width="200" Height="18" Property="AGENT_NAME" />
-
-        <!-- Deployment Token -->
-        <Control Id="TokenLabel" Type="Text" X="20" Y="130" Width="120" Height="15">
-          <Text>Deployment Token:</Text>
-        </Control>
-        <Control Id="TokenEdit" Type="Edit" X="150" Y="130" Width="200" Height="18" Property="DEPLOYMENT_TOKEN" Password="yes" />
-
-        <!-- SSL Option -->
-        <Control Id="UseSslCheckbox" Type="CheckBox" X="20" Y="160" Width="200" Height="18" Property="USE_SSL" CheckBoxValue="1">
-          <Text>Use SSL/TLS for secure communication</Text>
-        </Control>
-
-        <!-- Auto Start Option -->
-        <Control Id="AutoStartCheckbox" Type="CheckBox" X="20" Y="185" Width="200" Height="18" Property="AUTO_START" CheckBoxValue="1" Checked="yes">
-          <Text>Start service automatically after installation</Text>
-        </Control>
-
-        <!-- Security Logs Warning -->
-        <Control Id="SecurityWarning" Type="Text" X="20" Y="210" Width="340" Height="40" Transparent="yes" NoPrefix="yes">
-          <Text>⚠️ Administrator privileges required for Security Event Log access. Without Security logs, this is not a functional SIEM agent.</Text>
-        </Control>
-
-        <!-- Navigation buttons -->
-        <Control Id="Back" Type="PushButton" X="180" Y="280" Width="56" Height="17">
-          <Text>Back</Text>
-        </Control>
-        <Control Id="Next" Type="PushButton" X="236" Y="280" Width="56" Height="17" Default="yes">
-          <Text>Next</Text>
-        </Control>
-        <Control Id="Cancel" Type="PushButton" X="304" Y="280" Width="56" Height="17" Cancel="yes">
-          <Text>Cancel</Text>
-        </Control>
-      </Dialog>
-
-      <!-- Insert custom dialog into sequence -->
-      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="AgentConfigDlg" />
-      <Publish Dialog="AgentConfigDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg" />
-      <Publish Dialog="AgentConfigDlg" Control="Next" Event="NewDialog" Value="CustomizeDlg" />
-    </UI>
-
-    <!-- Custom actions for configuration -->
-    <CustomAction Id="UpdateConfigurationCA"
-                  Execute="deferred"
-                  Impersonate="no"
-                  Return="check"
-                  Directory="INSTALLFOLDER"
-                  ExeCommand="powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File &quot;[INSTALLFOLDER]UpdateConfig.ps1&quot; -BackendUrl &quot;[BACKEND_URL]&quot; -AgentName &quot;[AGENT_NAME]&quot; -Token &quot;[DEPLOYMENT_TOKEN]&quot; -UseSSL [USE_SSL]" />
-
-    <!-- Install sequence -->
+    <!-- Install sequence with file copy and configuration update -->
     <InstallExecuteSequence>
-      <Custom Action="UpdateConfigurationCA" After="InstallFiles" Condition="NOT Installed" />
+      <!-- Copy all runtime files -->
+      <Custom Action="CopyRuntimeFiles" After="InstallFiles" Condition="NOT Installed" />
+      <!-- Update configuration after files are copied -->
+      <Custom Action="UpdateConfiguration" After="CopyRuntimeFiles" Condition="NOT Installed" />
     </InstallExecuteSequence>
 
-    <!-- Icon for Add/Remove Programs -->
+    <!-- Custom action to copy all runtime files -->
+    <CustomAction Id="CopyRuntimeFiles"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="powershell.exe -ExecutionPolicy Bypass -Command &quot;$sourceDir = '$(var.SourceDir)'; $destDir = Get-Location; if (Test-Path $sourceDir) { Get-ChildItem $sourceDir -Recurse | ForEach-Object { $dest = $_.FullName.Replace($sourceDir, $destDir); if ($_.PSIsContainer) { New-Item -ItemType Directory -Path $dest -Force | Out-Null } else { Copy-Item $_.FullName $dest -Force } } }&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- Custom action to update appsettings.json -->
+    <CustomAction Id="UpdateConfiguration"
+                  Directory="INSTALLFOLDER"
+                  ExeCommand="powershell.exe -ExecutionPolicy Bypass -Command &quot;if (Test-Path 'appsettings.json') { $config = Get-Content 'appsettings.json' | ConvertFrom-Json; $config.SiemManager.ManagerIP = '[MANAGER_IP]'; $config.SiemManager.ManagerPort = [MANAGER_PORT]; $config.Agent.Name = '[AGENT_NAME]'; if ('[DEPLOYMENT_TOKEN]' -ne '') { $config.Agent.RegistrationKey = '[DEPLOYMENT_TOKEN]' }; $config | ConvertTo-Json -Depth 10 | Set-Content 'appsettings.json' }&quot;"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <!-- Icon and properties -->
     <Icon Id="AgentIcon.ico" SourceFile="$(var.SourceDir)\athala-agent.exe" />
     <Property Id="ARPPRODUCTICON" Value="AgentIcon.ico" />
     <Property Id="ARPHELPLINK" Value="https://docs.athala-siem.com" />
     <Property Id="ARPURLINFOABOUT" Value="https://www.athala-siem.com" />
     <Property Id="ARPNOREPAIR" Value="1" />
-    <Property Id="ARPNOMODIFY" Value="1" />
 
   </Package>
-</Wix>
+</Wix> 

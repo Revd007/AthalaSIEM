@@ -179,12 +179,15 @@ namespace AthalaSIEM.UniversalAgent
                 .AddJsonFile("appsettings.json", optional: false)
                 .Build();
 
-            var backendUrl = configuration["BackendApiUrl"] ?? "http://localhost:9595";
+            var managerIP = configuration["SiemManager:ManagerIP"] ?? "192.168.1.100";
+            var managerPort = configuration.GetValue<int>("SiemManager:ManagerPort", 9595);
+            var managerUrl = $"http://{managerIP}:{managerPort}";
             var agentName = configuration["Agent:Name"] ?? Environment.MachineName;
             var apiKey = configuration["Agent:ApiKey"] ?? "";
             
             Console.WriteLine($"Agent Name: {agentName}");
-            Console.WriteLine($"Backend URL: {backendUrl}");
+            Console.WriteLine($"SIEM Manager: {managerIP}:{managerPort}");
+            Console.WriteLine($"Manager URL: {managerUrl}");
             Console.WriteLine($"API Key: {(string.IsNullOrEmpty(apiKey) ? "Not configured" : "Configured")}");
             Console.WriteLine();
             
@@ -199,7 +202,7 @@ namespace AthalaSIEM.UniversalAgent
                 }
 
                 Console.WriteLine("Testing health endpoint...");
-                var response = client.GetAsync($"{backendUrl}/api/health").Result;
+                var response = client.GetAsync($"{managerUrl}/api/health").Result;
                 
                 if (response.IsSuccessStatusCode)
                 {
@@ -217,7 +220,7 @@ namespace AthalaSIEM.UniversalAgent
                     
                     var json = System.Text.Json.JsonSerializer.Serialize(registrationData);
                     var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
-                    var regResponse = client.PostAsync($"{backendUrl}/api/agents/register", content).Result;
+                    var regResponse = client.PostAsync($"{managerUrl}/api/agents/register", content).Result;
                     
                     if (regResponse.IsSuccessStatusCode)
                     {
@@ -238,8 +241,8 @@ namespace AthalaSIEM.UniversalAgent
             {
                 Console.WriteLine($"❌ Connection test failed: {ex.Message}");
                 Console.WriteLine("💡 Possible issues:");
-                Console.WriteLine("   - Backend server is not running");
-                Console.WriteLine("   - Incorrect backend URL in appsettings.json");
+                Console.WriteLine("   - SIEM Manager server is not running");
+                Console.WriteLine("   - Incorrect Manager IP/Port in appsettings.json");
                 Console.WriteLine("   - Network connectivity issues");
                 Console.WriteLine("   - Firewall blocking the connection");
             }
@@ -257,7 +260,10 @@ namespace AthalaSIEM.UniversalAgent
                     .AddJsonFile("appsettings.json", optional: false)
                     .Build();
 
-                Console.WriteLine($"Backend API URL: {configuration["BackendApiUrl"] ?? "Not configured"}");
+                var managerIP = configuration["SiemManager:ManagerIP"] ?? "Not configured";
+                var managerPort = configuration.GetValue<int>("SiemManager:ManagerPort", 9595);
+                Console.WriteLine($"SIEM Manager IP: {managerIP}");
+                Console.WriteLine($"SIEM Manager Port: {managerPort}");
                 Console.WriteLine($"Agent Name: {configuration["Agent:Name"] ?? Environment.MachineName}");
                 Console.WriteLine($"Agent ID: {configuration["Agent:Id"] ?? Environment.MachineName}");
                 Console.WriteLine($"API Key: {(string.IsNullOrEmpty(configuration["Agent:ApiKey"]) ? "Not configured" : "Configured")}");
