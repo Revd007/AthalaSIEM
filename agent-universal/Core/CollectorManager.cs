@@ -70,7 +70,7 @@ namespace AthalaSIEM.Agent.Core
         /// <summary>
         /// Start all registered collectors (ManageEngine parallel collection pattern)
         /// </summary>
-        public async Task StartAllCollectorsAsync()
+        public Task StartAllCollectorsAsync()
         {
             try
             {
@@ -99,6 +99,8 @@ namespace AthalaSIEM.Agent.Core
 
                 // Don't wait for all tasks to complete (they run continuously)
                 _logger.LogInformation("All collectors started successfully");
+                
+                return Task.CompletedTask;
             }
             catch (Exception ex)
             {
@@ -117,8 +119,11 @@ namespace AthalaSIEM.Agent.Core
                 _logger.LogInformation("Stopping all collectors");
                 IsRunning = false;
 
-                // Cancel all operations
-                _cancellationTokenSource.Cancel();
+                // Cancel all operations (check if not disposed)
+                if (!_cancellationTokenSource.IsCancellationRequested)
+                {
+                    _cancellationTokenSource.Cancel();
+                }
 
                 // Stop each collector
                 var stopTasks = _collectors.Values.Select(c => c.StopCollectionAsync());

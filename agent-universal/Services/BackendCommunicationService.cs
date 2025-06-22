@@ -448,12 +448,14 @@ namespace AthalaSIEM.UniversalAgent.Services
 
         #endregion
 
-        public async ValueTask DisposeAsync()
+        public ValueTask DisposeAsync()
         {
             _heartbeatTimer?.Dispose();
             _batchTimer?.Dispose();
             _sendSemaphore?.Dispose();
             _httpClient?.Dispose();
+            
+            return ValueTask.CompletedTask;
         }
     }
 

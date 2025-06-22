@@ -66,7 +66,13 @@ namespace AthalaSIEM.UniversalAgent
                 {
                     // Register ManageEngine-style pipeline services
                     services.AddSingleton<CollectorManager>();
-                    services.AddSingleton<LogProcessor>();
+                    services.AddSingleton<LogProcessor>(provider => 
+                    {
+                        var logger = provider.GetRequiredService<ILogger<LogProcessor>>();
+                        var loggerFactory = provider.GetRequiredService<ILoggerFactory>();
+                        var configuration = provider.GetRequiredService<IConfiguration>();
+                        return new LogProcessor(logger, loggerFactory, configuration);
+                    });
                     services.AddSingleton<BackendCommunicationService>();
                     services.AddHttpClient<BackendCommunicationService>();
                     
@@ -77,7 +83,10 @@ namespace AthalaSIEM.UniversalAgent
                     services.AddLogging(builder =>
                     {
                         builder.AddConsole();
-                        builder.AddEventLog();
+                        if (System.OperatingSystem.IsWindows())
+                        {
+                            builder.AddEventLog();
+                        }
                         builder.SetMinimumLevel(LogLevel.Information);
                     });
                 });

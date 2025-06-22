@@ -4,6 +4,7 @@ using System.Diagnostics.Eventing.Reader;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
+using System.Runtime.Versioning;
 using AthalaSIEM.Agent.Core;
 using AthalaSIEM.UniversalAgent.Models;
 using Core = AthalaSIEM.Agent.Core;
@@ -15,6 +16,7 @@ namespace AthalaSIEM.Agent.Collectors
     /// Supports both agentless (WMI/DCOM/RPC) and agent-based collection methods
     /// Implements filtering, parsing, and enrichment following enterprise patterns
     /// </summary>
+    [SupportedOSPlatform("windows")]
     public class WindowsEventLogCollector : ILogCollector
     {
         public string CollectorName => "Windows Event Log";
@@ -30,7 +32,7 @@ namespace AthalaSIEM.Agent.Collectors
         public event EventHandler<LogCollectedEventArgs>? LogCollected;
         public event EventHandler<LogCollectionErrorEventArgs>? CollectionError;
 
-        public async Task<bool> InitializeAsync(Dictionary<string, object> config, CancellationToken cancellationToken = default)
+        public Task<bool> InitializeAsync(Dictionary<string, object> config, CancellationToken cancellationToken = default)
         {
             try
             {
@@ -40,7 +42,7 @@ namespace AthalaSIEM.Agent.Collectors
                 // Setup event log queries for different log sources
                 InitializeEventLogQueries(config);
                 
-                return true;
+                return Task.FromResult(true);
             }
             catch (Exception ex)
             {
@@ -50,7 +52,7 @@ namespace AthalaSIEM.Agent.Collectors
                     Message = "Failed to initialize Windows Event Log Collector",
                     Source = CollectorName
                 });
-                return false;
+                return Task.FromResult(false);
             }
         }
 
@@ -69,22 +71,24 @@ namespace AthalaSIEM.Agent.Collectors
             await Task.WhenAll(collectionTasks);
         }
 
-        public async Task StopCollectionAsync(CancellationToken cancellationToken = default)
+        public Task StopCollectionAsync(CancellationToken cancellationToken = default)
         {
             IsActive = false;
             _cancellationTokenSource.Cancel();
+            
+            return Task.CompletedTask;
         }
 
-        public async Task<IEnumerable<LogEntry>> GetLogsAsync(int batchSize = 100, CancellationToken cancellationToken = default)
+        public Task<IEnumerable<LogEntry>> GetLogsAsync(int batchSize = 100, CancellationToken cancellationToken = default)
         {
             var logs = _collectedLogs.Take(batchSize).ToList();
             _collectedLogs.RemoveRange(0, logs.Count);
-            return logs;
+            return Task.FromResult<IEnumerable<LogEntry>>(logs);
         }
 
-        public async Task<CollectorHealth> GetHealthAsync()
+        public Task<CollectorHealth> GetHealthAsync()
         {
-            return new CollectorHealth
+            return Task.FromResult(new CollectorHealth
             {
                 IsHealthy = true,
                 Status = IsActive ? "Running" : "Stopped",
@@ -96,7 +100,7 @@ namespace AthalaSIEM.Agent.Collectors
                     ["SecurityFilters"] = _securityFilters.Count,
                     ["BufferedLogs"] = _collectedLogs.Count
                 }
-            };
+            });
         }
 
         /// <summary>

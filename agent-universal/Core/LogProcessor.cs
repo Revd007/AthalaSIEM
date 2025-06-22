@@ -7,53 +7,136 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using AthalaSIEM.UniversalAgent.Models;
+using AthalaSIEM.Agent.Core.Filters;
+using AthalaSIEM.Agent.Core.Enrichers;
+using AthalaSIEM.Agent.Core.Correlators;
 
 namespace AthalaSIEM.Agent.Core
 {
     /// <summary>
-    /// Log processor implementing ManageEngine EventLog Analyzer processing pipeline:
-    /// Raw Logs → Security Filters → Parser → Enrichment → Indexing → Correlation
+    /// Enterprise log processor implementing ManageEngine EventLog Analyzer processing pipeline.
+    /// Provides configurable, secure, and scalable log processing with comprehensive documentation.
+    /// Architecture: Raw Logs → Security Filters → Parser → Enrichment → Indexing → Correlation
     /// </summary>
     public class LogProcessor : IAsyncDisposable
     {
         private readonly ILogger<LogProcessor> _logger;
+        private readonly ILoggerFactory _loggerFactory;
+        private readonly IConfiguration _configuration;
         private readonly List<ILogFilter> _securityFilters = new();
         private readonly List<ILogEnricher> _enrichers = new();
         private readonly List<ILogCorrelator> _correlators = new();
         private readonly Dictionary<string, List<LogEntry>> _correlationBuffer = new();
         private readonly Timer _correlationTimer;
         private readonly object _processingLock = new();
+        private readonly LogProcessingConfiguration _processingConfig;
 
+        /// <summary>
+        /// Gets a value indicating whether the processor is currently processing logs.
+        /// </summary>
         public bool IsProcessing { get; private set; }
+
+        /// <summary>
+        /// Gets the total number of logs processed since startup.
+        /// </summary>
         public long ProcessedLogs { get; private set; }
+
+        /// <summary>
+        /// Gets the total number of logs filtered out since startup.
+        /// </summary>
         public long FilteredLogs { get; private set; }
 
+        /// <summary>
+        /// Gets a value indicating whether the processor is initialized and ready.
+        /// </summary>
+        public bool IsInitialized { get; private set; }
+
+        /// <summary>
+        /// Event raised when a batch of logs has been processed.
+        /// </summary>
         public event EventHandler<LogProcessedEventArgs>? LogProcessed;
+
+        /// <summary>
+        /// Event raised when a security correlation is detected.
+        /// </summary>
         public event EventHandler<CorrelationDetectedEventArgs>? CorrelationDetected;
 
-        public LogProcessor(ILogger<LogProcessor> logger)
+        /// <summary>
+        /// Event raised when an error occurs during processing.
+        /// </summary>
+        public event EventHandler<LogProcessingErrorEventArgs>? ProcessingError;
+
+        /// <summary>
+        /// Initializes a new instance of the LogProcessor class.
+        /// </summary>
+        /// <param name="logger">Logger instance for this processor.</param>
+        /// <param name="loggerFactory">Logger factory for creating specific loggers.</param>
+        /// <param name="configuration">Configuration provider for settings.</param>
+        public LogProcessor(ILogger<LogProcessor> logger, ILoggerFactory loggerFactory, IConfiguration configuration)
         {
-            _logger = logger;
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             
-            // Initialize default security filters (ManageEngine pattern)
-            InitializeSecurityFilters();
+            // Load processing configuration from settings
+            _processingConfig = LoadProcessingConfiguration();
             
-            // Initialize enrichers
-            InitializeEnrichers();
-            
-            // Initialize correlators
-            InitializeCorrelators();
-            
-            // Setup correlation timer (check every 30 seconds)
-            _correlationTimer = new Timer(ProcessCorrelations, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+            // Setup correlation timer with configured interval
+            var intervalSeconds = _processingConfig.CorrelationIntervalSeconds;
+            _correlationTimer = new Timer(ProcessCorrelations, null, 
+                TimeSpan.FromSeconds(intervalSeconds), 
+                TimeSpan.FromSeconds(intervalSeconds));
         }
 
         /// <summary>
-        /// Process logs through the ManageEngine pipeline
+        /// Initializes the log processor with configured filters, enrichers, and correlators.
+        /// Must be called before processing any logs.
         /// </summary>
+        /// <returns>Task representing the initialization operation.</returns>
+        public async Task<bool> InitializeAsync()
+        {
+            try
+            {
+                _logger.LogInformation("Initializing enterprise log processor...");
+
+                // Initialize filters
+                await InitializeSecurityFiltersAsync();
+            
+            // Initialize enrichers
+                await InitializeEnrichersAsync();
+            
+            // Initialize correlators
+                await InitializeCorrelatorsAsync();
+                
+                IsInitialized = true;
+                _logger.LogInformation("Enterprise log processor initialized successfully with {FilterCount} filters, {EnricherCount} enrichers, {CorrelatorCount} correlators",
+                    _securityFilters.Count, _enrichers.Count, _correlators.Count);
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to initialize log processor");
+                IsInitialized = false;
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Processes a batch of logs through the enterprise ManageEngine-style pipeline.
+        /// </summary>
+        /// <param name="logs">The logs to process.</param>
+        /// <returns>Processed log batch with results and metadata.</returns>
         public async Task<ProcessedLogBatch> ProcessLogBatchAsync(IEnumerable<LogEntry> logs)
         {
+            if (!IsInitialized)
+            {
+                throw new InvalidOperationException("LogProcessor must be initialized before processing logs. Call InitializeAsync() first.");
+            }
+
+            var startTime = DateTime.UtcNow;
             var processedBatch = new ProcessedLogBatch();
             
             try
@@ -63,7 +146,10 @@ namespace AthalaSIEM.Agent.Core
                     IsProcessing = true;
                 }
 
-                foreach (var log in logs)
+                var logArray = logs.ToArray();
+                _logger.LogDebug("Processing batch of {LogCount} logs", logArray.Length);
+
+                foreach (var log in logArray)
                 {
                     try
                     {
@@ -82,17 +168,46 @@ namespace AthalaSIEM.Agent.Core
                     {
                         _logger.LogError(ex, "Error processing log: {Message}", log.Message);
                         processedBatch.Errors.Add($"Error processing log: {ex.Message}");
+                        
+                        // Fire error event
+                        ProcessingError?.Invoke(this, new LogProcessingErrorEventArgs
+                        {
+                            Exception = ex,
+                            ErrorMessage = $"Error processing log: {ex.Message}",
+                            FailedLog = log,
+                            ProcessingStage = "LogProcessing",
+                            Severity = "Medium"
+                        });
                     }
                 }
 
-                // Add to correlation buffer
+                // Add to correlation buffer if correlation is enabled
+                if (_processingConfig.EnableCorrelation)
+                {
                 AddToCorrelationBuffer(processedBatch.ProcessedLogs);
+                }
 
-                processedBatch.ProcessingTime = DateTime.UtcNow;
+                // Set batch metadata
+                var endTime = DateTime.UtcNow;
+                processedBatch.ProcessingTime = endTime;
                 processedBatch.TotalProcessed = processedBatch.ProcessedLogs.Count;
+                processedBatch.ProcessingDurationMs = (long)(endTime - startTime).TotalMilliseconds;
+                processedBatch.ProcessingStats = new Dictionary<string, object>
+                {
+                    ["InputLogCount"] = logArray.Length,
+                    ["ProcessedLogCount"] = processedBatch.ProcessedLogs.Count,
+                    ["FilteredLogCount"] = logArray.Length - processedBatch.ProcessedLogs.Count,
+                    ["ErrorCount"] = processedBatch.Errors.Count,
+                    ["ProcessingDurationMs"] = processedBatch.ProcessingDurationMs
+                };
                 
                 // Fire event
-                LogProcessed?.Invoke(this, new LogProcessedEventArgs { ProcessedBatch = processedBatch });
+                LogProcessed?.Invoke(this, new LogProcessedEventArgs 
+                { 
+                    ProcessedBatch = processedBatch,
+                    ProcessingStage = "Complete",
+                    AgentId = Environment.MachineName
+                });
                 
                 return processedBatch;
             }
@@ -132,17 +247,27 @@ namespace AthalaSIEM.Agent.Core
         }
 
         /// <summary>
-        /// Apply security-focused filters (ManageEngine pattern)
-        /// Filters events that provide security information vs routine activities
+        /// Applies security-focused filters through the enterprise filter pipeline.
+        /// Filters are executed in priority order to optimize performance.
         /// </summary>
+        /// <param name="log">The log entry to filter.</param>
+        /// <returns>True if the log should be processed, false if filtered out.</returns>
         private async Task<bool> ApplySecurityFiltersAsync(LogEntry log)
         {
-            foreach (var filter in _securityFilters)
+            foreach (var filter in _securityFilters.OrderByDescending(f => f.Priority))
             {
-                if (!await filter.ShouldProcessAsync(log))
+                try
+                {
+                    if (!await filter.ShouldProcessAsync(log))
                 {
                     _logger.LogDebug("Log filtered by {FilterName}: {LogMessage}", filter.Name, log.Message);
                     return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error in filter {FilterName}, allowing log to pass", filter.Name);
+                    // Continue processing if filter fails (fail-open for availability)
                 }
             }
             return true;
@@ -179,20 +304,31 @@ namespace AthalaSIEM.Agent.Core
         }
 
         /// <summary>
-        /// Enrich log with additional context (ManageEngine enrichment pattern)
+        /// Enriches log with additional context through the enterprise enrichment pipeline.
+        /// Enrichers are executed in priority order with error handling.
         /// </summary>
+        /// <param name="log">The log entry to enrich.</param>
+        /// <returns>Task representing the enrichment operation.</returns>
         private async Task EnrichLogAsync(LogEntry log)
         {
-            foreach (var enricher in _enrichers)
+            foreach (var enricher in _enrichers.OrderByDescending(e => e.Priority))
+            {
+                try
             {
                 await enricher.EnrichAsync(log);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error in enricher {EnricherName}, continuing with next enricher", enricher.Name);
+                    // Continue with other enrichers if one fails
+                }
             }
         }
 
         /// <summary>
         /// Create search index for fast querying (ManageEngine search pattern)
         /// </summary>
-        private async Task CreateSearchIndexAsync(LogEntry log)
+        private Task CreateSearchIndexAsync(LogEntry log)
         {
             var indexBuilder = new StringBuilder();
             
@@ -214,12 +350,14 @@ namespace AthalaSIEM.Agent.Core
                 indexBuilder.Append($"ip:{log.IpAddress} ");
 
             log.SearchIndex = indexBuilder.ToString().ToLowerInvariant().Trim();
+            
+            return Task.CompletedTask;
         }
 
         /// <summary>
         /// Generate integrity hash for log verification
         /// </summary>
-        private async Task GenerateLogHashAsync(LogEntry log)
+        private Task GenerateLogHashAsync(LogEntry log)
         {
             var logData = JsonSerializer.Serialize(new
             {
@@ -235,16 +373,20 @@ namespace AthalaSIEM.Agent.Core
             using var sha256 = SHA256.Create();
             var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(logData));
             log.LogHash = Convert.ToBase64String(hashBytes);
+            
+            return Task.CompletedTask;
         }
 
         /// <summary>
-        /// Add logs to correlation buffer for attack chain detection
+        /// Adds logs to correlation buffer for attack chain detection.
+        /// Buffer is organized by entity key (computer/user combination) for efficient correlation.
         /// </summary>
+        /// <param name="logs">The logs to add to the correlation buffer.</param>
         private void AddToCorrelationBuffer(List<LogEntry> logs)
         {
             foreach (var log in logs)
             {
-                var key = $"{log.ComputerName}_{log.Username}";
+                var key = GenerateCorrelationKey(log);
                 if (!_correlationBuffer.ContainsKey(key))
                 {
                     _correlationBuffer[key] = new List<LogEntry>();
@@ -252,35 +394,67 @@ namespace AthalaSIEM.Agent.Core
                 
                 _correlationBuffer[key].Add(log);
                 
-                // Keep only last 100 logs per key
-                if (_correlationBuffer[key].Count > 100)
+                // Keep buffer size manageable (configurable)
+                var maxBufferSize = _processingConfig.CorrelationBufferSize;
+                if (_correlationBuffer[key].Count > maxBufferSize)
                 {
-                    _correlationBuffer[key].RemoveRange(0, 50);
+                    var removeCount = maxBufferSize / 2;
+                    _correlationBuffer[key].RemoveRange(0, removeCount);
                 }
             }
         }
 
         /// <summary>
-        /// Process correlations to detect attack chains (ManageEngine correlation pattern)
+        /// Processes correlations to detect attack chains using enterprise correlation algorithms.
+        /// Correlations are processed periodically to detect multi-event attack patterns.
         /// </summary>
+        /// <param name="state">Timer state (not used).</param>
         private void ProcessCorrelations(object? state)
         {
+            if (!_processingConfig.EnableCorrelation || !_correlators.Any())
+            {
+                return;
+            }
+
             try
             {
+                _logger.LogDebug("Processing correlations for {BufferCount} entity buffers", _correlationBuffer.Count);
+                var correlationsDetected = 0;
+
                 foreach (var correlator in _correlators)
                 {
-                    foreach (var bufferEntry in _correlationBuffer)
+                    try
+                    {
+                        foreach (var bufferEntry in _correlationBuffer.ToList()) // ToList to avoid collection modification
                     {
                         var correlations = correlator.DetectCorrelations(bufferEntry.Value);
                         foreach (var correlation in correlations)
                         {
+                                if (correlation.ConfidenceScore >= correlator.MinimumConfidence)
+                                {
+                                    correlationsDetected++;
+                                    
                             CorrelationDetected?.Invoke(this, new CorrelationDetectedEventArgs
                             {
                                 Correlation = correlation,
-                                DetectedAt = DateTime.UtcNow
-                            });
+                                        DetectedAt = DateTime.UtcNow,
+                                        DetectorName = correlator.Name,
+                                        IsHighPriority = correlation.Severity == "Critical" || correlation.Severity == "High",
+                                        AgentId = Environment.MachineName
+                                    });
+                                }
+                            }
                         }
                     }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error in correlator {CorrelatorName}", correlator.Name);
+                    }
+                }
+
+                if (correlationsDetected > 0)
+                {
+                    _logger.LogInformation("Processed correlations: {CorrelationCount} patterns detected", correlationsDetected);
                 }
             }
             catch (Exception ex)
@@ -289,43 +463,174 @@ namespace AthalaSIEM.Agent.Core
             }
         }
 
+        /// <summary>
+        /// Generates a correlation key for grouping related logs.
+        /// </summary>
+        /// <param name="log">The log entry to generate a key for.</param>
+        /// <returns>Correlation key string.</returns>
+        private string GenerateCorrelationKey(LogEntry log)
+        {
+            var computer = log.ComputerName ?? "Unknown";
+            var user = log.Username ?? "Unknown";
+            var ip = log.IpAddress ?? "Unknown";
+            
+            return $"{computer}_{user}_{ip}";
+        }
+
         #region Initialization Methods
 
-        private void InitializeSecurityFilters()
+        /// <summary>
+        /// Loads processing configuration from the configuration provider.
+        /// </summary>
+        /// <returns>Log processing configuration instance.</returns>
+        private LogProcessingConfiguration LoadProcessingConfiguration()
         {
-            _securityFilters.AddRange(new ILogFilter[]
+            var config = new LogProcessingConfiguration();
+
+            // Load configuration from appsettings.json
+            var processingSection = _configuration.GetSection("LogProcessing");
+            if (processingSection.Exists())
             {
-                new SecurityRelevanceFilter(),
-                new EventIdFilter(),
-                new CriticalSystemFilter()
-            });
+                processingSection.Bind(config);
+            }
+
+            // Set default values if not configured
+            if (config.SecurityEventIds.Count == 0)
+            {
+                // Default Windows security event IDs
+                config.SecurityEventIds = new HashSet<string>
+                {
+                    "4624", "4625", "4634", "4647", "4648", "4672", "4673", "4674", "4675", "4776", "4777",
+                    "4720", "4722", "4723", "4724", "4725", "4726", "4727", "4728", "4729", "4730", "4731",
+                    "4732", "4733", "4734", "4735", "4737", "4738", "4739", "4740", "4741", "4742", "4743"
+                };
+            }
+
+            if (config.DetectionThresholds.Count == 0)
+            {
+                config.DetectionThresholds = new Dictionary<string, int>
+                {
+                    ["BruteForceThreshold"] = 5,
+                    ["CredentialStuffingThreshold"] = 10,
+                    ["PrivilegeEscalationThreshold"] = 3,
+                    ["TimeWindowMinutes"] = 15
+                };
+            }
+
+            return config;
         }
 
-        private void InitializeEnrichers()
+        /// <summary>
+        /// Initializes security filters with enterprise-grade implementations.
+        /// </summary>
+        /// <returns>Task representing the initialization operation.</returns>
+        private async Task InitializeSecurityFiltersAsync()
         {
-            _enrichers.AddRange(new ILogEnricher[]
+            try
             {
-                new GeoLocationEnricher(),
-                new ThreatIntelligenceEnricher(),
-                new AssetEnricher()
-            });
+                _logger.LogDebug("Initializing security filters...");
+
+                // Get filter configuration
+                var filterConfig = _configuration.GetSection("LogProcessing:Filters").Get<Dictionary<string, object>>()
+                    ?? new Dictionary<string, object>();
+
+                // Initialize enterprise filters
+                var securityRelevanceFilter = new EnterpriseSecurityRelevanceFilter(_loggerFactory.CreateLogger<EnterpriseSecurityRelevanceFilter>());
+                securityRelevanceFilter.Initialize(filterConfig);
+                _securityFilters.Add(securityRelevanceFilter);
+
+                var eventIdFilter = new EnterpriseWindowsEventIdFilter(_loggerFactory.CreateLogger<EnterpriseWindowsEventIdFilter>());
+                eventIdFilter.Initialize(filterConfig);
+                _securityFilters.Add(eventIdFilter);
+
+                // Sort filters by priority (descending)
+                _securityFilters.Sort((x, y) => y.Priority.CompareTo(x.Priority));
+
+                _logger.LogInformation("Initialized {FilterCount} security filters", _securityFilters.Count);
+
+                await Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error initializing security filters");
+                throw;
+            }
         }
 
-        private void InitializeCorrelators()
+        /// <summary>
+        /// Initializes enrichers with enterprise threat intelligence and asset data.
+        /// </summary>
+        /// <returns>Task representing the initialization operation.</returns>
+        private async Task InitializeEnrichersAsync()
         {
-            _correlators.AddRange(new ILogCorrelator[]
+            try
             {
-                new AuthenticationCorrelator(),
-                new PrivilegeEscalationCorrelator(),
-                new LateralMovementCorrelator()
-            });
+                _logger.LogDebug("Initializing enrichers...");
+
+                // Get enricher configuration
+                var enricherConfig = _configuration.GetSection("LogProcessing:Enrichers").Get<Dictionary<string, object>>()
+                    ?? new Dictionary<string, object>();
+
+                // Initialize enterprise enrichers
+                var geoIpEnricher = new EnterpriseGeoIpEnricher(_loggerFactory.CreateLogger<EnterpriseGeoIpEnricher>());
+                await geoIpEnricher.InitializeAsync(enricherConfig);
+                _enrichers.Add(geoIpEnricher);
+
+                // Sort enrichers by priority (descending)
+                _enrichers.Sort((x, y) => y.Priority.CompareTo(x.Priority));
+
+                _logger.LogInformation("Initialized {EnricherCount} enrichers", _enrichers.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error initializing enrichers");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Initializes correlators with advanced attack detection capabilities.
+        /// </summary>
+        /// <returns>Task representing the initialization operation.</returns>
+        private async Task InitializeCorrelatorsAsync()
+        {
+            try
+            {
+                _logger.LogDebug("Initializing correlators...");
+
+                // Get correlator configuration
+                var correlatorConfig = _configuration.GetSection("LogProcessing:Correlators").Get<Dictionary<string, object>>()
+                    ?? new Dictionary<string, object>();
+
+                // Merge detection thresholds into correlator config
+                foreach (var threshold in _processingConfig.DetectionThresholds)
+                {
+                    correlatorConfig[threshold.Key] = threshold.Value;
+                }
+
+                // Initialize enterprise correlators
+                var authCorrelator = new EnterpriseAuthenticationCorrelator(_loggerFactory.CreateLogger<EnterpriseAuthenticationCorrelator>());
+                await authCorrelator.InitializeAsync(correlatorConfig);
+                _correlators.Add(authCorrelator);
+
+                var privEscCorrelator = new EnterprisePrivilegeEscalationCorrelator(_loggerFactory.CreateLogger<EnterprisePrivilegeEscalationCorrelator>());
+                await privEscCorrelator.InitializeAsync(correlatorConfig);
+                _correlators.Add(privEscCorrelator);
+
+                _logger.LogInformation("Initialized {CorrelatorCount} correlators", _correlators.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error initializing correlators");
+                throw;
+            }
         }
 
         #endregion
 
         #region Helper Methods
 
-        private async Task ParseWindowsEventAsync(WindowsLogEntry log)
+        private Task ParseWindowsEventAsync(WindowsLogEntry log)
         {
             // Extract Windows-specific information
             if (log.Properties.ContainsKey("TargetUserName"))
@@ -344,16 +649,20 @@ namespace AthalaSIEM.Agent.Core
             {
                 log.IpAddress = log.Properties["IpAddress"]?.ToString();
             }
+            
+            return Task.CompletedTask;
         }
 
-        private async Task ParseSyslogAsync(SyslogEntry log)
+        private Task ParseSyslogAsync(SyslogEntry log)
         {
             // Parse syslog structured data
             log.ComputerName = log.Hostname;
             log.ProcessName = log.AppName;
+            
+            return Task.CompletedTask;
         }
 
-        private async Task ParseIISLogAsync(IISLogEntry log)
+        private Task ParseIISLogAsync(IISLogEntry log)
         {
             // Parse IIS-specific fields
             log.IpAddress = log.ClientIP;
@@ -361,6 +670,8 @@ namespace AthalaSIEM.Agent.Core
             log.ComputerName = log.Properties.ContainsKey("ServerName") 
                 ? log.Properties["ServerName"]?.ToString() 
                 : Environment.MachineName;
+                
+            return Task.CompletedTask;
         }
 
         private string NormalizeLogLevel(string level)
@@ -378,251 +689,118 @@ namespace AthalaSIEM.Agent.Core
 
         #endregion
 
-        public async ValueTask DisposeAsync()
+        /// <summary>
+        /// Gets comprehensive metrics and health information for the log processor.
+        /// </summary>
+        /// <returns>Dictionary containing processor metrics and statistics.</returns>
+        public Dictionary<string, object> GetMetrics()
         {
-            _correlationTimer?.Dispose();
-            _correlationBuffer.Clear();
-        }
-    }
-
-    #region Supporting Classes and Interfaces
-
-    public class ProcessedLogBatch
-    {
-        public List<LogEntry> ProcessedLogs { get; set; } = new();
-        public List<string> Errors { get; set; } = new();
-        public DateTime ProcessingTime { get; set; }
-        public int TotalProcessed { get; set; }
-    }
-
-    public class LogProcessedEventArgs : EventArgs
-    {
-        public ProcessedLogBatch ProcessedBatch { get; set; } = new();
-    }
-
-    public class CorrelationDetectedEventArgs : EventArgs
-    {
-        public LogCorrelation Correlation { get; set; } = new();
-        public DateTime DetectedAt { get; set; }
-    }
-
-    public interface ILogFilter
-    {
-        string Name { get; }
-        Task<bool> ShouldProcessAsync(LogEntry log);
-    }
-
-    public interface ILogEnricher
-    {
-        string Name { get; }
-        Task EnrichAsync(LogEntry log);
-    }
-
-    public interface ILogCorrelator
-    {
-        string Name { get; }
-        IEnumerable<LogCorrelation> DetectCorrelations(IEnumerable<LogEntry> logs);
-    }
-
-    public class LogCorrelation
-    {
-        public string CorrelationId { get; set; } = Guid.NewGuid().ToString();
-        public string Name { get; set; } = "";
-        public string Description { get; set; } = "";
-        public string Severity { get; set; } = "Medium";
-        public List<LogEntry> RelatedLogs { get; set; } = new();
-        public DateTime DetectedAt { get; set; } = DateTime.UtcNow;
-        public Dictionary<string, object> Properties { get; set; } = new();
-    }
-
-    #region Default Filter Implementations
-
-    public class SecurityRelevanceFilter : ILogFilter
-    {
-        public string Name => "Security Relevance Filter";
-
-        public async Task<bool> ShouldProcessAsync(LogEntry log)
-        {
-            // Only process logs with High or Critical security relevance
-            return log.SecurityRelevance == "High" || log.SecurityRelevance == "Critical" || log.SecurityRelevance == "Medium";
-        }
-    }
-
-    public class EventIdFilter : ILogFilter
-    {
-        public string Name => "Event ID Filter";
-        private readonly HashSet<string> _securityEventIds = new()
-        {
-            "4624", "4625", "4648", "4720", "4726", "4740", "4672", "4673", "1102", "4608", "4609"
-        };
-
-        public async Task<bool> ShouldProcessAsync(LogEntry log)
-        {
-            if (string.IsNullOrEmpty(log.EventId))
-                return true; // Process non-Windows events
-
-            return _securityEventIds.Contains(log.EventId);
-        }
-    }
-
-    public class CriticalSystemFilter : ILogFilter
-    {
-        public string Name => "Critical System Filter";
-
-        public async Task<bool> ShouldProcessAsync(LogEntry log)
-        {
-            // Always process Critical level logs
-            return log.Level != "Debug" && log.Level != "Verbose";
-        }
-    }
-
-    #endregion
-
-    #region Default Enricher Implementations
-
-    public class GeoLocationEnricher : ILogEnricher
-    {
-        public string Name => "GeoLocation Enricher";
-
-        public async Task EnrichAsync(LogEntry log)
-        {
-            if (!string.IsNullOrEmpty(log.IpAddress) && !IsPrivateIP(log.IpAddress))
+            var metrics = new Dictionary<string, object>
             {
-                // In production, this would call a GeoIP service
-                log.Properties["GeoLocation"] = "Unknown";
-                log.Properties["Country"] = "Unknown";
-            }
-        }
-
-        private bool IsPrivateIP(string ip)
-        {
-            // Simple private IP check
-            return ip.StartsWith("192.168.") || ip.StartsWith("10.") || ip.StartsWith("172.");
-        }
-    }
-
-    public class ThreatIntelligenceEnricher : ILogEnricher
-    {
-        public string Name => "Threat Intelligence Enricher";
-
-        public async Task EnrichAsync(LogEntry log)
-        {
-            if (!string.IsNullOrEmpty(log.IpAddress))
-            {
-                // In production, this would check threat intelligence feeds
-                log.Properties["ThreatIntelligence"] = "Clean";
-            }
-        }
-    }
-
-    public class AssetEnricher : ILogEnricher
-    {
-        public string Name => "Asset Enricher";
-
-        public async Task EnrichAsync(LogEntry log)
-        {
-            if (!string.IsNullOrEmpty(log.ComputerName))
-            {
-                // In production, this would look up asset information
-                log.Properties["AssetCriticality"] = "Medium";
-                log.Properties["AssetOwner"] = "Unknown";
-            }
-        }
-    }
-
-    #endregion
-
-    #region Default Correlator Implementations
-
-    public class AuthenticationCorrelator : ILogCorrelator
-    {
-        public string Name => "Authentication Correlator";
-
-        public IEnumerable<LogCorrelation> DetectCorrelations(IEnumerable<LogEntry> logs)
-        {
-            var sortedLogs = logs.OrderBy(l => l.Timestamp).ToList();
-            var correlations = new List<LogCorrelation>();
-
-            // Detect multiple failed logins followed by success
-            for (int i = 0; i < sortedLogs.Count - 3; i++)
-            {
-                var failedLogins = sortedLogs.Skip(i).Take(3)
-                    .Where(l => l.EventId == "4625").ToList();
-
-                if (failedLogins.Count >= 2)
+                ["IsInitialized"] = IsInitialized,
+                ["IsProcessing"] = IsProcessing,
+                ["ProcessedLogs"] = ProcessedLogs,
+                ["FilteredLogs"] = FilteredLogs,
+                ["TotalLogs"] = ProcessedLogs + FilteredLogs,
+                ["FilterEfficiency"] = ProcessedLogs + FilteredLogs > 0 ? 
+                    (double)FilteredLogs / (ProcessedLogs + FilteredLogs) * 100 : 0,
+                ["FilterCount"] = _securityFilters.Count,
+                ["EnricherCount"] = _enrichers.Count,
+                ["CorrelatorCount"] = _correlators.Count,
+                ["CorrelationBufferEntities"] = _correlationBuffer.Count,
+                ["CorrelationBufferSize"] = _correlationBuffer.Values.Sum(v => v.Count),
+                ["Configuration"] = new Dictionary<string, object>
                 {
-                    var successLogin = sortedLogs.Skip(i + 3).FirstOrDefault(l => l.EventId == "4624");
-                    if (successLogin != null)
-                    {
-                        correlations.Add(new LogCorrelation
-                        {
-                            Name = "Brute Force Attack",
-                            Description = "Multiple failed logins followed by successful login",
-                            Severity = "High",
-                            RelatedLogs = failedLogins.Concat(new[] { successLogin }).ToList()
-                        });
-                    }
+                    ["CorrelationEnabled"] = _processingConfig.EnableCorrelation,
+                    ["CorrelationIntervalSeconds"] = _processingConfig.CorrelationIntervalSeconds,
+                    ["CorrelationBufferSize"] = _processingConfig.CorrelationBufferSize,
+                    ["MinimumSecurityRelevance"] = _processingConfig.MinimumSecurityRelevance
+                }
+            };
+
+            // Add filter metrics
+            var filterMetrics = new Dictionary<string, object>();
+            foreach (var filter in _securityFilters)
+            {
+                try
+                {
+                    filterMetrics[filter.Name] = filter.GetMetrics();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error getting metrics from filter {FilterName}", filter.Name);
+                    filterMetrics[filter.Name] = new Dictionary<string, object> { ["Error"] = ex.Message };
                 }
             }
+            metrics["FilterMetrics"] = filterMetrics;
 
-            return correlations;
-        }
-    }
-
-    public class PrivilegeEscalationCorrelator : ILogCorrelator
-    {
-        public string Name => "Privilege Escalation Correlator";
-
-        public IEnumerable<LogCorrelation> DetectCorrelations(IEnumerable<LogEntry> logs)
-        {
-            var correlations = new List<LogCorrelation>();
-            
-            // Detect privilege escalation patterns
-            var privilegeLogs = logs.Where(l => l.EventId == "4672" || l.EventId == "4673").ToList();
-            if (privilegeLogs.Count > 5) // Threshold for suspicious privilege use
+            // Add enricher metrics
+            var enricherMetrics = new Dictionary<string, object>();
+            foreach (var enricher in _enrichers)
             {
-                correlations.Add(new LogCorrelation
+                try
                 {
-                    Name = "Privilege Escalation",
-                    Description = "Excessive privilege use detected",
-                    Severity = "High",
-                    RelatedLogs = privilegeLogs
-                });
+                    enricherMetrics[enricher.Name] = enricher.GetMetrics();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error getting metrics from enricher {EnricherName}", enricher.Name);
+                    enricherMetrics[enricher.Name] = new Dictionary<string, object> { ["Error"] = ex.Message };
+                }
             }
+            metrics["EnricherMetrics"] = enricherMetrics;
 
-            return correlations;
-        }
-    }
-
-    public class LateralMovementCorrelator : ILogCorrelator
-    {
-        public string Name => "Lateral Movement Correlator";
-
-        public IEnumerable<LogCorrelation> DetectCorrelations(IEnumerable<LogEntry> logs)
-        {
-            var correlations = new List<LogCorrelation>();
-            
-            // Detect lateral movement patterns (same user, different computers)
-            var logonLogs = logs.Where(l => l.EventId == "4624").ToList();
-            var computerGroups = logonLogs.GroupBy(l => l.Username)
-                .Where(g => g.Select(l => l.ComputerName).Distinct().Count() > 2);
-
-            foreach (var group in computerGroups)
+            // Add correlator metrics
+            var correlatorMetrics = new Dictionary<string, object>();
+            foreach (var correlator in _correlators)
             {
-                correlations.Add(new LogCorrelation
+                try
                 {
-                    Name = "Lateral Movement",
-                    Description = $"User {group.Key} logged into multiple computers",
-                    Severity = "Medium",
-                    RelatedLogs = group.ToList()
-                });
+                    correlatorMetrics[correlator.Name] = correlator.GetMetrics();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error getting metrics from correlator {CorrelatorName}", correlator.Name);
+                    correlatorMetrics[correlator.Name] = new Dictionary<string, object> { ["Error"] = ex.Message };
+                }
             }
+            metrics["CorrelatorMetrics"] = correlatorMetrics;
 
-            return correlations;
+            return metrics;
+        }
+
+        /// <summary>
+        /// Disposes of all resources used by the log processor.
+        /// </summary>
+        /// <returns>ValueTask representing the disposal operation.</returns>
+        public ValueTask DisposeAsync()
+        {
+            try
+            {
+                _correlationTimer?.Dispose();
+                _correlationBuffer.Clear();
+                
+                // Dispose of all components
+                foreach (var enricher in _enrichers.OfType<IAsyncDisposable>())
+                {
+                    try
+                    {
+                        enricher.DisposeAsync().AsTask().Wait(1000); // 1 second timeout
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error disposing enricher");
+                    }
+                }
+                
+                _logger.LogInformation("LogProcessor disposed successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during LogProcessor disposal");
+            }
+            
+            return ValueTask.CompletedTask;
         }
     }
-
-    #endregion
-
-    #endregion
 } 

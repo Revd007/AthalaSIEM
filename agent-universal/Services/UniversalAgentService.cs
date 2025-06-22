@@ -20,6 +20,7 @@ namespace AthalaSIEM.UniversalAgent
     public class UniversalAgentService : BackgroundService
     {
         private readonly ILogger<UniversalAgentService> _logger;
+        private readonly ILoggerFactory _loggerFactory;
         private readonly IConfiguration _configuration;
         private readonly CollectorManager _collectorManager;
         private readonly LogProcessor _logProcessor;
@@ -31,12 +32,14 @@ namespace AthalaSIEM.UniversalAgent
 
         public UniversalAgentService(
             ILogger<UniversalAgentService> logger, 
+            ILoggerFactory loggerFactory,
             IConfiguration configuration,
             CollectorManager collectorManager,
             LogProcessor logProcessor,
             BackendCommunicationService communicationService)
         {
             _logger = logger;
+            _loggerFactory = loggerFactory;
             _configuration = configuration;
             _collectorManager = collectorManager;
             _logProcessor = logProcessor;
@@ -100,11 +103,20 @@ namespace AthalaSIEM.UniversalAgent
                     return;
                 }
 
-                // Step 2: Register and configure collectors (ManageEngine multi-source pattern)
+                // Step 2: Initialize log processor
+                _logger.LogInformation("⚙️ Initializing log processor...");
+                var processorInitialized = await _logProcessor.InitializeAsync();
+                if (!processorInitialized)
+                {
+                    _logger.LogError("Failed to initialize log processor");
+                    return;
+                }
+
+                // Step 3: Register and configure collectors (ManageEngine multi-source pattern)
                 _logger.LogInformation("📊 Registering log collectors...");
                 await RegisterCollectorsAsync();
 
-                // Step 3: Setup event handlers for the processing pipeline
+                // Step 4: Setup event handlers for the processing pipeline
                 SetupEventHandlers();
 
                 _isInitialized = true;
@@ -130,7 +142,9 @@ namespace AthalaSIEM.UniversalAgent
                 {
                     ILogCollector? collector = config.Type.ToLowerInvariant() switch
                     {
-                        "windowseventlog" => new WindowsEventLogCollector(),
+                        "windowseventlog" when System.OperatingSystem.IsWindows() => new WindowsEventLogCollector(),
+                        "fileintegrity" => new FileIntegrityCollector(_loggerFactory.CreateLogger<FileIntegrityCollector>()),
+                        "windowsregistry" when System.OperatingSystem.IsWindows() => new WindowsRegistryCollector(_loggerFactory.CreateLogger<WindowsRegistryCollector>()),
                         // Add more collectors as needed
                         // "syslog" => new SyslogCollector(),
                         // "iis" => new IISLogCollector(),
@@ -318,6 +332,31 @@ namespace AthalaSIEM.UniversalAgent
                         ["LogSources"] = new[] { "Security", "System", "Application" },
                         ["CollectAllEvents"] = true,
                         ["EnableSecurityFiltering"] = false
+                    }
+                });
+
+                // Add File Integrity Monitoring (FIM)
+                configs.Add(new CollectorConfiguration
+                {
+                    Type = "FileIntegrity",
+                    Enabled = true,
+                    Properties = new Dictionary<string, object>
+                    {
+                        ["MonitoredPaths"] = @"C:\Windows\System32\drivers,C:\Windows\System32\config,C:\Program Files\AthalaSIEM,C:\inetpub\wwwroot",
+                        ["RealTimeMonitoring"] = "true",
+                        ["ScanIntervalMinutes"] = "30"
+                    }
+                });
+
+                // Add Windows Registry Monitoring
+                configs.Add(new CollectorConfiguration
+                {
+                    Type = "WindowsRegistry",
+                    Enabled = true,
+                    Properties = new Dictionary<string, object>
+                    {
+                        ["ScanIntervalMinutes"] = "10",
+                        ["EnableThreatDetection"] = "true"
                     }
                 });
             }
