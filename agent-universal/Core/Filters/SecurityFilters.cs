@@ -107,8 +107,9 @@ namespace AthalaSIEM.Agent.Core.Filters
     }
 
     /// <summary>
-    /// Comprehensive Windows Event ID filter for enterprise SIEM environments.
-    /// Supports hundreds of security-relevant event IDs organized by category and threat type.
+    /// Enterprise Windows Event ID filter for configurable security monitoring.
+    /// All event IDs and categories are fully configurable via appsettings.json or registry.
+    /// NO HARDCODED VALUES - Users have complete control over what gets monitored.
     /// </summary>
     public class EnterpriseWindowsEventIdFilter : ILogFilter
     {
@@ -117,7 +118,7 @@ namespace AthalaSIEM.Agent.Core.Filters
         private long _logsProcessed;
         private long _logsPassed;
         
-        // Comprehensive event ID collections organized by security category
+        // User-configured event ID collections - NO DEFAULTS
         private Dictionary<string, HashSet<string>> _eventIdCategories = new();
         private HashSet<string> _enabledCategories = new();
         private HashSet<string> _allMonitoredEventIds = new();
@@ -126,7 +127,7 @@ namespace AthalaSIEM.Agent.Core.Filters
         public string Name => "Enterprise Windows Event ID Filter";
 
         /// <inheritdoc />
-        public string Description => "Comprehensive Windows Event ID filtering for enterprise security monitoring";
+        public string Description => "Fully configurable Windows Event ID filtering - NO HARDCODED VALUES";
 
         /// <inheritdoc />
         public int Priority => 90;
@@ -138,123 +139,173 @@ namespace AthalaSIEM.Agent.Core.Filters
         public EnterpriseWindowsEventIdFilter(ILogger<EnterpriseWindowsEventIdFilter> logger)
         {
             _logger = logger;
-            InitializeEventIdCategories();
-            
-            // Default: Enable all categories
-            _enabledCategories = new HashSet<string>(_eventIdCategories.Keys, StringComparer.OrdinalIgnoreCase);
-            UpdateMonitoredEventIds();
+            // NO DEFAULT INITIALIZATION - Everything must be configured by user
         }
 
         /// <summary>
-        /// Initializes the comprehensive event ID categories for enterprise monitoring.
+        /// Initializes the filter with user-provided configuration.
+        /// Configuration must include EventIdCategories and EnabledCategories.
+        /// If no configuration is provided, NO events will be processed (fail-secure).
         /// </summary>
-        private void InitializeEventIdCategories()
-        {
-            _eventIdCategories = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase)
-            {
-                // Authentication Events (Logon/Logoff)
-                ["Authentication"] = new HashSet<string>
-                {
-                    "4624", "4625", "4634", "4647", "4648", "4672", "4673", "4674", "4675", "4776", "4777",
-                    "4778", "4779", "4800", "4801", "4802", "4803", "5376", "5377", "5378", "5632", "5633"
-                },
-
-                // Account Management
-                ["AccountManagement"] = new HashSet<string>
-                {
-                    "4720", "4722", "4723", "4724", "4725", "4726", "4727", "4728", "4729", "4730", "4731",
-                    "4732", "4733", "4734", "4735", "4737", "4738", "4739", "4740", "4741", "4742", "4743"
-                },
-
-                // Privilege Use
-                ["PrivilegeUse"] = new HashSet<string>
-                {
-                    "4672", "4673", "4674", "4675", "4694", "4695", "4696", "4697", "4704", "4705"
-                },
-
-                // Object Access
-                ["ObjectAccess"] = new HashSet<string>
-                {
-                    "4656", "4657", "4658", "4659", "4660", "4661", "4662", "4663", "4664", "4665",
-                    "4666", "4667", "4668", "4670", "4671", "5140", "5142", "5143", "5144", "5145"
-                },
-
-                // Policy Changes
-                ["PolicyChange"] = new HashSet<string>
-                {
-                    "4713", "4714", "4715", "4716", "4717", "4718", "4719", "4864", "4865", "4866",
-                    "4867", "4902", "4904", "4905", "4906", "4907", "4908", "4912"
-                },
-
-                // System Events
-                ["SystemEvents"] = new HashSet<string>
-                {
-                    "1100", "1102", "1104", "1105", "1108", "4608", "4609", "4610", "4611", "4612",
-                    "4614", "4615", "4616", "4618", "4621", "4622", "5024", "5025", "5027", "5028"
-                },
-
-                // Process Activity
-                ["ProcessActivity"] = new HashSet<string>
-                {
-                    "4688", "4689", "4696", "4697", "4698", "4699", "4700", "4701", "4702"
-                },
-
-                // Network Activity
-                ["NetworkActivity"] = new HashSet<string>
-                {
-                    "5152", "5153", "5154", "5155", "5156", "5157", "5158", "5159"
-                },
-
-                // PowerShell Activity
-                ["PowerShell"] = new HashSet<string>
-                {
-                    "4103", "4104", "4105", "4106", "24577", "24578", "53504"
-                },
-
-                // Certificate Services
-                ["CertificateServices"] = new HashSet<string>
-                {
-                    "4868", "4869", "4870", "4871", "4872", "4873", "4874", "4875", "4876", "4877"
-                },
-
-                // Kerberos
-                ["Kerberos"] = new HashSet<string>
-                {
-                    "4768", "4769", "4770", "4771", "4772", "4773", "4774", "4775"
-                },
-
-                // Terminal Services
-                ["TerminalServices"] = new HashSet<string>
-                {
-                    "21", "22", "23", "24", "25", "131", "1149"
-                }
-            };
-        }
-
-        /// <summary>
-        /// Initializes the filter with configuration settings.
-        /// </summary>
-        /// <param name="config">Configuration dictionary containing filter settings.</param>
+        /// <param name="config">Configuration dictionary containing user-defined event ID categories.</param>
+        /// <exception cref="InvalidOperationException">Thrown when configuration is invalid or missing.</exception>
         public void Initialize(Dictionary<string, object> config)
         {
+            if (config == null || !config.Any())
+            {
+                _logger.LogWarning("No configuration provided for Windows Event ID filter. NO EVENTS WILL BE PROCESSED.");
+                return;
+            }
+
+            // Load user-defined event ID categories
+            if (config.TryGetValue("EventIdCategories", out var categoriesObj))
+            {
+                LoadEventIdCategories(categoriesObj);
+            }
+            else
+            {
+                _logger.LogWarning("EventIdCategories not configured. NO EVENTS WILL BE PROCESSED.");
+                _logger.LogInformation("Configure EventIdCategories in appsettings.json under LogProcessing:Filters:EventIdCategories");
+                return;
+            }
+
+            // Load enabled categories
             if (config.TryGetValue("EnabledCategories", out var categories))
             {
-                if (categories is string[] categoryArray)
-                {
-                    _enabledCategories = new HashSet<string>(categoryArray, StringComparer.OrdinalIgnoreCase);
-                }
-                else if (categories is string categoryString)
-                {
-                    _enabledCategories = new HashSet<string>(
-                        categoryString.Split(',').Select(s => s.Trim()),
-                        StringComparer.OrdinalIgnoreCase);
-                }
+                LoadEnabledCategories(categories);
+            }
+            else
+            {
+                // If no enabled categories specified, enable all configured categories
+                _enabledCategories = new HashSet<string>(_eventIdCategories.Keys, StringComparer.OrdinalIgnoreCase);
+                _logger.LogInformation("No EnabledCategories specified. Enabling all configured categories.");
             }
 
             UpdateMonitoredEventIds();
 
-            _logger.LogInformation("Enterprise Windows Event ID filter initialized with {CategoryCount} categories and {EventIdCount} event IDs",
+            _logger.LogInformation("Windows Event ID filter initialized with {CategoryCount} categories and {EventIdCount} event IDs",
                 _enabledCategories.Count, _allMonitoredEventIds.Count);
+
+            if (_allMonitoredEventIds.Count == 0)
+            {
+                _logger.LogWarning("NO EVENT IDS CONFIGURED FOR MONITORING. This filter will block all events.");
+                _logger.LogInformation("Example configuration:");
+                _logger.LogInformation("\"EventIdCategories\": {");
+                _logger.LogInformation("  \"Authentication\": [\"4624\", \"4625\", \"4634\"],");
+                _logger.LogInformation("  \"AccountManagement\": [\"4720\", \"4722\", \"4723\"]");
+                _logger.LogInformation("}");
+            }
+        }
+
+        /// <summary>
+        /// Loads event ID categories from configuration object.
+        /// Supports both dictionary and JSON string formats.
+        /// </summary>
+        /// <param name="categoriesObj">Configuration object containing event ID categories.</param>
+        private void LoadEventIdCategories(object categoriesObj)
+        {
+            try
+            {
+                Dictionary<string, object>? categoriesDict = null;
+
+                if (categoriesObj is Dictionary<string, object> directDict)
+                {
+                    categoriesDict = directDict;
+                }
+                else if (categoriesObj is string jsonString)
+                {
+                    categoriesDict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(jsonString);
+                }
+
+                if (categoriesDict != null)
+                {
+                    foreach (var kvp in categoriesDict)
+                    {
+                        var categoryName = kvp.Key;
+                        var eventIds = new HashSet<string>();
+
+                        if (kvp.Value is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                        {
+                            foreach (var element in jsonElement.EnumerateArray())
+                            {
+                                if (element.ValueKind == System.Text.Json.JsonValueKind.String)
+                                {
+                                    var eventId = element.GetString();
+                                    if (!string.IsNullOrEmpty(eventId))
+                                    {
+                                        eventIds.Add(eventId);
+                                    }
+                                }
+                            }
+                        }
+                        else if (kvp.Value is string[] stringArray)
+                        {
+                            foreach (var eventId in stringArray)
+                            {
+                                if (!string.IsNullOrEmpty(eventId))
+                                {
+                                    eventIds.Add(eventId);
+                                }
+                            }
+                        }
+                        else if (kvp.Value is string csvString)
+                        {
+                            var eventIdArray = csvString.Split(',');
+                            foreach (var eventId in eventIdArray)
+                            {
+                                var trimmed = eventId.Trim();
+                                if (!string.IsNullOrEmpty(trimmed))
+                                {
+                                    eventIds.Add(trimmed);
+                                }
+                            }
+                        }
+
+                        if (eventIds.Any())
+                        {
+                            _eventIdCategories[categoryName] = eventIds;
+                            _logger.LogDebug("Loaded category '{Category}' with {Count} event IDs", categoryName, eventIds.Count);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to load event ID categories from configuration");
+            }
+        }
+
+        /// <summary>
+        /// Loads enabled categories from configuration.
+        /// </summary>
+        /// <param name="categories">Configuration object containing enabled categories.</param>
+        private void LoadEnabledCategories(object categories)
+        {
+            if (categories is string[] categoryArray)
+            {
+                _enabledCategories = new HashSet<string>(categoryArray, StringComparer.OrdinalIgnoreCase);
+            }
+            else if (categories is string categoryString)
+            {
+                _enabledCategories = new HashSet<string>(
+                    categoryString.Split(',').Select(s => s.Trim()).Where(s => !string.IsNullOrEmpty(s)),
+                    StringComparer.OrdinalIgnoreCase);
+            }
+            else if (categories is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                _enabledCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var element in jsonElement.EnumerateArray())
+                {
+                    if (element.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        var category = element.GetString();
+                        if (!string.IsNullOrEmpty(category))
+                        {
+                            _enabledCategories.Add(category);
+                        }
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -272,6 +323,10 @@ namespace AthalaSIEM.Agent.Core.Filters
                         _allMonitoredEventIds.Add(eventId);
                     }
                 }
+                else
+                {
+                    _logger.LogWarning("Enabled category '{Category}' not found in configured event ID categories", category);
+                }
             }
         }
 
@@ -283,7 +338,13 @@ namespace AthalaSIEM.Agent.Core.Filters
 
             try
             {
-                // Process all non-Windows events
+                // If no event IDs are configured, process nothing (fail-secure)
+                if (_allMonitoredEventIds.Count == 0)
+                {
+                    return Task.FromResult(false);
+                }
+
+                // Process all non-Windows events by default
                 if (string.IsNullOrEmpty(log.EventId))
                 {
                     _logsPassed++;
@@ -317,7 +378,8 @@ namespace AthalaSIEM.Agent.Core.Filters
                 ["AverageProcessingTimeMs"] = _logsProcessed > 0 ? _processingTimer.ElapsedMilliseconds / (double)_logsProcessed : 0,
                 ["EnabledCategories"] = _enabledCategories.ToArray(),
                 ["MonitoredEventIdCount"] = _allMonitoredEventIds.Count,
-                ["AvailableCategories"] = _eventIdCategories.Keys.ToArray()
+                ["ConfiguredCategories"] = _eventIdCategories.Keys.ToArray(),
+                ["ConfigurationStatus"] = _allMonitoredEventIds.Count > 0 ? "Configured" : "NOT CONFIGURED - NO EVENTS WILL BE PROCESSED"
             };
         }
     }

@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Threading;
+using AthalaSIEM.Agent.Collectors;
 
 namespace AthalaSIEM.UniversalAgent
 {
@@ -73,8 +74,15 @@ namespace AthalaSIEM.UniversalAgent
                         var configuration = provider.GetRequiredService<IConfiguration>();
                         return new LogProcessor(logger, loggerFactory, configuration);
                     });
+                    services.AddSingleton<GrpcCommunicationService>();
                     services.AddSingleton<BackendCommunicationService>();
                     services.AddHttpClient<BackendCommunicationService>();
+                    
+                    // Register Windows Authentication Service (Windows only)
+                    if (System.OperatingSystem.IsWindows())
+                    {
+                        services.AddSingleton<WindowsAuthenticationService>();
+                    }
                     
                     // Register the main service
                     services.AddHostedService<UniversalAgentService>();

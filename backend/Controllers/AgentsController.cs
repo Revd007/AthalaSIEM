@@ -201,7 +201,7 @@ namespace Backend.Controllers
                 }
 
                 // Get configured registration key
-                var configRegistrationKey = _configuration["RegistrationKey"];
+                var configRegistrationKey = _configuration["AgentSettings:ServerRegistrationKey"];
                 if (string.IsNullOrEmpty(configRegistrationKey))
                 {
                     _logger.LogError("Registration key not configured in server settings");

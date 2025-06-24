@@ -257,8 +257,8 @@ namespace AthalaSIEM.Agent.Core
             foreach (var filter in _securityFilters.OrderByDescending(f => f.Priority))
             {
                 try
-                {
-                    if (!await filter.ShouldProcessAsync(log))
+            {
+                if (!await filter.ShouldProcessAsync(log))
                 {
                     _logger.LogDebug("Log filtered by {FilterName}: {LogMessage}", filter.Name, log.Message);
                     return false;
@@ -441,9 +441,9 @@ namespace AthalaSIEM.Agent.Core
                                         DetectorName = correlator.Name,
                                         IsHighPriority = correlation.Severity == "Critical" || correlation.Severity == "High",
                                         AgentId = Environment.MachineName
-                                    });
-                                }
-                            }
+                            });
+                        }
+                    }
                         }
                     }
                     catch (Exception ex)
@@ -527,12 +527,43 @@ namespace AthalaSIEM.Agent.Core
         private async Task InitializeSecurityFiltersAsync()
         {
             try
-            {
+        {
                 _logger.LogDebug("Initializing security filters...");
 
-                // Get filter configuration
-                var filterConfig = _configuration.GetSection("LogProcessing:Filters").Get<Dictionary<string, object>>()
-                    ?? new Dictionary<string, object>();
+                // Get filter configuration - use a more robust approach
+                var filterConfig = new Dictionary<string, object>();
+                
+                // Load security relevance levels
+                var allowedLevels = _configuration.GetSection("LogProcessing:Filters:AllowedSecurityLevels").Get<string[]>();
+                if (allowedLevels != null)
+                {
+                    filterConfig["AllowedSecurityLevels"] = allowedLevels;
+                }
+
+                // Load Event ID categories and enabled categories
+                var eventIdCategoriesSection = _configuration.GetSection("LogProcessing:Filters:EventIdCategories");
+                if (eventIdCategoriesSection.Exists())
+                {
+                    var eventIdCategories = new Dictionary<string, object>();
+                    foreach (var categorySection in eventIdCategoriesSection.GetChildren())
+                    {
+                        var eventIds = categorySection.Get<string[]>();
+                        if (eventIds != null)
+                        {
+                            eventIdCategories[categorySection.Key] = eventIds;
+                        }
+                    }
+                    filterConfig["EventIdCategories"] = eventIdCategories;
+                    
+                    _logger.LogDebug("Loaded {CategoryCount} event ID categories", eventIdCategories.Count);
+                }
+
+                var enabledCategories = _configuration.GetSection("LogProcessing:Filters:EnabledCategories").Get<string[]>();
+                if (enabledCategories != null)
+                {
+                    filterConfig["EnabledCategories"] = enabledCategories;
+                    _logger.LogDebug("Enabled categories: {Categories}", string.Join(", ", enabledCategories));
+                }
 
                 // Initialize enterprise filters
                 var securityRelevanceFilter = new EnterpriseSecurityRelevanceFilter(_loggerFactory.CreateLogger<EnterpriseSecurityRelevanceFilter>());
@@ -564,7 +595,7 @@ namespace AthalaSIEM.Agent.Core
         private async Task InitializeEnrichersAsync()
         {
             try
-            {
+        {
                 _logger.LogDebug("Initializing enrichers...");
 
                 // Get enricher configuration
@@ -595,7 +626,7 @@ namespace AthalaSIEM.Agent.Core
         private async Task InitializeCorrelatorsAsync()
         {
             try
-            {
+        {
                 _logger.LogDebug("Initializing correlators...");
 
                 // Get correlator configuration
@@ -715,7 +746,7 @@ namespace AthalaSIEM.Agent.Core
                     ["CorrelationIntervalSeconds"] = _processingConfig.CorrelationIntervalSeconds,
                     ["CorrelationBufferSize"] = _processingConfig.CorrelationBufferSize,
                     ["MinimumSecurityRelevance"] = _processingConfig.MinimumSecurityRelevance
-                }
+        }
             };
 
             // Add filter metrics
@@ -727,7 +758,7 @@ namespace AthalaSIEM.Agent.Core
                     filterMetrics[filter.Name] = filter.GetMetrics();
                 }
                 catch (Exception ex)
-                {
+        {
                     _logger.LogWarning(ex, "Error getting metrics from filter {FilterName}", filter.Name);
                     filterMetrics[filter.Name] = new Dictionary<string, object> { ["Error"] = ex.Message };
                 }
@@ -746,8 +777,8 @@ namespace AthalaSIEM.Agent.Core
                 {
                     _logger.LogWarning(ex, "Error getting metrics from enricher {EnricherName}", enricher.Name);
                     enricherMetrics[enricher.Name] = new Dictionary<string, object> { ["Error"] = ex.Message };
-                }
             }
+        }
             metrics["EnricherMetrics"] = enricherMetrics;
 
             // Add correlator metrics
@@ -779,7 +810,7 @@ namespace AthalaSIEM.Agent.Core
             {
                 _correlationTimer?.Dispose();
                 _correlationBuffer.Clear();
-                
+            
                 // Dispose of all components
                 foreach (var enricher in _enrichers.OfType<IAsyncDisposable>())
                 {
@@ -799,7 +830,7 @@ namespace AthalaSIEM.Agent.Core
             {
                 _logger.LogError(ex, "Error during LogProcessor disposal");
             }
-            
+
             return ValueTask.CompletedTask;
         }
     }

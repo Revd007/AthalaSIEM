@@ -6,10 +6,13 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
+using System.ComponentModel.DataAnnotations;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using AthalaSIEM.UniversalAgent.Models;
+using AthalaSIEM.UniversalAgent.Services.Interfaces;
 using AthalaSIEM.Agent.Core;
+using static AthalaSIEM.UniversalAgent.Models.Constants;
 
 namespace AthalaSIEM.UniversalAgent.Services
 {
@@ -18,7 +21,7 @@ namespace AthalaSIEM.UniversalAgent.Services
     /// Handles secure communication with AthalaSIEM backend API
     /// Implements batch processing, retry logic, and health monitoring
     /// </summary>
-    public class BackendCommunicationService : IAsyncDisposable
+    public sealed class BackendCommunicationService : IBackendCommunicationService
     {
         private readonly ILogger<BackendCommunicationService> _logger;
         private readonly IConfiguration _configuration;
@@ -221,54 +224,154 @@ namespace AthalaSIEM.UniversalAgent.Services
             var protocol = useHTTPS ? "https" : "http";
             
             _managerUrl = $"{protocol}://{managerIP}:{managerPort}";
-            _agentId = _configuration["Agent:Id"] ?? Environment.MachineName;
-            _apiKey = _configuration["Agent:ApiKey"] ?? "";
-            _batchSize = _configuration.GetValue<int>("Agent:BatchSize", 100);
-            _batchIntervalSeconds = _configuration.GetValue<int>("Agent:BatchIntervalSeconds", 30);
+            _agentId = string.IsNullOrEmpty(_configuration[ConfigurationKeys.AgentId]) ? Environment.MachineName : _configuration[ConfigurationKeys.AgentId];
+            _apiKey = _configuration[ConfigurationKeys.ApiKey] ?? "";
+            _batchSize = _configuration.GetValue<int>(ConfigurationKeys.BatchSize, Defaults.BatchSize);
+            _batchIntervalSeconds = _configuration.GetValue<int>(ConfigurationKeys.BatchIntervalSeconds, Defaults.BatchIntervalSeconds);
+
+            // Validate configuration
+            if (_batchSize < Validation.MinBatchSize || _batchSize > Validation.MaxBatchSize)
+            {
+                _logger.LogWarning("Invalid batch size {BatchSize}, using default {Default}", _batchSize, Defaults.BatchSize);
+                _batchSize = Defaults.BatchSize;
+            }
+
+            if (_batchIntervalSeconds < Validation.MinIntervalSeconds || _batchIntervalSeconds > Validation.MaxIntervalSeconds)
+            {
+                _logger.LogWarning("Invalid batch interval {Interval}, using default {Default}", _batchIntervalSeconds, Defaults.BatchIntervalSeconds);
+                _batchIntervalSeconds = Defaults.BatchIntervalSeconds;
+            }
         }
 
         private void ConfigureHttpClient()
         {
-            _httpClient.Timeout = TimeSpan.FromMinutes(2);
-            _httpClient.DefaultRequestHeaders.Add("User-Agent", "AthalaSIEM-UniversalAgent/1.0");
+            // Set base address for the HTTP client
+            _httpClient.BaseAddress = new Uri(_managerUrl);
             
+            // Configure timeout
+            _httpClient.Timeout = TimeSpan.FromMilliseconds(Constants.Timeouts.HttpRequestTimeout);
+            
+            // Set default headers
+            _httpClient.DefaultRequestHeaders.Add(Constants.Headers.UserAgent, $"AthalaSIEM-Agent/{Constants.Defaults.AgentVersion}");
+            _httpClient.DefaultRequestHeaders.Accept.Add(
+                new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue(Constants.ContentTypes.ApplicationJson));
+
+            // Add API key if available
             if (!string.IsNullOrEmpty(_apiKey))
             {
-                _httpClient.DefaultRequestHeaders.Add("X-API-Key", _apiKey);
+                _httpClient.DefaultRequestHeaders.Remove(Constants.Headers.ApiKey);
+                _httpClient.DefaultRequestHeaders.Add(Constants.Headers.ApiKey, _apiKey);
             }
+
+            _logger.LogDebug("HTTP client configured with base address: {BaseAddress}", _managerUrl);
         }
 
         private async Task RegisterAgentAsync()
         {
             try
             {
-                var registrationData = new
+                _logger.LogInformation("Registering agent with SIEM Manager...");
+
+                var registrationRequest = new AgentRegistrationRequest
                 {
-                    AgentId = _agentId,
-                    AgentName = _configuration["Agent:Name"] ?? _agentId,
-                    Version = "1.0.0",
+                    DeploymentToken = _configuration.GetValue<string>("Agent:RegistrationKey") ?? Constants.Defaults.RegistrationKey,
+                    Hostname = Environment.MachineName,
+                    IpAddress = GetLocalIpAddress(),
                     Platform = Environment.OSVersion.Platform.ToString(),
-                    MachineName = Environment.MachineName,
-                    RegisteredAt = DateTime.UtcNow
+                    OsVersion = Environment.OSVersion.ToString(),
+                    Version = Constants.Defaults.AgentVersion,
+                    Capabilities = new List<string> { "WindowsEventLog", "FileIntegrity", "Registry", "LogProcessing" }
                 };
 
-                var json = JsonSerializer.Serialize(registrationData);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                if (!registrationRequest.IsValid())
+                {
+                    _logger.LogError("Invalid registration request data");
+                    return;
+                }
 
-                var response = await _httpClient.PostAsync($"{_managerUrl}/api/agents/register", content);
-                
+                var json = JsonSerializer.Serialize(registrationRequest);
+                var content = new StringContent(json, Encoding.UTF8, Constants.ContentTypes.ApplicationJson);
+
+                var response = await _httpClient.PostAsync(Constants.ApiEndpoints.AgentRegistration, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
                 if (response.IsSuccessStatusCode)
                 {
-                    _logger.LogInformation("Agent registered successfully");
+                    var registrationResponse = JsonSerializer.Deserialize<AgentRegistrationResponse>(responseContent);
+                    if (registrationResponse != null && registrationResponse.IsValid())
+                    {
+                        _agentId = registrationResponse.AgentId;
+                        _apiKey = registrationResponse.ApiKey;
+                        
+                        // Update HTTP client with new API key
+                        _httpClient.DefaultRequestHeaders.Remove(Constants.Headers.ApiKey);
+                        _httpClient.DefaultRequestHeaders.Add(Constants.Headers.ApiKey, _apiKey);
+                        
+                        _logger.LogInformation("Agent registered successfully with ID: {AgentId}", _agentId);
+                        
+                        // Update connection status
+                        _isConnected = true;
+                        ConnectionStatusChanged?.Invoke(this, new ConnectionStatusChangedEventArgs
+                        {
+                            IsConnected = true,
+                            StatusMessage = "Agent registered and connected successfully",
+                            StatusTime = DateTime.UtcNow
+                        });
+                    }
+                    else
+                    {
+                        _logger.LogError("Invalid registration response received");
+                    }
                 }
                 else
                 {
-                    _logger.LogWarning("Agent registration failed: {StatusCode}", response.StatusCode);
+                    _logger.LogWarning("Agent registration failed: {StatusCode} - {Content}", 
+                        response.StatusCode, responseContent);
+                    
+                    // If registration fails but we have existing credentials, try to use them
+                    var existingApiKey = _configuration.GetValue<string>("Agent:ApiKey");
+                    var existingAgentId = _configuration.GetValue<string>("Agent:Id");
+                    
+                    if (!string.IsNullOrEmpty(existingApiKey) && !string.IsNullOrEmpty(existingAgentId))
+                    {
+                        _logger.LogInformation("Using existing agent credentials for authentication");
+                        _apiKey = existingApiKey;
+                        _agentId = existingAgentId;
+                        
+                        // Update HTTP client with existing API key
+                        _httpClient.DefaultRequestHeaders.Remove(Constants.Headers.ApiKey);
+                        _httpClient.DefaultRequestHeaders.Add(Constants.Headers.ApiKey, _apiKey);
+                        
+                        _isConnected = true;
+                        ConnectionStatusChanged?.Invoke(this, new ConnectionStatusChangedEventArgs
+                        {
+                            IsConnected = true,
+                            StatusMessage = "Using existing agent credentials",
+                            StatusTime = DateTime.UtcNow
+                        });
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error registering agent");
+                _logger.LogError(ex, "Error during agent registration");
+                
+                // Try to use existing credentials as fallback
+                var existingApiKey = _configuration.GetValue<string>("Agent:ApiKey");
+                var existingAgentId = _configuration.GetValue<string>("Agent:Id");
+                
+                if (!string.IsNullOrEmpty(existingApiKey) && !string.IsNullOrEmpty(existingAgentId))
+                {
+                    _logger.LogInformation("Registration failed, falling back to existing credentials");
+                    _apiKey = existingApiKey;
+                    _agentId = existingAgentId;
+                    
+                    // Update HTTP client with existing API key
+                    _httpClient.DefaultRequestHeaders.Remove(Constants.Headers.ApiKey);
+                    _httpClient.DefaultRequestHeaders.Add(Constants.Headers.ApiKey, _apiKey);
+                    
+                    _isConnected = true;
+                }
             }
         }
 
@@ -292,7 +395,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                     var json = JsonSerializer.Serialize(heartbeatData);
                     var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                    var response = await _httpClient.PostAsync($"{_managerUrl}/api/agents/heartbeat", content);
+                    var response = await _httpClient.PostAsync($"{_managerUrl}{string.Format(ApiEndpoints.Heartbeat, _agentId)}", content);
                     
                     if (!response.IsSuccessStatusCode)
                     {
@@ -348,7 +451,9 @@ namespace AthalaSIEM.UniversalAgent.Services
                         LogsSent?.Invoke(this, new LogsSentEventArgs
                         {
                             LogCount = logsToSend.Count,
-                            SentAt = DateTime.UtcNow
+                            SentAt = DateTime.UtcNow,
+                            ProcessingDuration = TimeSpan.FromMilliseconds(100), // Could be measured
+                            BatchSize = logsToSend.Count
                         });
 
                         _logger.LogDebug("Sent {Count} logs to backend", logsToSend.Count);
@@ -424,7 +529,9 @@ namespace AthalaSIEM.UniversalAgent.Services
                     {
                         ErrorMessage = $"HTTP {response.StatusCode}",
                         LogCount = logs.Count,
-                        ErrorTime = DateTime.UtcNow
+                        ErrorTime = DateTime.UtcNow,
+                        ErrorCategory = ErrorCategories.NetworkError,
+                        IsRetryable = true
                     });
                     
                     return false;
@@ -439,10 +546,33 @@ namespace AthalaSIEM.UniversalAgent.Services
                 {
                     ErrorMessage = ex.Message,
                     LogCount = logs.Count,
-                    ErrorTime = DateTime.UtcNow
+                    ErrorTime = DateTime.UtcNow,
+                    Exception = ex,
+                    ErrorCategory = ErrorCategories.NetworkError,
+                    IsRetryable = true
                 });
                 
                 return false;
+            }
+        }
+
+        private string GetLocalIpAddress()
+        {
+            try
+            {
+                var host = System.Net.Dns.GetHostEntry(System.Net.Dns.GetHostName());
+                foreach (var ip in host.AddressList)
+                {
+                    if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                    {
+                        return ip.ToString();
+                    }
+                }
+                return "127.0.0.1";
+            }
+            catch
+            {
+                return "127.0.0.1";
             }
         }
 
@@ -458,38 +588,4 @@ namespace AthalaSIEM.UniversalAgent.Services
             return ValueTask.CompletedTask;
         }
     }
-
-    #region Supporting Classes
-
-    public class CommunicationHealth
-    {
-        public bool IsConnected { get; set; }
-        public string ManagerUrl { get; set; } = "";
-        public long QueuedLogs { get; set; }
-        public long TotalLogsSent { get; set; }
-        public long TotalSendErrors { get; set; }
-        public DateTime LastSuccessfulSend { get; set; }
-        public DateTime LastHealthCheck { get; set; }
-    }
-
-    public class LogsSentEventArgs : EventArgs
-    {
-        public int LogCount { get; set; }
-        public DateTime SentAt { get; set; }
-    }
-
-    public class CommunicationErrorEventArgs : EventArgs
-    {
-        public string ErrorMessage { get; set; } = "";
-        public int LogCount { get; set; }
-        public DateTime ErrorTime { get; set; }
-    }
-
-    public class ConnectionStatusChangedEventArgs : EventArgs
-    {
-        public bool IsConnected { get; set; }
-        public string StatusMessage { get; set; } = "";
-    }
-
-    #endregion
 } 
