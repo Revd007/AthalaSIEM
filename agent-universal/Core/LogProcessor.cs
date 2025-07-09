@@ -29,9 +29,9 @@ namespace AthalaSIEM.Agent.Core
         private readonly List<ILogEnricher> _enrichers = new();
         private readonly List<ILogCorrelator> _correlators = new();
         private readonly Dictionary<string, List<LogEntry>> _correlationBuffer = new();
-        private readonly Timer _correlationTimer;
+        private Timer _correlationTimer;
         private readonly object _processingLock = new();
-        private readonly LogProcessingConfiguration _processingConfig;
+        private LogProcessingConfiguration _processingConfig;
 
         /// <summary>
         /// Gets a value indicating whether the processor is currently processing logs.
@@ -69,6 +69,11 @@ namespace AthalaSIEM.Agent.Core
         public event EventHandler<LogProcessingErrorEventArgs>? ProcessingError;
 
         /// <summary>
+        /// Event raised when backend configuration is updated.
+        /// </summary>
+        public event EventHandler<ConfigurationUpdatedEventArgs>? ConfigurationUpdated;
+
+        /// <summary>
         /// Initializes a new instance of the LogProcessor class.
         /// </summary>
         /// <param name="logger">Logger instance for this processor.</param>
@@ -88,6 +93,8 @@ namespace AthalaSIEM.Agent.Core
             _correlationTimer = new Timer(ProcessCorrelations, null, 
                 TimeSpan.FromSeconds(intervalSeconds), 
                 TimeSpan.FromSeconds(intervalSeconds));
+
+            _logger.LogInformation("LogProcessor initialized - Backend configuration support enabled");
         }
 
         /// <summary>
@@ -477,10 +484,207 @@ namespace AthalaSIEM.Agent.Core
             return $"{computer}_{user}_{ip}";
         }
 
+        /// <summary>
+        /// Updates processing configuration from backend.
+        /// This replaces hardcoded thresholds with dynamic backend-controlled settings.
+        /// </summary>
+        /// <param name="configType">Type of configuration being updated.</param>
+        /// <param name="config">Backend configuration data.</param>
+        /// <returns>True if configuration was successfully applied.</returns>
+        public async Task<bool> UpdateFromBackendConfigAsync(string configType, Dictionary<string, object> config)
+        {
+            try
+            {
+                _logger.LogInformation("Updating {ConfigType} configuration from backend...", configType);
+
+                switch (configType)
+                {
+                    case Constants.BackendConfig.ConfigurationTypeEventFiltering:
+                        await UpdateEventFilteringConfigAsync(config);
+                        break;
+
+                    case Constants.BackendConfig.ConfigurationTypeDetectionThresholds:
+                        await UpdateDetectionThresholdsAsync(config);
+                        break;
+
+                    case Constants.BackendConfig.ConfigurationTypeMonitoring:
+                        await UpdateMonitoringSettingsAsync(config);
+                        break;
+
+                    default:
+                        _logger.LogWarning("Unknown configuration type: {ConfigType}", configType);
+                        return false;
+                }
+
+                // Fire configuration updated event
+                ConfigurationUpdated?.Invoke(this, new ConfigurationUpdatedEventArgs
+                {
+                    ConfigurationType = configType,
+                    Configuration = config,
+                    UpdateTime = DateTime.UtcNow,
+                    Success = true
+                });
+
+                _logger.LogInformation("✅ {ConfigType} configuration updated successfully", configType);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to update {ConfigType} configuration from backend", configType);
+                
+                ConfigurationUpdated?.Invoke(this, new ConfigurationUpdatedEventArgs
+                {
+                    ConfigurationType = configType,
+                    Configuration = config,
+                    UpdateTime = DateTime.UtcNow,
+                    Success = false,
+                    Error = ex.Message
+                });
+
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Updates event filtering configuration from backend.
+        /// </summary>
+        /// <param name="config">Backend event filtering configuration.</param>
+        /// <returns>Task representing the update operation.</returns>
+        private async Task UpdateEventFilteringConfigAsync(Dictionary<string, object> config)
+        {
+            try
+            {
+                _logger.LogDebug("Updating event filtering configuration...");
+
+                // Find and update the Event ID filter
+                var eventIdFilter = _securityFilters.OfType<EnterpriseWindowsEventIdFilter>().FirstOrDefault();
+                if (eventIdFilter != null)
+                {
+                    eventIdFilter.UpdateFromBackendConfig(config);
+                    _logger.LogInformation("Event ID filter updated with backend configuration");
+                }
+                else
+                {
+                    _logger.LogWarning("Event ID filter not found - creating new instance");
+                    var newFilter = new EnterpriseWindowsEventIdFilter(_loggerFactory.CreateLogger<EnterpriseWindowsEventIdFilter>());
+                    newFilter.UpdateFromBackendConfig(config);
+                    _securityFilters.Add(newFilter);
+                    
+                    // Re-sort filters by priority
+                    _securityFilters.Sort((x, y) => y.Priority.CompareTo(x.Priority));
+                }
+
+                await Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating event filtering configuration");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Updates detection thresholds from backend configuration.
+        /// This replaces ALL hardcoded detection values with backend-controlled settings.
+        /// </summary>
+        /// <param name="config">Backend detection thresholds configuration.</param>
+        /// <returns>Task representing the update operation.</returns>
+        private async Task UpdateDetectionThresholdsAsync(Dictionary<string, object> config)
+        {
+            try
+            {
+                _logger.LogDebug("Updating detection thresholds from backend...");
+
+                // Update processing configuration thresholds
+                foreach (var kvp in config)
+                {
+                    if (int.TryParse(kvp.Value.ToString(), out var threshold))
+                    {
+                        _processingConfig.DetectionThresholds[kvp.Key] = threshold;
+                        _logger.LogDebug("Updated threshold: {Key} = {Value}", kvp.Key, threshold);
+                    }
+                }
+
+                // Update correlators with new thresholds
+                var thresholdConfig = new Dictionary<string, object>(_processingConfig.DetectionThresholds.ToDictionary(k => k.Key, v => (object)v.Value));
+                
+                foreach (var correlator in _correlators)
+                {
+                    try
+                    {
+                        await correlator.InitializeAsync(thresholdConfig);
+                        _logger.LogDebug("Updated correlator: {CorrelatorName}", correlator.Name);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to update correlator {CorrelatorName} with new thresholds", correlator.Name);
+                    }
+                }
+
+                _logger.LogInformation("Detection thresholds updated: {Count} thresholds configured", _processingConfig.DetectionThresholds.Count);
+                await Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating detection thresholds");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Updates monitoring settings from backend configuration.
+        /// </summary>
+        /// <param name="config">Backend monitoring configuration.</param>
+        /// <returns>Task representing the update operation.</returns>
+        private async Task UpdateMonitoringSettingsAsync(Dictionary<string, object> config)
+        {
+            try
+            {
+                _logger.LogDebug("Updating monitoring settings from backend...");
+
+                // Update correlation settings
+                if (config.TryGetValue("CorrelationIntervalSeconds", out var correlationInterval) && 
+                    int.TryParse(correlationInterval.ToString(), out var interval))
+                {
+                    _processingConfig.CorrelationIntervalSeconds = interval;
+                    
+                    // Update correlation timer
+                    _correlationTimer?.Dispose();
+                    _correlationTimer = new Timer(ProcessCorrelations, null, 
+                        TimeSpan.FromSeconds(interval), 
+                        TimeSpan.FromSeconds(interval));
+                    
+                    _logger.LogInformation("Correlation interval updated to {Interval} seconds", interval);
+                }
+
+                if (config.TryGetValue("CorrelationBufferSize", out var bufferSize) && 
+                    int.TryParse(bufferSize.ToString(), out var size))
+                {
+                    _processingConfig.CorrelationBufferSize = size;
+                    _logger.LogInformation("Correlation buffer size updated to {Size}", size);
+                }
+
+                if (config.TryGetValue("EnableCorrelation", out var enableCorrelation) && 
+                    bool.TryParse(enableCorrelation.ToString(), out var enable))
+                {
+                    _processingConfig.EnableCorrelation = enable;
+                    _logger.LogInformation("Correlation enabled: {Enabled}", enable);
+                }
+
+                await Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating monitoring settings");
+                throw;
+            }
+        }
+
         #region Initialization Methods
 
         /// <summary>
         /// Loads processing configuration from the configuration provider.
+        /// Now uses minimal defaults - backend will provide actual configuration.
         /// </summary>
         /// <returns>Log processing configuration instance.</returns>
         private LogProcessingConfiguration LoadProcessingConfiguration()
@@ -494,20 +698,10 @@ namespace AthalaSIEM.Agent.Core
                 processingSection.Bind(config);
             }
 
-            // Set default values if not configured
-            if (config.SecurityEventIds.Count == 0)
-            {
-                // Default Windows security event IDs
-                config.SecurityEventIds = new HashSet<string>
-                {
-                    "4624", "4625", "4634", "4647", "4648", "4672", "4673", "4674", "4675", "4776", "4777",
-                    "4720", "4722", "4723", "4724", "4725", "4726", "4727", "4728", "4729", "4730", "4731",
-                    "4732", "4733", "4734", "4735", "4737", "4738", "4739", "4740", "4741", "4742", "4743"
-                };
-            }
-
+            // Minimal default values - backend will override these
             if (config.DetectionThresholds.Count == 0)
             {
+                _logger.LogInformation("No local detection thresholds configured - using minimal defaults until backend provides configuration");
                 config.DetectionThresholds = new Dictionary<string, int>
                 {
                     ["BruteForceThreshold"] = 5,
@@ -517,6 +711,8 @@ namespace AthalaSIEM.Agent.Core
                 };
             }
 
+            // Log configuration source
+            _logger.LogInformation("Processing configuration loaded - Backend will provide final configuration");
             return config;
         }
 
@@ -745,8 +941,10 @@ namespace AthalaSIEM.Agent.Core
                     ["CorrelationEnabled"] = _processingConfig.EnableCorrelation,
                     ["CorrelationIntervalSeconds"] = _processingConfig.CorrelationIntervalSeconds,
                     ["CorrelationBufferSize"] = _processingConfig.CorrelationBufferSize,
-                    ["MinimumSecurityRelevance"] = _processingConfig.MinimumSecurityRelevance
-        }
+                    ["MinimumSecurityRelevance"] = _processingConfig.MinimumSecurityRelevance,
+                    ["ConfigurationSource"] = "Backend Controlled",
+                    ["DetectionThresholds"] = _processingConfig.DetectionThresholds
+                }
             };
 
             // Add filter metrics
@@ -758,7 +956,7 @@ namespace AthalaSIEM.Agent.Core
                     filterMetrics[filter.Name] = filter.GetMetrics();
                 }
                 catch (Exception ex)
-        {
+                {
                     _logger.LogWarning(ex, "Error getting metrics from filter {FilterName}", filter.Name);
                     filterMetrics[filter.Name] = new Dictionary<string, object> { ["Error"] = ex.Message };
                 }
@@ -777,8 +975,8 @@ namespace AthalaSIEM.Agent.Core
                 {
                     _logger.LogWarning(ex, "Error getting metrics from enricher {EnricherName}", enricher.Name);
                     enricherMetrics[enricher.Name] = new Dictionary<string, object> { ["Error"] = ex.Message };
+                }
             }
-        }
             metrics["EnricherMetrics"] = enricherMetrics;
 
             // Add correlator metrics
@@ -833,5 +1031,17 @@ namespace AthalaSIEM.Agent.Core
 
             return ValueTask.CompletedTask;
         }
+    }
+
+    /// <summary>
+    /// Event arguments for configuration updates.
+    /// </summary>
+    public class ConfigurationUpdatedEventArgs : EventArgs
+    {
+        public string ConfigurationType { get; set; } = "";
+        public Dictionary<string, object> Configuration { get; set; } = new();
+        public DateTime UpdateTime { get; set; }
+        public bool Success { get; set; }
+        public string Error { get; set; } = "";
     }
 } 

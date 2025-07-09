@@ -386,7 +386,7 @@ namespace Backend.Services
         }
 
         /// <inheritdoc/>
-        public async Task<LogTrendsDto> GetLogTrendsAsync(DateTime startTime, DateTime endTime, TimeInterval interval)
+        public async Task<LogTrendsDto> GetLogTrendsAsync(DateTime startTime, DateTime endTime, Backend.Models.TimeInterval interval)
         {
             _logger.LogInformation("Getting log trends from {StartTime} to {EndTime} with interval {Interval}", startTime, endTime, interval);
             

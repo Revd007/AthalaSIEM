@@ -114,6 +114,79 @@ namespace Backend.Controllers
         }
 
         /// <summary>
+        /// Create new deployment token WITHOUT AUTHORIZATION (for testing only)
+        /// </summary>
+        [HttpPost("tokens/test")]
+        [AllowAnonymous]
+        public async Task<ActionResult<AgentDeploymentTokenDto>> CreateTestDeploymentToken([FromBody] CreateAgentDeploymentTokenRequest request)
+        {
+            try
+            {
+                var token = new AthalaSIEM.Backend.Models.AgentDeploymentToken
+                {
+                    Name = request.Name,
+                    Description = request.Description,
+                    PlatformType = request.PlatformType,
+                    Token = "athala-siem-agent-registration-2025", // Fixed token for testing
+                    ExpiresAt = DateTime.UtcNow.AddDays(30),
+                    MaxUsage = request.MaxUsage,
+                    IsActive = true,
+                    Configuration = JsonSerializer.Serialize(request.Configuration),
+                    CreatedBy = "system-test",
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                // Check if token already exists
+                var existingToken = await _context.AgentDeploymentTokens
+                    .FirstOrDefaultAsync(t => t.Token == token.Token);
+                
+                if (existingToken != null)
+                {
+                    return Ok(new AgentDeploymentTokenDto
+                    {
+                        Id = existingToken.Id,
+                        Name = existingToken.Name,
+                        Description = existingToken.Description,
+                        PlatformType = existingToken.PlatformType,
+                        Token = existingToken.Token,
+                        ExpiresAt = existingToken.ExpiresAt,
+                        IsActive = existingToken.IsActive,
+                        UsageCount = existingToken.UsageCount,
+                        MaxUsage = existingToken.MaxUsage,
+                        CreatedAt = existingToken.CreatedAt,
+                        CreatedBy = existingToken.CreatedBy
+                    });
+                }
+
+                _context.AgentDeploymentTokens.Add(token);
+                await _context.SaveChangesAsync();
+
+                var response = new AgentDeploymentTokenDto
+                {
+                    Id = token.Id,
+                    Name = token.Name,
+                    Description = token.Description,
+                    PlatformType = token.PlatformType,
+                    Token = token.Token,
+                    ExpiresAt = token.ExpiresAt,
+                    IsActive = token.IsActive,
+                    UsageCount = token.UsageCount,
+                    MaxUsage = token.MaxUsage,
+                    CreatedAt = token.CreatedAt,
+                    CreatedBy = token.CreatedBy
+                };
+
+                _logger.LogInformation("Test deployment token created: {TokenName} for platform {Platform}", request.Name, request.PlatformType);
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating test deployment token");
+                return StatusCode(500, new { Error = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// Get deployment script for specific platform
         /// </summary>
         [HttpGet("scripts/{platform}")]

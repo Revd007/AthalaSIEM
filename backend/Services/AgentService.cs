@@ -509,6 +509,38 @@ namespace Backend.Services
         }
         
         /// <summary>
+        /// Validates an API key for a specific agent (string agentId overload)
+        /// </summary>
+        /// <param name="agentId">The agent ID as string</param>
+        /// <param name="apiKey">The API key to validate</param>
+        /// <returns>True if the API key is valid for the agent, otherwise false</returns>
+        public async Task<bool> ValidateApiKeyAsync(string agentId, string apiKey)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(agentId) || string.IsNullOrEmpty(apiKey))
+                {
+                    return false;
+                }
+
+                var agent = await _dbContext.Agents.FirstOrDefaultAsync(a => a.Id == agentId && a.ApiKey == apiKey);
+                
+                if (agent == null)
+                {
+                    _logger.LogWarning("Agent not found or API key mismatch during validation: {AgentId}", agentId);
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating API key for agent: {AgentId}", agentId);
+                return false;
+            }
+        }
+        
+        /// <summary>
         /// Gets the agent health history
         /// </summary>
         /// <param name="agentId">The agent ID</param>

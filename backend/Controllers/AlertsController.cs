@@ -330,8 +330,8 @@ namespace Backend.Controllers
                 end = DateTime.UtcNow;
             }
             
-            TimeInterval timeInterval;
-            if (!Enum.TryParse<TimeInterval>(interval, true, out timeInterval))
+            Backend.Models.TimeInterval timeInterval;
+            if (!Enum.TryParse<Backend.Models.TimeInterval>(interval, true, out timeInterval))
             {
                 return BadRequest(new { Error = $"Invalid time interval: {interval}" });
             }

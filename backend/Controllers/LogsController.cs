@@ -8,6 +8,8 @@ using Microsoft.Extensions.Logging;
 using Backend.DTOs;
 using Backend.Services;
 using Backend.Models;
+using System.Text.Json;
+using System.Security.Claims;
 
 namespace Backend.Controllers
 {
@@ -41,6 +43,80 @@ namespace Backend.Controllers
             _logAnalysisService = logAnalysisService ?? throw new ArgumentNullException(nameof(logAnalysisService));
             _agentService = agentService ?? throw new ArgumentNullException(nameof(agentService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
+        
+        /// <summary>
+        /// Receives a batch of logs from an agent (Agent endpoint - no UI authorization required)
+        /// </summary>
+        /// <param name="logBatch">The batch of logs to process</param>
+        /// <returns>Success or failure response</returns>
+        [HttpPost("batch")]
+        [AllowAnonymous]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<LogBatchResponseDto>> SubmitLogBatch([FromBody] LogBatchDto logBatch)
+        {
+            try
+            {
+                if (logBatch == null || logBatch.Logs == null || logBatch.Logs.Count == 0)
+                {
+                    return BadRequest(new { Error = "Log batch cannot be empty" });
+                }
+
+                // Validate agent authentication
+                if (!Request.Headers.TryGetValue("X-API-Key", out var apiKey) || string.IsNullOrEmpty(apiKey))
+                {
+                    _logger.LogWarning("Log batch submission without API key from {IP}", HttpContext.Connection.RemoteIpAddress);
+                    return Unauthorized(new { Error = "API key is required" });
+                }
+
+                // Validate agent ID from header or body
+                string? agentId = null;
+                if (Request.Headers.TryGetValue("X-Agent-Id", out var headerAgentId))
+                {
+                    agentId = headerAgentId;
+                }
+                else if (!string.IsNullOrEmpty(logBatch.AgentId))
+                {
+                    agentId = logBatch.AgentId;
+                }
+
+                if (string.IsNullOrEmpty(agentId))
+                {
+                    return BadRequest(new { Error = "Agent ID is required" });
+                }
+
+                // Validate API key for the agent
+                var isValidApiKey = await _agentService.ValidateApiKeyAsync(agentId, apiKey.ToString());
+                if (!isValidApiKey)
+                {
+                    _logger.LogWarning("Invalid API key for agent {AgentId} from {IP}", agentId, HttpContext.Connection.RemoteIpAddress);
+                    return Unauthorized(new { Error = "Invalid API key for agent" });
+                }
+
+                // Process the log batch
+                var result = await _logService.ProcessLogBatchAsync(agentId, logBatch);
+                
+                _logger.LogInformation("Successfully processed {LogCount} logs from agent {AgentId}", 
+                    logBatch.Logs.Count, agentId);
+
+                return Ok(new LogBatchResponseDto
+                {
+                    Success = true,
+                    ProcessedCount = result.ProcessedCount,
+                    FailedCount = result.FailedCount,
+                    Message = $"Successfully processed {result.ProcessedCount} logs",
+                    BatchId = result.BatchId,
+                    ProcessingTimeMs = result.ProcessingTimeMs
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing log batch from agent");
+                return StatusCode(500, new { Error = "Internal server error while processing log batch" });
+            }
         }
         
         /// <summary>
@@ -231,8 +307,8 @@ namespace Backend.Controllers
                 end = DateTime.UtcNow;
             }
             
-            TimeInterval timeInterval;
-            if (!Enum.TryParse<TimeInterval>(interval, true, out timeInterval))
+            Backend.Models.TimeInterval timeInterval;
+            if (!Enum.TryParse<Backend.Models.TimeInterval>(interval, true, out timeInterval))
             {
                 return BadRequest(new { Error = $"Invalid time interval: {interval}" });
             }

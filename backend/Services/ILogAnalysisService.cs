@@ -158,7 +158,7 @@ namespace Backend.Services
         /// <param name="endTime">The end time</param>
         /// <param name="interval">The time interval</param>
         /// <returns>Log trends data</returns>
-        Task<LogTrendsDto> GetLogTrendsAsync(DateTime startTime, DateTime endTime, TimeInterval interval);
+        Task<LogTrendsDto> GetLogTrendsAsync(DateTime startTime, DateTime endTime, Backend.Models.TimeInterval interval);
         
         /// <summary>
         /// Gets log anomalies

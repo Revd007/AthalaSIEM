@@ -124,6 +124,14 @@ namespace Backend.Services
         Task<bool> ValidateApiKeyAsync(Guid agentId, string apiKey);
         
         /// <summary>
+        /// Validates an API key for a specific agent
+        /// </summary>
+        /// <param name="agentId">The agent ID as string</param>
+        /// <param name="apiKey">The API key to validate</param>
+        /// <returns>True if the API key is valid for the agent, otherwise false</returns>
+        Task<bool> ValidateApiKeyAsync(string agentId, string apiKey);
+        
+        /// <summary>
         /// Gets an agent's configuration
         /// </summary>
         /// <param name="agentId">The agent ID</param>

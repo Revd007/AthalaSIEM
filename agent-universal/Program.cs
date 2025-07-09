@@ -12,43 +12,60 @@ using System.IO;
 using System.Net.Http;
 using System.Threading;
 using AthalaSIEM.Agent.Collectors;
+using System.Threading.Tasks;
+using AthalaSIEM.UniversalAgent.Services.Interfaces;
+using AthalaSIEM.UniversalAgent.Models;
+using AthalaSIEM.UniversalAgent.UAT;
 
 namespace AthalaSIEM.UniversalAgent
 {
-    public class CollectorConfiguration
-    {
-        public string Type { get; set; } = "";
-        public bool Enabled { get; set; } = true;
-        public Dictionary<string, object> Properties { get; set; } = new();
-    }
-
     public class Program
     {
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             if (args.Length > 0)
             {
-                switch (args[0].ToLowerInvariant())
+                var command = args[0].ToLowerInvariant();
+                switch (command)
                 {
-                    case "--help":
-                    case "-h":
-                        ShowHelp();
-                        return;
-                    case "--console":
-                    case "-c":
-                        RunConsoleMode(args);
-                        return;
                     case "--install":
                         InstallService();
                         return;
                     case "--uninstall":
                         UninstallService();
                         return;
+                    case "--console":
+                        RunConsoleMode(args);
+                        return;
                     case "--test-connection":
                         TestConnection();
                         return;
+                    case "--test-connection-silent":
+                        TestConnectionSilent();
+                        return;
+                    case "--configure-msi":
+                        ConfigureMSI();
+                        return;
+                    case "--check-runtime":
+                        CheckDotNetRuntime();
+                        return;
+                    case "--status":
+                        ShowStatus();
+                        return;
                     case "--config":
                         ShowConfiguration();
+                        return;
+                    case "--run-uat":
+                        await RunUATTestsAsync();
+                        return;
+                    case "--help":
+                    case "-h":
+                    case "/?":
+                        ShowHelp();
+                        return;
+                    default:
+                        Console.WriteLine($"Unknown command: {command}");
+                        ShowHelp();
                         return;
                 }
             }
@@ -116,6 +133,7 @@ namespace AthalaSIEM.UniversalAgent
             Console.WriteLine("  --uninstall          Uninstall Windows service");
             Console.WriteLine("  --test-connection    Test connection to backend API");
             Console.WriteLine("  --config             Show current configuration");
+            Console.WriteLine("  --run-uat            Run User Acceptance Tests (UAT)");
             Console.WriteLine();
             Console.WriteLine("Default: Run as Windows service");
             Console.WriteLine();
@@ -194,13 +212,23 @@ namespace AthalaSIEM.UniversalAgent
             var configuration = new ConfigurationBuilder()
                 .SetBasePath(Directory.GetCurrentDirectory())
                 .AddJsonFile("appsettings.json", optional: false)
+                .AddEnvironmentVariables("ATHALA_")
                 .Build();
 
-            var managerIP = configuration["SiemManager:ManagerIP"] ?? "192.168.1.100";
+            var managerIP = configuration["SiemManager:ManagerIP"];
             var managerPort = configuration.GetValue<int>("SiemManager:ManagerPort", 9595);
-            var managerUrl = $"http://{managerIP}:{managerPort}";
             var agentName = configuration["Agent:Name"] ?? Environment.MachineName;
-            var apiKey = configuration["Agent:ApiKey"] ?? "";
+            var apiKey = configuration["Agent:ApiKey"];
+
+            // Validate required configuration
+            if (string.IsNullOrEmpty(managerIP))
+            {
+                Console.WriteLine("❌ CONFIGURATION ERROR: SIEM Manager IP not configured!");
+                Console.WriteLine("💡 Please configure SiemManager:ManagerIP in appsettings.json or environment variable ATHALA_SiemManager__ManagerIP");
+                return;
+            }
+
+            var managerUrl = $"http://{managerIP}:{managerPort}";
             
             Console.WriteLine($"Agent Name: {agentName}");
             Console.WriteLine($"SIEM Manager: {managerIP}:{managerPort}");
@@ -231,7 +259,7 @@ namespace AthalaSIEM.UniversalAgent
                     {
                         AgentId = Environment.MachineName,
                         AgentName = agentName,
-                        Version = "1.0.0",
+                        Version = Constants.Defaults.AgentVersion,
                         Platform = Environment.OSVersion.Platform.ToString()
                     };
                     
@@ -259,9 +287,10 @@ namespace AthalaSIEM.UniversalAgent
                 Console.WriteLine($"❌ Connection test failed: {ex.Message}");
                 Console.WriteLine("💡 Possible issues:");
                 Console.WriteLine("   - SIEM Manager server is not running");
-                Console.WriteLine("   - Incorrect Manager IP/Port in appsettings.json");
+                Console.WriteLine("   - Manager IP/Port not configured in appsettings.json");
                 Console.WriteLine("   - Network connectivity issues");
                 Console.WriteLine("   - Firewall blocking the connection");
+                Console.WriteLine("   - Invalid configuration values");
             }
         }
         
@@ -275,17 +304,25 @@ namespace AthalaSIEM.UniversalAgent
                 var configuration = new ConfigurationBuilder()
                     .SetBasePath(Directory.GetCurrentDirectory())
                     .AddJsonFile("appsettings.json", optional: false)
+                    .AddEnvironmentVariables("ATHALA_")
                     .Build();
 
-                var managerIP = configuration["SiemManager:ManagerIP"] ?? "Not configured";
+                var managerIP = configuration["SiemManager:ManagerIP"];
                 var managerPort = configuration.GetValue<int>("SiemManager:ManagerPort", 9595);
-                Console.WriteLine($"SIEM Manager IP: {managerIP}");
+                Console.WriteLine($"SIEM Manager IP: {managerIP ?? "⚠️ NOT CONFIGURED"}");
                 Console.WriteLine($"SIEM Manager Port: {managerPort}");
                 Console.WriteLine($"Agent Name: {configuration["Agent:Name"] ?? Environment.MachineName}");
                 Console.WriteLine($"Agent ID: {configuration["Agent:Id"] ?? Environment.MachineName}");
-                Console.WriteLine($"API Key: {(string.IsNullOrEmpty(configuration["Agent:ApiKey"]) ? "Not configured" : "Configured")}");
+                Console.WriteLine($"API Key: {(string.IsNullOrEmpty(configuration["Agent:ApiKey"]) ? "⚠️ NOT CONFIGURED" : "✅ Configured")}");
                 Console.WriteLine($"Batch Size: {configuration["Agent:BatchSize"] ?? "100"}");
                 Console.WriteLine($"Batch Interval: {configuration["Agent:BatchIntervalSeconds"] ?? "30"} seconds");
+                Console.WriteLine();
+                
+                // Security status
+                Console.WriteLine("🔒 Security Configuration Status:");
+                Console.WriteLine($"   Manager IP: {(string.IsNullOrEmpty(managerIP) ? "❌ Missing" : "✅ Configured")}");
+                Console.WriteLine($"   API Key: {(string.IsNullOrEmpty(configuration["Agent:ApiKey"]) ? "❌ Missing" : "✅ Configured")}");
+                Console.WriteLine($"   Registration Key: {(string.IsNullOrEmpty(configuration["Agent:RegistrationKey"]) ? "❌ Missing" : "✅ Configured")}");
                 Console.WriteLine();
                 
                 // Show collectors configuration
@@ -314,6 +351,175 @@ namespace AthalaSIEM.UniversalAgent
             catch (Exception ex)
             {
                 Console.WriteLine($"❌ Error reading configuration: {ex.Message}");
+            }
+        }
+
+        private static void TestConnectionSilent()
+        {
+            try
+            {
+                var configuration = new ConfigurationBuilder()
+                    .SetBasePath(Directory.GetCurrentDirectory())
+                    .AddJsonFile("appsettings.json", optional: false)
+                    .AddEnvironmentVariables("ATHALA_")
+                    .Build();
+
+                var managerIP = configuration["SiemManager:ManagerIP"];
+                var managerPort = configuration.GetValue<int>("SiemManager:ManagerPort", 9595);
+                
+                if (string.IsNullOrEmpty(managerIP))
+                {
+                    Environment.Exit(1); // Configuration error
+                    return;
+                }
+
+                var managerUrl = $"http://{managerIP}:{managerPort}";
+                
+                using var client = new HttpClient();
+                client.Timeout = TimeSpan.FromSeconds(5);
+                
+                var response = client.GetAsync($"{managerUrl}/api/health").Result;
+                Environment.Exit(response.IsSuccessStatusCode ? 0 : 1);
+            }
+            catch
+            {
+                Environment.Exit(1); // Connection failed
+            }
+        }
+
+        private static void ConfigureMSI()
+        {
+            try
+            {
+                // Read MSI-provided configuration from registry
+                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\AthalaSIEM\UniversalAgent\Configuration");
+                if (key != null)
+                {
+                    var backendUrl = key.GetValue("BackendUrl")?.ToString();
+                    var agentName = key.GetValue("AgentName")?.ToString() ?? Environment.MachineName;
+                    
+                    if (!string.IsNullOrEmpty(backendUrl))
+                    {
+                        // Update appsettings.json with MSI configuration
+                        var configPath = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json");
+                        if (File.Exists(configPath))
+                        {
+                            var configText = File.ReadAllText(configPath);
+                            var config = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(configText);
+                            
+                            // Extract URL components
+                            var uri = new Uri(backendUrl);
+                            var configDict = new Dictionary<string, object>
+                            {
+                                ["SiemManager"] = new Dictionary<string, object>
+                                {
+                                    ["ManagerIP"] = uri.Host,
+                                    ["ManagerPort"] = uri.Port,
+                                    ["UseHTTPS"] = uri.Scheme == "https"
+                                },
+                                ["Agent"] = new Dictionary<string, object>
+                                {
+                                    ["Name"] = agentName,
+                                    ["Id"] = agentName,
+                                    ["ManagerUrl"] = backendUrl
+                                }
+                            };
+                            
+                            // Merge with existing config and save
+                            var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+                            var newConfigText = System.Text.Json.JsonSerializer.Serialize(configDict, options);
+                            
+                            // For simplicity, just update the core values we need
+                            configText = configText.Replace("\"ManagerIP\": \"\"", $"\"ManagerIP\": \"{uri.Host}\"");
+                            configText = configText.Replace("\"ManagerPort\": 9595", $"\"ManagerPort\": {uri.Port}");
+                            configText = configText.Replace("\"ManagerUrl\": \"\"", $"\"ManagerUrl\": \"{backendUrl}\"");
+                            configText = configText.Replace("\"Name\": \"AthalaSIEM-Universal-Agent\"", $"\"Name\": \"{agentName}\"");
+                            
+                            File.WriteAllText(configPath, configText);
+                        }
+                    }
+                }
+                
+                Environment.Exit(0); // Success
+            }
+            catch
+            {
+                Environment.Exit(1); // Configuration failed
+            }
+        }
+
+        private static void CheckDotNetRuntime()
+        {
+            try
+            {
+                // Check if .NET 8.0 runtime is available
+                var version = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
+                Environment.Exit(version.Contains(".NET 8.0") ? 0 : 1);
+            }
+            catch
+            {
+                Environment.Exit(1); // Runtime check failed
+            }
+        }
+
+        private static void ShowStatus()
+        {
+            try
+            {
+                // Check service status
+                var serviceName = "AthalaSIEMUniversalAgent";
+                using var serviceController = new System.ServiceProcess.ServiceController(serviceName);
+                
+                Console.WriteLine($"Service Status: {serviceController.Status}");
+                Console.WriteLine($"Service Type: {serviceController.ServiceType}");
+                Console.WriteLine($"Can Stop: {serviceController.CanStop}");
+                Console.WriteLine($"Can Pause/Continue: {serviceController.CanPauseAndContinue}");
+                
+                if (serviceController.Status == System.ServiceProcess.ServiceControllerStatus.Running)
+                {
+                    Environment.Exit(0);
+                }
+                else
+                {
+                    Environment.Exit(1);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error checking service status: {ex.Message}");
+                Environment.Exit(1);
+            }
+        }
+
+        /// <summary>
+        /// Runs UAT (User Acceptance Tests) for the Universal Agent.
+        /// </summary>
+        private static async Task RunUATTestsAsync()
+        {
+            Console.WriteLine("🧪 Starting UAT (User Acceptance Tests)...");
+            Console.WriteLine("============================================");
+            Console.WriteLine();
+
+            try
+            {
+                // Run the UAT test runner
+                var exitCode = await RunUAT.RunUATTestsAsync(new string[0]);
+                
+                if (exitCode == 0)
+                {
+                    Console.WriteLine("🎉 UAT tests completed successfully!");
+                }
+                else
+                {
+                    Console.WriteLine("❌ UAT tests failed. Check the output above for details.");
+                    Environment.Exit(exitCode);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ UAT execution failed: {ex.Message}");
+                Console.WriteLine($"Details: {ex}");
+                Environment.Exit(1);
             }
         }
     }
