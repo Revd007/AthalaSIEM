@@ -14,10 +14,12 @@ namespace AthalaSIEM.Agent.Core.Correlators
     public class EnterpriseAuthenticationCorrelator : ILogCorrelator
     {
         private readonly ILogger<EnterpriseAuthenticationCorrelator> _logger;
-        private int _bruteForceThreshold = 5;
-        private int _timeWindowMinutes = 15;
-        private int _credentialStuffingThreshold = 10;
-        private int _successAfterFailuresThreshold = 3;
+        
+        // All thresholds are backend configurable - no hardcoded defaults
+        private int _bruteForceThreshold = 0;
+        private int _timeWindowMinutes = 0;
+        private int _credentialStuffingThreshold = 0;
+        private int _successAfterFailuresThreshold = 0;
 
         /// <inheritdoc />
         public string Name => "Enterprise Authentication Correlator";
@@ -50,27 +52,52 @@ namespace AthalaSIEM.Agent.Core.Correlators
         /// <inheritdoc />
         public async Task<bool> InitializeAsync(Dictionary<string, object> config)
         {
-            if (config.TryGetValue("BruteForceThreshold", out var threshold) && threshold is int bfThreshold)
+            var configErrors = new List<string>();
+
+            // Backend must provide all required thresholds - no defaults
+            if (config.TryGetValue("BruteForceThreshold", out var threshold) && threshold is int bfThreshold && bfThreshold > 0)
             {
                 _bruteForceThreshold = bfThreshold;
             }
+            else
+            {
+                configErrors.Add("BruteForceThreshold must be provided by backend (> 0)");
+            }
 
-            if (config.TryGetValue("TimeWindowMinutes", out var window) && window is int timeWindow)
+            if (config.TryGetValue("TimeWindowMinutes", out var window) && window is int timeWindow && timeWindow > 0)
             {
                 _timeWindowMinutes = timeWindow;
             }
+            else
+            {
+                configErrors.Add("TimeWindowMinutes must be provided by backend (> 0)");
+            }
 
-            if (config.TryGetValue("CredentialStuffingThreshold", out var csThreshold) && csThreshold is int credStuffThreshold)
+            if (config.TryGetValue("CredentialStuffingThreshold", out var csThreshold) && csThreshold is int credStuffThreshold && credStuffThreshold > 0)
             {
                 _credentialStuffingThreshold = credStuffThreshold;
             }
+            else
+            {
+                configErrors.Add("CredentialStuffingThreshold must be provided by backend (> 0)");
+            }
 
-            if (config.TryGetValue("SuccessAfterFailuresThreshold", out var safThreshold) && safThreshold is int successThreshold)
+            if (config.TryGetValue("SuccessAfterFailuresThreshold", out var safThreshold) && safThreshold is int successThreshold && successThreshold > 0)
             {
                 _successAfterFailuresThreshold = successThreshold;
             }
+            else
+            {
+                configErrors.Add("SuccessAfterFailuresThreshold must be provided by backend (> 0)");
+            }
 
-            _logger.LogInformation("Authentication correlator initialized with thresholds - BruteForce: {BF}, CredentialStuffing: {CS}, TimeWindow: {TW}min",
+            if (configErrors.Any())
+            {
+                _logger.LogError("Authentication correlator configuration errors: {Errors}", string.Join(", ", configErrors));
+                return false;
+            }
+
+            _logger.LogInformation("Authentication correlator initialized with backend thresholds - BruteForce: {BF}, CredentialStuffing: {CS}, TimeWindow: {TW}min",
                 _bruteForceThreshold, _credentialStuffingThreshold, _timeWindowMinutes);
 
             return await Task.FromResult(true);
@@ -98,11 +125,14 @@ namespace AthalaSIEM.Agent.Core.Correlators
 
         /// <summary>
         /// Determines if a log entry is an authentication event.
+        /// Backend-configurable authentication event IDs.
         /// </summary>
         /// <param name="log">The log entry to check.</param>
         /// <returns>True if it's an authentication event.</returns>
         private bool IsAuthenticationEvent(LogEntry log)
         {
+            // Backend will configure which Event IDs constitute authentication events
+            // For now, common auth events are listed but this will be made configurable
             var authEventIds = new HashSet<string> { "4624", "4625", "4648", "4776", "4777" };
             return !string.IsNullOrEmpty(log.EventId) && authEventIds.Contains(log.EventId);
         }
@@ -290,7 +320,10 @@ namespace AthalaSIEM.Agent.Core.Correlators
             foreach (var userGroup in userGroups)
             {
                 var userLogs = userGroup.OrderBy(l => l.Timestamp).ToList();
-                var timeWindow = TimeSpan.FromHours(1); // 1 hour window
+                
+                // Backend configurable time window for anomalous pattern detection
+                var timeWindowHours = _timeWindowMinutes / 60.0; // Convert minutes to hours
+                var timeWindow = TimeSpan.FromHours(timeWindowHours > 0 ? timeWindowHours : 1); // Fallback to 1 hour
 
                 for (int i = 0; i < userLogs.Count - 1; i++)
                 {
@@ -304,12 +337,15 @@ namespace AthalaSIEM.Agent.Core.Correlators
 
                     var uniqueIps = logsInWindow.Select(l => l.IpAddress).Distinct().Count();
                     
-                    if (uniqueIps >= 3) // 3 or more different IPs
+                    // Backend configurable threshold for unique IPs (minimum 3)
+                    var minUniqueIps = Math.Max(3, _bruteForceThreshold); // Use brute force threshold as minimum IP threshold
+                    
+                    if (uniqueIps >= minUniqueIps)
                     {
                         correlations.Add(new LogCorrelation
                         {
                             Name = "Anomalous Authentication Pattern",
-                            Description = $"User '{userGroup.Key}' logged in from {uniqueIps} different IPs within 1 hour",
+                            Description = $"User '{userGroup.Key}' logged in from {uniqueIps} different IPs within {timeWindow.TotalHours:F1} hours",
                             Severity = "Medium",
                             ConfidenceScore = 0.6,
                             MitreTechniques = new List<string> { "T1078" },
@@ -318,6 +354,7 @@ namespace AthalaSIEM.Agent.Core.Correlators
                             {
                                 ["Username"] = userGroup.Key ?? "Unknown",
                                 ["UniqueIPs"] = uniqueIps,
+                                ["TimeWindowHours"] = timeWindow.TotalHours,
                                 ["AttackType"] = "AnomalousPattern"
                             }
                         });
@@ -409,8 +446,10 @@ namespace AthalaSIEM.Agent.Core.Correlators
     public class EnterprisePrivilegeEscalationCorrelator : ILogCorrelator
     {
         private readonly ILogger<EnterprisePrivilegeEscalationCorrelator> _logger;
-        private int _privilegeUseThreshold = 3;
-        private int _timeWindowMinutes = 30;
+        
+        // All thresholds are backend configurable - no hardcoded defaults
+        private int _privilegeUseThreshold = 0;
+        private int _timeWindowMinutes = 0;
 
         /// <inheritdoc />
         public string Name => "Enterprise Privilege Escalation Correlator";
@@ -442,17 +481,34 @@ namespace AthalaSIEM.Agent.Core.Correlators
         /// <inheritdoc />
         public async Task<bool> InitializeAsync(Dictionary<string, object> config)
         {
-            if (config.TryGetValue("PrivilegeUseThreshold", out var threshold) && threshold is int privThreshold)
+            var configErrors = new List<string>();
+
+            // Backend must provide all required thresholds - no defaults
+            if (config.TryGetValue("PrivilegeUseThreshold", out var threshold) && threshold is int privThreshold && privThreshold > 0)
             {
                 _privilegeUseThreshold = privThreshold;
             }
+            else
+            {
+                configErrors.Add("PrivilegeUseThreshold must be provided by backend (> 0)");
+            }
 
-            if (config.TryGetValue("TimeWindowMinutes", out var window) && window is int timeWindow)
+            if (config.TryGetValue("TimeWindowMinutes", out var window) && window is int timeWindow && timeWindow > 0)
             {
                 _timeWindowMinutes = timeWindow;
             }
+            else
+            {
+                configErrors.Add("TimeWindowMinutes must be provided by backend (> 0)");
+            }
 
-            _logger.LogInformation("Privilege escalation correlator initialized with threshold: {Threshold}, window: {Window}min",
+            if (configErrors.Any())
+            {
+                _logger.LogError("Privilege escalation correlator configuration errors: {Errors}", string.Join(", ", configErrors));
+                return false;
+            }
+
+            _logger.LogInformation("Privilege escalation correlator initialized with backend thresholds - PrivilegeUse: {PU}, TimeWindow: {TW}min",
                 _privilegeUseThreshold, _timeWindowMinutes);
 
             return await Task.FromResult(true);
@@ -479,11 +535,14 @@ namespace AthalaSIEM.Agent.Core.Correlators
 
         /// <summary>
         /// Determines if a log entry is a privilege-related event.
+        /// Backend-configurable event IDs for privilege monitoring.
         /// </summary>
         /// <param name="log">The log entry to check.</param>
         /// <returns>True if it's a privilege event.</returns>
         private bool IsPrivilegeEvent(LogEntry log)
         {
+            // Backend will configure which Event IDs constitute privilege events
+            // For now, basic privilege events are hardcoded but this will be made configurable
             var privilegeEventIds = new HashSet<string> { "4672", "4673", "4674", "4697", "4698", "4699", "4700", "4701", "4702" };
             return !string.IsNullOrEmpty(log.EventId) && privilegeEventIds.Contains(log.EventId);
         }
@@ -583,7 +642,10 @@ namespace AthalaSIEM.Agent.Core.Correlators
         private IEnumerable<LogCorrelation> DetectPrivilegeChainPattern(List<LogEntry> privilegeLogs, string[] pattern)
         {
             var correlations = new List<LogCorrelation>();
-            var timeWindow = TimeSpan.FromMinutes(5); // Short window for chained events
+            
+            // Backend configurable time window for privilege chain detection (shorter than main window)
+            var chainTimeWindowMinutes = Math.Min(_timeWindowMinutes, 10); // Max 10 minutes for chains
+            var timeWindow = TimeSpan.FromMinutes(chainTimeWindowMinutes > 0 ? chainTimeWindowMinutes : 5); // Fallback to 5 minutes
 
             for (int i = 0; i < privilegeLogs.Count - pattern.Length + 1; i++)
             {
@@ -693,11 +755,14 @@ namespace AthalaSIEM.Agent.Core.Correlators
 
         /// <summary>
         /// Checks if a log contains critical system privileges.
+        /// Backend-configurable critical privilege list.
         /// </summary>
         /// <param name="log">The log to check.</param>
         /// <returns>True if critical privileges are present.</returns>
         private bool ContainsCriticalPrivileges(LogEntry log)
         {
+            // Backend will configure which privileges are considered critical
+            // For now, common critical privileges are listed but this will be made configurable
             var criticalPrivileges = new[]
             {
                 "SeDebugPrivilege",

@@ -107,9 +107,9 @@ namespace AthalaSIEM.Agent.Core.Filters
     }
 
     /// <summary>
-    /// Enterprise Windows Event ID filter for configurable security monitoring.
-    /// All event IDs and categories are fully configurable via appsettings.json or registry.
-    /// NO HARDCODED VALUES - Users have complete control over what gets monitored.
+    /// Enterprise Windows Event ID filter - COMPLETELY CONFIGURABLE from Backend.
+    /// NO HARDCODED VALUES - All Event IDs and categories are fetched from Backend dynamically.
+    /// Backend controls what events to monitor via Web Interface.
     /// </summary>
     public class EnterpriseWindowsEventIdFilter : ILogFilter
     {
@@ -118,16 +118,16 @@ namespace AthalaSIEM.Agent.Core.Filters
         private long _logsProcessed;
         private long _logsPassed;
         
-        // User-configured event ID collections - NO DEFAULTS
-        private Dictionary<string, HashSet<string>> _eventIdCategories = new();
-        private HashSet<string> _enabledCategories = new();
-        private HashSet<string> _allMonitoredEventIds = new();
+        // Backend-configured event monitoring - NO DEFAULTS, NO HARDCODE
+        private HashSet<string> _monitoredEventIds = new();
+        private bool _collectAllEvents = true; // Default: collect everything like real SIEM
+        private bool _filteringEnabled = false; // Default: no filtering (collect all)
 
         /// <inheritdoc />
-        public string Name => "Enterprise Windows Event ID Filter";
+        public string Name => "Enterprise Windows Event ID Filter (Backend Configured)";
 
         /// <inheritdoc />
-        public string Description => "Fully configurable Windows Event ID filtering - NO HARDCODED VALUES";
+        public string Description => "Backend-configurable Windows Event ID filtering - NO HARDCODED VALUES";
 
         /// <inheritdoc />
         public int Priority => 90;
@@ -139,194 +139,144 @@ namespace AthalaSIEM.Agent.Core.Filters
         public EnterpriseWindowsEventIdFilter(ILogger<EnterpriseWindowsEventIdFilter> logger)
         {
             _logger = logger;
-            // NO DEFAULT INITIALIZATION - Everything must be configured by user
+            // NO DEFAULT INITIALIZATION - Everything is backend-controlled
+            _logger.LogInformation("Windows Event ID filter initialized in 'COLLECT ALL' mode - Backend will configure filtering");
         }
 
         /// <summary>
-        /// Initializes the filter with user-provided configuration.
-        /// Configuration must include EventIdCategories and EnabledCategories.
-        /// If no configuration is provided, NO events will be processed (fail-secure).
+        /// Updates filter configuration from backend.
+        /// This method is called when backend sends new filtering configuration.
         /// </summary>
-        /// <param name="config">Configuration dictionary containing user-defined event ID categories.</param>
-        /// <exception cref="InvalidOperationException">Thrown when configuration is invalid or missing.</exception>
-        public void Initialize(Dictionary<string, object> config)
-        {
-            if (config == null || !config.Any())
-            {
-                _logger.LogWarning("No configuration provided for Windows Event ID filter. NO EVENTS WILL BE PROCESSED.");
-                return;
-            }
-
-            // Load user-defined event ID categories
-            if (config.TryGetValue("EventIdCategories", out var categoriesObj))
-            {
-                LoadEventIdCategories(categoriesObj);
-            }
-            else
-            {
-                _logger.LogWarning("EventIdCategories not configured. NO EVENTS WILL BE PROCESSED.");
-                _logger.LogInformation("Configure EventIdCategories in appsettings.json under LogProcessing:Filters:EventIdCategories");
-                return;
-            }
-
-            // Load enabled categories
-            if (config.TryGetValue("EnabledCategories", out var categories))
-            {
-                LoadEnabledCategories(categories);
-            }
-            else
-            {
-                // If no enabled categories specified, enable all configured categories
-                _enabledCategories = new HashSet<string>(_eventIdCategories.Keys, StringComparer.OrdinalIgnoreCase);
-                _logger.LogInformation("No EnabledCategories specified. Enabling all configured categories.");
-            }
-
-            UpdateMonitoredEventIds();
-
-            _logger.LogInformation("Windows Event ID filter initialized with {CategoryCount} categories and {EventIdCount} event IDs",
-                _enabledCategories.Count, _allMonitoredEventIds.Count);
-
-            if (_allMonitoredEventIds.Count == 0)
-            {
-                _logger.LogWarning("NO EVENT IDS CONFIGURED FOR MONITORING. This filter will block all events.");
-                _logger.LogInformation("Example configuration:");
-                _logger.LogInformation("\"EventIdCategories\": {");
-                _logger.LogInformation("  \"Authentication\": [\"4624\", \"4625\", \"4634\"],");
-                _logger.LogInformation("  \"AccountManagement\": [\"4720\", \"4722\", \"4723\"]");
-                _logger.LogInformation("}");
-            }
-        }
-
-        /// <summary>
-        /// Loads event ID categories from configuration object.
-        /// Supports both dictionary and JSON string formats.
-        /// </summary>
-        /// <param name="categoriesObj">Configuration object containing event ID categories.</param>
-        private void LoadEventIdCategories(object categoriesObj)
+        /// <param name="config">Backend configuration containing Event IDs and settings.</param>
+        public void UpdateFromBackendConfig(Dictionary<string, object> config)
         {
             try
             {
-                Dictionary<string, object>? categoriesDict = null;
+                _logger.LogInformation("Updating Event ID filter configuration from backend...");
 
-                if (categoriesObj is Dictionary<string, object> directDict)
+                // Check if filtering is enabled by backend
+                if (config.TryGetValue("EnableEventFiltering", out var enableFiltering))
                 {
-                    categoriesDict = directDict;
-                }
-                else if (categoriesObj is string jsonString)
-                {
-                    categoriesDict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(jsonString);
+                    _filteringEnabled = ParseBooleanFromConfig(enableFiltering, false);
                 }
 
-                if (categoriesDict != null)
+                // Check if we should collect all events (default SIEM behavior)
+                if (config.TryGetValue("CollectAllEvents", out var collectAll))
                 {
-                    foreach (var kvp in categoriesDict)
+                    _collectAllEvents = ParseBooleanFromConfig(collectAll, true);
+                }
+
+                // Load monitored Event IDs from backend
+                if (config.TryGetValue("MonitoredEventIds", out var eventIdsObj))
+                {
+                    LoadMonitoredEventIds(eventIdsObj);
+                }
+
+                var mode = _collectAllEvents ? "COLLECT ALL EVENTS" : $"FILTER MODE - {_monitoredEventIds.Count} Event IDs";
+                _logger.LogInformation("Event ID filter updated: {Mode}, Filtering: {Enabled}", mode, _filteringEnabled);
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating event ID filter configuration from backend");
+            }
+        }
+
+        /// <summary>
+        /// Legacy initialize method for local configuration (now deprecated).
+        /// Use UpdateFromBackendConfig() instead.
+        /// </summary>
+        /// <param name="config">Local configuration dictionary.</param>
+        public void Initialize(Dictionary<string, object> config)
+        {
+            _logger.LogWarning("Local Event ID configuration is deprecated. Use Backend configuration instead.");
+            
+            // For backward compatibility, still load local config if no backend config available
+            if (config != null && config.Any())
+            {
+                UpdateFromBackendConfig(config);
+            }
+            else
+            {
+                _logger.LogInformation("No local Event ID configuration - running in 'COLLECT ALL' mode until Backend provides configuration");
+            }
+        }
+
+        /// <summary>
+        /// Loads monitored event IDs from backend configuration.
+        /// </summary>
+        /// <param name="eventIdsObj">Backend configuration object containing Event IDs.</param>
+        private void LoadMonitoredEventIds(object eventIdsObj)
+        {
+            try
+            {
+                _monitoredEventIds.Clear();
+
+                if (eventIdsObj is string[] stringArray)
+                {
+                    foreach (var eventId in stringArray)
                     {
-                        var categoryName = kvp.Key;
-                        var eventIds = new HashSet<string>();
+                        if (!string.IsNullOrWhiteSpace(eventId))
+                        {
+                            _monitoredEventIds.Add(eventId.Trim());
+                        }
+                    }
+                }
+                else if (eventIdsObj is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var element in jsonElement.EnumerateArray())
+                    {
+                        if (element.ValueKind == System.Text.Json.JsonValueKind.String)
+                        {
+                            var eventId = element.GetString();
+                            if (!string.IsNullOrWhiteSpace(eventId))
+                            {
+                                _monitoredEventIds.Add(eventId.Trim());
+                            }
+                        }
+                    }
+                }
+                else if (eventIdsObj is string csvString)
+                {
+                    var eventIds = csvString.Split(',');
+                    foreach (var eventId in eventIds)
+                    {
+                        var trimmed = eventId.Trim();
+                        if (!string.IsNullOrWhiteSpace(trimmed))
+                        {
+                            _monitoredEventIds.Add(trimmed);
+                        }
+                    }
+                }
+                else if (eventIdsObj is System.Collections.IEnumerable enumerable && !(eventIdsObj is string))
+                {
+                    foreach (var item in enumerable)
+                    {
+                        if (item != null)
+                        {
+                            var eventId = item.ToString()?.Trim();
+                            if (!string.IsNullOrWhiteSpace(eventId))
+                            {
+                                _monitoredEventIds.Add(eventId);
+                            }
+                        }
+                    }
+                }
 
-                        if (kvp.Value is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
-                        {
-                            foreach (var element in jsonElement.EnumerateArray())
-                            {
-                                if (element.ValueKind == System.Text.Json.JsonValueKind.String)
-                                {
-                                    var eventId = element.GetString();
-                                    if (!string.IsNullOrEmpty(eventId))
-                                    {
-                                        eventIds.Add(eventId);
-                                    }
-                                }
-                            }
-                        }
-                        else if (kvp.Value is string[] stringArray)
-                        {
-                            foreach (var eventId in stringArray)
-                            {
-                                if (!string.IsNullOrEmpty(eventId))
-                                {
-                                    eventIds.Add(eventId);
-                                }
-                            }
-                        }
-                        else if (kvp.Value is string csvString)
-                        {
-                            var eventIdArray = csvString.Split(',');
-                            foreach (var eventId in eventIdArray)
-                            {
-                                var trimmed = eventId.Trim();
-                                if (!string.IsNullOrEmpty(trimmed))
-                                {
-                                    eventIds.Add(trimmed);
-                                }
-                            }
-                        }
-
-                        if (eventIds.Any())
-                        {
-                            _eventIdCategories[categoryName] = eventIds;
-                            _logger.LogDebug("Loaded category '{Category}' with {Count} event IDs", categoryName, eventIds.Count);
-                        }
+                _logger.LogInformation("Loaded {Count} monitored Event IDs from backend", _monitoredEventIds.Count);
+                
+                if (_monitoredEventIds.Count > 0)
+                {
+                    _logger.LogDebug("Monitoring Event IDs: {EventIds}", string.Join(", ", _monitoredEventIds.Take(20)));
+                    if (_monitoredEventIds.Count > 20)
+                    {
+                        _logger.LogDebug("... and {More} more Event IDs", _monitoredEventIds.Count - 20);
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to load event ID categories from configuration");
-            }
-        }
-
-        /// <summary>
-        /// Loads enabled categories from configuration.
-        /// </summary>
-        /// <param name="categories">Configuration object containing enabled categories.</param>
-        private void LoadEnabledCategories(object categories)
-        {
-            if (categories is string[] categoryArray)
-            {
-                _enabledCategories = new HashSet<string>(categoryArray, StringComparer.OrdinalIgnoreCase);
-            }
-            else if (categories is string categoryString)
-            {
-                _enabledCategories = new HashSet<string>(
-                    categoryString.Split(',').Select(s => s.Trim()).Where(s => !string.IsNullOrEmpty(s)),
-                    StringComparer.OrdinalIgnoreCase);
-            }
-            else if (categories is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
-            {
-                _enabledCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var element in jsonElement.EnumerateArray())
-                {
-                    if (element.ValueKind == System.Text.Json.JsonValueKind.String)
-                    {
-                        var category = element.GetString();
-                        if (!string.IsNullOrEmpty(category))
-                        {
-                            _enabledCategories.Add(category);
-                        }
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Updates the collection of all monitored event IDs based on enabled categories.
-        /// </summary>
-        private void UpdateMonitoredEventIds()
-        {
-            _allMonitoredEventIds.Clear();
-            foreach (var category in _enabledCategories)
-            {
-                if (_eventIdCategories.TryGetValue(category, out var eventIds))
-                {
-                    foreach (var eventId in eventIds)
-                    {
-                        _allMonitoredEventIds.Add(eventId);
-                    }
-                }
-                else
-                {
-                    _logger.LogWarning("Enabled category '{Category}' not found in configured event ID categories", category);
-                }
+                _logger.LogError(ex, "Failed to load monitored Event IDs from backend configuration");
             }
         }
 
@@ -338,20 +288,29 @@ namespace AthalaSIEM.Agent.Core.Filters
 
             try
             {
-                // If no event IDs are configured, process nothing (fail-secure)
-                if (_allMonitoredEventIds.Count == 0)
+                // If filtering is disabled, or collect all mode is enabled, process everything
+                if (!_filteringEnabled || _collectAllEvents)
                 {
-                    return Task.FromResult(false);
+                    _logsPassed++;
+                    return Task.FromResult(true);
                 }
 
-                // Process all non-Windows events by default
+                // If no Event IDs configured for filtering, collect everything (fail-safe)
+                if (_monitoredEventIds.Count == 0)
+                {
+                    _logsPassed++;
+                    return Task.FromResult(true);
+                }
+
+                // Process non-Windows events by default (don't filter out non-Windows logs)
                 if (string.IsNullOrEmpty(log.EventId))
                 {
                     _logsPassed++;
                     return Task.FromResult(true);
                 }
 
-                var shouldProcess = _allMonitoredEventIds.Contains(log.EventId);
+                // Check if this Event ID is in the monitored list
+                var shouldProcess = _monitoredEventIds.Contains(log.EventId);
                 
                 if (shouldProcess)
                 {
@@ -376,11 +335,44 @@ namespace AthalaSIEM.Agent.Core.Filters
                 ["LogsFiltered"] = _logsProcessed - _logsPassed,
                 ["FilterEfficiency"] = _logsProcessed > 0 ? (double)(_logsProcessed - _logsPassed) / _logsProcessed * 100 : 0,
                 ["AverageProcessingTimeMs"] = _logsProcessed > 0 ? _processingTimer.ElapsedMilliseconds / (double)_logsProcessed : 0,
-                ["EnabledCategories"] = _enabledCategories.ToArray(),
-                ["MonitoredEventIdCount"] = _allMonitoredEventIds.Count,
-                ["ConfiguredCategories"] = _eventIdCategories.Keys.ToArray(),
-                ["ConfigurationStatus"] = _allMonitoredEventIds.Count > 0 ? "Configured" : "NOT CONFIGURED - NO EVENTS WILL BE PROCESSED"
+                ["FilteringEnabled"] = _filteringEnabled,
+                ["CollectAllEvents"] = _collectAllEvents,
+                ["MonitoredEventIdCount"] = _monitoredEventIds.Count,
+                ["ConfigurationStatus"] = _filteringEnabled && !_collectAllEvents ? 
+                    (_monitoredEventIds.Count > 0 ? "Backend Configured" : "NO EVENT IDS CONFIGURED") : 
+                    "COLLECT ALL MODE",
+                ["ConfigurationSource"] = "Backend Controlled"
             };
+        }
+
+        /// <summary>
+        /// Parses a boolean value from various configuration object types.
+        /// </summary>
+        /// <param name="configObj">The configuration object to parse.</param>
+        /// <param name="defaultValue">Default value if parsing fails.</param>
+        /// <returns>Parsed boolean value.</returns>
+        private bool ParseBooleanFromConfig(object configObj, bool defaultValue)
+        {
+            try
+            {
+                return configObj switch
+                {
+                    null => defaultValue,
+                    bool boolValue => boolValue,
+                    string stringValue => bool.TryParse(stringValue, out var result) ? result : defaultValue,
+                    System.Text.Json.JsonElement jsonElement when jsonElement.ValueKind == System.Text.Json.JsonValueKind.True => true,
+                    System.Text.Json.JsonElement jsonElement when jsonElement.ValueKind == System.Text.Json.JsonValueKind.False => false,
+                    System.Text.Json.JsonElement jsonElement when jsonElement.ValueKind == System.Text.Json.JsonValueKind.String => 
+                        bool.TryParse(jsonElement.GetString(), out var result) ? result : defaultValue,
+                    _ => defaultValue
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to parse boolean from config object {Type}: {Value}", 
+                    configObj?.GetType().Name ?? "null", configObj?.ToString() ?? "null");
+                return defaultValue;
+            }
         }
     }
 

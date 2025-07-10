@@ -113,7 +113,8 @@ namespace AthalaSIEM.UniversalAgent.Services
                 _logQueue.Enqueue(log);
                 
                 // Prevent memory overflow
-                if (_logQueue.Count > 10000)
+                var maxQueueSize = _configuration.GetValue<int>("GrpcCommunication:MaxQueueSize", 10000);
+                if (_logQueue.Count > maxQueueSize)
                 {
                     _logQueue.Dequeue();
                     _logger.LogWarning("Log queue overflow, oldest log discarded");

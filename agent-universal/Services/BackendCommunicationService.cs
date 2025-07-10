@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Linq;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
@@ -17,9 +19,8 @@ using static AthalaSIEM.UniversalAgent.Models.Constants;
 namespace AthalaSIEM.UniversalAgent.Services
 {
     /// <summary>
-    /// Backend communication service following ManageEngine EventLog Analyzer pattern
-    /// Handles secure communication with AthalaSIEM backend API
-    /// Implements batch processing, retry logic, and health monitoring
+    /// Enhanced HTTP communication service with backend configuration support.
+    /// Handles registration, heartbeat, log forwarding, and real-time configuration updates.
     /// </summary>
     public sealed class BackendCommunicationService : IBackendCommunicationService
     {
@@ -28,17 +29,30 @@ namespace AthalaSIEM.UniversalAgent.Services
         private readonly HttpClient _httpClient;
         private readonly Timer _heartbeatTimer;
         private readonly Timer _batchTimer;
+        private readonly Timer _archivalTimer;
+        private readonly Timer _configUpdateTimer;
         private readonly Queue<LogEntry> _logQueue = new();
         private readonly object _queueLock = new();
         private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
+        private readonly string _archiveDirectory;
+        
+        // Configurable values - no more hardcoding
+        private readonly int _retentionDays;
+        private readonly int _maxQueueSize;
+        private readonly int _heartbeatIntervalMinutes;
+        private readonly int _batchIntervalSeconds;
+        private readonly int _configUpdateIntervalMinutes;
+        private readonly int _archivalIntervalHours;
+        private readonly string _fallbackLocalIp;
 
         private string _managerUrl = "";
         private string _agentId = "";
         private string _apiKey = "";
         private int _batchSize;
-        private int _batchIntervalSeconds;
         private bool _isConnected;
         private DateTime _lastSuccessfulSend;
+        private DateTime _lastConfigUpdate;
+        private string _configurationVersion = "";
 
         public bool IsConnected => _isConnected;
         public long QueuedLogs => _logQueue.Count;
@@ -50,6 +64,9 @@ namespace AthalaSIEM.UniversalAgent.Services
         public event EventHandler<CommunicationErrorEventArgs>? CommunicationError;
         public event EventHandler<ConnectionStatusChangedEventArgs>? ConnectionStatusChanged;
 
+        // Backend configuration event
+        public event EventHandler<BackendConfigurationUpdatedEventArgs>? ConfigurationUpdated;
+
         public BackendCommunicationService(
             ILogger<BackendCommunicationService> logger,
             IConfiguration configuration,
@@ -59,14 +76,33 @@ namespace AthalaSIEM.UniversalAgent.Services
             _configuration = configuration;
             _httpClient = httpClient;
 
-            LoadConfiguration();
-            ConfigureHttpClient();
+            // Load all configurable values from appsettings - NO HARDCODING
+            _retentionDays = _configuration.GetValue<int>("Communication:RetentionDays", 90);
+            _maxQueueSize = _configuration.GetValue<int>("Communication:MaxQueueSize", 50000);
+            _heartbeatIntervalMinutes = _configuration.GetValue<int>("Communication:HeartbeatIntervalMinutes", 1);
+            _batchIntervalSeconds = _configuration.GetValue<int>("Communication:BatchIntervalSeconds", 30);
+            _configUpdateIntervalMinutes = _configuration.GetValue<int>("Communication:ConfigUpdateIntervalMinutes", 30);
+            _archivalIntervalHours = _configuration.GetValue<int>("Communication:ArchivalIntervalHours", 24);
+            _fallbackLocalIp = _configuration.GetValue<string>("Communication:FallbackLocalIp", "127.0.0.1");
 
-            // Setup timers
-            _heartbeatTimer = new Timer(SendHeartbeat, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
-            _batchTimer = new Timer(ProcessLogBatch, null, 
-                TimeSpan.FromSeconds(_batchIntervalSeconds), 
-                TimeSpan.FromSeconds(_batchIntervalSeconds));
+            // Create archive directory
+            var baseDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? Environment.CurrentDirectory;
+            _archiveDirectory = Path.Combine(baseDir, _configuration.GetValue<string>("Communication:ArchiveDirectory", "LogArchive"));
+            Directory.CreateDirectory(_archiveDirectory);
+
+            // Initialize timers with configurable intervals
+            var heartbeatInterval = TimeSpan.FromMinutes(_heartbeatIntervalMinutes);
+            var batchInterval = TimeSpan.FromSeconds(_batchIntervalSeconds);
+            var archivalInterval = TimeSpan.FromHours(_archivalIntervalHours);
+            var configUpdateInterval = TimeSpan.FromMinutes(_configUpdateIntervalMinutes);
+
+            _heartbeatTimer = new Timer(SendHeartbeat, null, heartbeatInterval, heartbeatInterval);
+            _batchTimer = new Timer(ProcessLogBatch, null, batchInterval, batchInterval);
+            _archivalTimer = new Timer(ArchiveLogs, null, archivalInterval, archivalInterval);
+            _configUpdateTimer = new Timer(FetchBackendConfiguration, null, configUpdateInterval, configUpdateInterval);
+
+            _logger.LogInformation("Communication service initialized with configurable values - RetentionDays: {RetentionDays}, MaxQueueSize: {MaxQueueSize}, HeartbeatInterval: {HeartbeatInterval}min",
+                _retentionDays, _maxQueueSize, _heartbeatIntervalMinutes);
         }
 
         /// <summary>
@@ -76,36 +112,16 @@ namespace AthalaSIEM.UniversalAgent.Services
         {
             try
             {
-                _logger.LogInformation("Initializing connection to SIEM Manager: {ManagerUrl}", _managerUrl);
+                LoadConfiguration();
+                ConfigureHttpClient();
+                await RegisterAgentAsync();
 
-                // Test connection
-                var isHealthy = await TestConnectionAsync();
-                if (isHealthy)
-                {
-                    // Register agent with backend
-                    await RegisterAgentAsync();
-                    
-                    _isConnected = true;
-                    _lastSuccessfulSend = DateTime.UtcNow;
-                    
-                    ConnectionStatusChanged?.Invoke(this, new ConnectionStatusChangedEventArgs
-                    {
-                        IsConnected = true,
-                        StatusMessage = "Connected to backend successfully"
-                    });
-
-                    _logger.LogInformation("Successfully connected to SIEM Manager");
-                    return true;
-                }
-                else
-                {
-                    _logger.LogError("Failed to connect to SIEM Manager");
-                    return false;
-                }
+                _logger.LogInformation("Backend communication service initialized successfully - Connected: {IsConnected}", _isConnected);
+                return _isConnected;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error initializing SIEM Manager connection");
+                _logger.LogError(ex, "Failed to initialize backend communication service");
                 return false;
             }
         }
@@ -115,22 +131,27 @@ namespace AthalaSIEM.UniversalAgent.Services
         /// </summary>
         public void QueueLog(LogEntry log)
         {
+            if (log == null) return;
+
             lock (_queueLock)
             {
-                _logQueue.Enqueue(log);
-                
-                // Prevent memory overflow
-                if (_logQueue.Count > 50000)
+                // Check queue size limit
+                if (_logQueue.Count >= _maxQueueSize)
                 {
-                    // Remove oldest 10000 logs
-                    for (int i = 0; i < 10000; i++)
-                    {
-                        if (_logQueue.Count > 0)
-                            _logQueue.Dequeue();
-                    }
+                    // Remove configurable percentage of oldest logs to prevent memory issues
+                    var removalPercentage = _configuration.GetValue<double>("Communication:QueueRemovalPercentage", 0.25);
+                    var logsToRemove = (int)(_logQueue.Count * removalPercentage);
                     
-                    _logger.LogWarning("Log queue overflow, removed oldest logs");
+                    for (int i = 0; i < logsToRemove; i++)
+                    {
+                        _logQueue.Dequeue();
+                    }
+
+                    _logger.LogWarning("Queue size limit reached ({MaxSize}), removed {RemovedCount} oldest logs ({Percentage:P0})",
+                        _maxQueueSize, logsToRemove, removalPercentage);
                 }
+
+                _logQueue.Enqueue(log);
             }
         }
 
@@ -218,28 +239,36 @@ namespace AthalaSIEM.UniversalAgent.Services
         private void LoadConfiguration()
         {
             // Build Manager URL from IP and Port (SIEM standard)
-            var managerIP = _configuration["SiemManager:ManagerIP"] ?? "192.168.1.100";
+            // REMOVED HARDCODED IP - Backend configuration is now REQUIRED
+            var managerIP = _configuration["SiemManager:ManagerIP"];
             var managerPort = _configuration.GetValue<int>("SiemManager:ManagerPort", 9595);
             var useHTTPS = _configuration.GetValue<bool>("SiemManager:UseHTTPS", false);
             var protocol = useHTTPS ? "https" : "http";
+
+            // Validate that Manager IP is provided - NO MORE DEFAULTS
+            if (string.IsNullOrWhiteSpace(managerIP))
+            {
+                _logger.LogError("❌ SiemManager:ManagerIP is REQUIRED and not configured! Please provide your backend server IP.");
+                throw new InvalidOperationException("SiemManager:ManagerIP configuration is required. Please specify your backend server IP address.");
+            }
             
             _managerUrl = $"{protocol}://{managerIP}:{managerPort}";
             _agentId = string.IsNullOrEmpty(_configuration[ConfigurationKeys.AgentId]) ? Environment.MachineName : _configuration[ConfigurationKeys.AgentId];
             _apiKey = _configuration[ConfigurationKeys.ApiKey] ?? "";
             _batchSize = _configuration.GetValue<int>(ConfigurationKeys.BatchSize, Defaults.BatchSize);
-            _batchIntervalSeconds = _configuration.GetValue<int>(ConfigurationKeys.BatchIntervalSeconds, Defaults.BatchIntervalSeconds);
 
-            // Validate configuration
-            if (_batchSize < Validation.MinBatchSize || _batchSize > Validation.MaxBatchSize)
+            _logger.LogInformation("✅ Configuration loaded - Manager URL: {ManagerUrl}, AgentId: {AgentId}, ApiKey: {ApiKey}, BatchSize: {BatchSize}",
+                _managerUrl, _agentId, string.IsNullOrEmpty(_apiKey) ? "NOT SET" : "SET", _batchSize);
+
+            // Validate configuration with configurable limits
+            var minBatchSize = _configuration.GetValue<int>("Validation:MinBatchSize", Validation.MinBatchSize);
+            var maxBatchSize = _configuration.GetValue<int>("Validation:MaxBatchSize", Validation.MaxBatchSize);
+
+            if (_batchSize < minBatchSize || _batchSize > maxBatchSize)
             {
-                _logger.LogWarning("Invalid batch size {BatchSize}, using default {Default}", _batchSize, Defaults.BatchSize);
+                _logger.LogWarning("Invalid batch size {BatchSize}, using default {Default} (range: {Min}-{Max})", 
+                    _batchSize, Defaults.BatchSize, minBatchSize, maxBatchSize);
                 _batchSize = Defaults.BatchSize;
-            }
-
-            if (_batchIntervalSeconds < Validation.MinIntervalSeconds || _batchIntervalSeconds > Validation.MaxIntervalSeconds)
-            {
-                _logger.LogWarning("Invalid batch interval {Interval}, using default {Default}", _batchIntervalSeconds, Defaults.BatchIntervalSeconds);
-                _batchIntervalSeconds = Defaults.BatchIntervalSeconds;
             }
         }
 
@@ -274,7 +303,7 @@ namespace AthalaSIEM.UniversalAgent.Services
 
                 var registrationRequest = new AgentRegistrationRequest
                 {
-                    DeploymentToken = _configuration.GetValue<string>("Agent:RegistrationKey") ?? Constants.Defaults.RegistrationKey,
+                    DeploymentToken = _configuration.GetValue<string>("Agent:RegistrationKey") ?? "",
                     Hostname = Environment.MachineName,
                     IpAddress = GetLocalIpAddress(),
                     Platform = Environment.OSVersion.Platform.ToString(),
@@ -292,9 +321,14 @@ namespace AthalaSIEM.UniversalAgent.Services
                 var json = JsonSerializer.Serialize(registrationRequest);
                 var content = new StringContent(json, Encoding.UTF8, Constants.ContentTypes.ApplicationJson);
 
+                _logger.LogDebug("Sending registration request to: {Url}", Constants.ApiEndpoints.AgentRegistration);
+                _logger.LogDebug("Registration request payload: {Json}", json);
+
                 var response = await _httpClient.PostAsync(Constants.ApiEndpoints.AgentRegistration, content);
                 var responseContent = await response.Content.ReadAsStringAsync();
-
+                
+                _logger.LogDebug("Registration response: {StatusCode} - {Content}", response.StatusCode, responseContent);
+                
                 if (response.IsSuccessStatusCode)
                 {
                     var registrationResponse = JsonSerializer.Deserialize<AgentRegistrationResponse>(responseContent);
@@ -307,7 +341,8 @@ namespace AthalaSIEM.UniversalAgent.Services
                         _httpClient.DefaultRequestHeaders.Remove(Constants.Headers.ApiKey);
                         _httpClient.DefaultRequestHeaders.Add(Constants.Headers.ApiKey, _apiKey);
                         
-                        _logger.LogInformation("Agent registered successfully with ID: {AgentId}", _agentId);
+                        _logger.LogInformation("Agent registered successfully with ID: {AgentId}, ApiKey: {ApiKey}", 
+                            _agentId, string.IsNullOrEmpty(_apiKey) ? "NOT SET" : "SET");
                         
                         // Update connection status
                         _isConnected = true;
@@ -381,7 +416,7 @@ namespace AthalaSIEM.UniversalAgent.Services
             {
                 await TestConnectionAsync();
 
-                if (_isConnected)
+                if (_isConnected && !string.IsNullOrEmpty(_agentId) && !string.IsNullOrEmpty(_apiKey))
                 {
                     var heartbeatData = new
                     {
@@ -399,8 +434,22 @@ namespace AthalaSIEM.UniversalAgent.Services
                     
                     if (!response.IsSuccessStatusCode)
                     {
-                        _logger.LogWarning("Heartbeat failed: {StatusCode}", response.StatusCode);
+                        var errorContent = await response.Content.ReadAsStringAsync();
+                        _logger.LogWarning("Heartbeat failed: {StatusCode} - {Content}", response.StatusCode, errorContent);
+                        
+                        if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                        {
+                            _logger.LogError("Heartbeat authentication failed. AgentId: {AgentId}, ApiKey: {ApiKey}", 
+                                _agentId, string.IsNullOrEmpty(_apiKey) ? "NOT SET" : "SET");
+                        }
                     }
+                }
+                else
+                {
+                    _logger.LogDebug("Heartbeat skipped: Connection: {Connected}, AgentId: {AgentId}, ApiKey: {ApiKey}", 
+                        _isConnected, 
+                        string.IsNullOrEmpty(_agentId) ? "NOT SET" : "SET", 
+                        string.IsNullOrEmpty(_apiKey) ? "NOT SET" : "SET");
                 }
             }
             catch (Exception ex)
@@ -498,17 +547,61 @@ namespace AthalaSIEM.UniversalAgent.Services
         {
             try
             {
-                var logBatch = new
+                // Ensure agent is properly authenticated before sending logs
+                if (string.IsNullOrEmpty(_agentId))
+                {
+                    _logger.LogWarning("Cannot send logs: AgentId is not set. Agent may not be registered.");
+                    return false;
+                }
+
+                if (string.IsNullOrEmpty(_apiKey))
+                {
+                    _logger.LogWarning("Cannot send logs: ApiKey is not set. Agent may not be authenticated.");
+                    return false;
+                }
+
+                // Sanitize logs before sending - ensure ProcessId is valid integer or null
+                var sanitizedLogs = logs.Select(log => 
+                {
+                    // Create a copy with cleaned ProcessId
+                    var cleanLog = new LogEntry
+                    {
+                        Timestamp = log.Timestamp,
+                        Source = log.Source,
+                        Level = log.Level,
+                        Message = log.Message,
+                        EventId = log.EventId,
+                        Category = log.Category,
+                        SecurityRelevance = log.SecurityRelevance,
+                        Properties = new Dictionary<string, object>(log.Properties),
+                        CollectorType = log.CollectorType,
+                        AgentId = log.AgentId,
+                        CollectionTime = log.CollectionTime,
+                        ComputerName = log.ComputerName,
+                        Username = log.Username,
+                        ProcessName = log.ProcessName,
+                        ProcessId = SanitizeProcessId(log.ProcessId, log.Properties),
+                        IpAddress = log.IpAddress,
+                        LogHash = log.LogHash,
+                        SearchIndex = log.SearchIndex
+                    };
+                    return cleanLog;
+                }).ToList();
+
+                // Backend expects AgentId at top level with Logs array
+                var logBatchData = new
                 {
                     AgentId = _agentId,
                     BatchId = Guid.NewGuid().ToString(),
-                    Timestamp = DateTime.UtcNow,
-                    Logs = logs
+                    BatchTimestamp = DateTime.UtcNow,
+                    Logs = sanitizedLogs
                 };
 
-                var json = JsonSerializer.Serialize(logBatch, new JsonSerializerOptions
+                var json = JsonSerializer.Serialize(logBatchData, new JsonSerializerOptions
                 {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    PropertyNamingPolicy = null, // Keep PascalCase for .NET backend
+                    WriteIndented = false,
+                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
                 });
                 
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -522,8 +615,9 @@ namespace AthalaSIEM.UniversalAgent.Services
                 else
                 {
                     TotalSendErrors++;
+                    var errorContent = await response.Content.ReadAsStringAsync();
                     _logger.LogError("Failed to send log batch: {StatusCode} - {Content}", 
-                        response.StatusCode, await response.Content.ReadAsStringAsync());
+                        response.StatusCode, errorContent);
                     
                     CommunicationError?.Invoke(this, new CommunicationErrorEventArgs
                     {
@@ -556,6 +650,34 @@ namespace AthalaSIEM.UniversalAgent.Services
             }
         }
 
+        /// <summary>
+        /// Sanitizes ProcessId to ensure it's a valid integer or null
+        /// </summary>
+        private int? SanitizeProcessId(int? originalProcessId, Dictionary<string, object> properties)
+        {
+            // If original ProcessId is valid, return it
+            if (originalProcessId.HasValue && originalProcessId.Value > 0)
+                return originalProcessId;
+
+            // Try to extract ProcessId from properties
+            if (properties != null)
+            {
+                foreach (var prop in properties)
+                {
+                    if (prop.Key.ToLower().Contains("processid") || prop.Key.ToLower().Contains("process_id"))
+                    {
+                        if (prop.Value != null && int.TryParse(prop.Value.ToString(), out var processId) && processId > 0)
+                        {
+                            return processId;
+                        }
+                    }
+                }
+            }
+
+            // Return null if no valid ProcessId found
+            return null;
+        }
+
         private string GetLocalIpAddress()
         {
             try
@@ -568,11 +690,330 @@ namespace AthalaSIEM.UniversalAgent.Services
                         return ip.ToString();
                     }
                 }
-                return "127.0.0.1";
+                return _fallbackLocalIp;
             }
             catch
             {
-                return "127.0.0.1";
+                return _fallbackLocalIp;
+            }
+        }
+
+        /// <summary>
+        /// Archives old logs and cleans up expired archive files (90-day retention)
+        /// </summary>
+        private async void ArchiveLogs(object? state)
+        {
+            try
+            {
+                await Task.Run(() =>
+                {
+                    var cutoffDate = DateTime.UtcNow.AddDays(-_retentionDays);
+                    var deletedFiles = 0;
+                    var archivedSize = 0L;
+
+                    // Clean up old archive files
+                    if (Directory.Exists(_archiveDirectory))
+                    {
+                        var archiveFiles = Directory.GetFiles(_archiveDirectory, "*.json");
+                        
+                        foreach (var file in archiveFiles)
+                        {
+                            var fileInfo = new FileInfo(file);
+                            if (fileInfo.CreationTimeUtc < cutoffDate)
+                            {
+                                archivedSize += fileInfo.Length;
+                                File.Delete(file);
+                                deletedFiles++;
+                            }
+                        }
+                    }
+
+                    if (deletedFiles > 0)
+                    {
+                        _logger.LogInformation("Archive cleanup: Deleted {FileCount} files ({SizeMB:F2} MB) older than {Days} days",
+                            deletedFiles, archivedSize / 1024.0 / 1024.0, _retentionDays);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during log archive cleanup");
+            }
+        }
+
+        /// <summary>
+        /// Archives logs to file system for later retrieval
+        /// </summary>
+        private async Task ArchiveLogsToFile(List<LogEntry> logs)
+        {
+            if (logs == null || !logs.Any()) return;
+
+            try
+            {
+                var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+                var fileName = $"archived_logs_{timestamp}_{Guid.NewGuid():N}.json";
+                var filePath = Path.Combine(_archiveDirectory, fileName);
+
+                var archiveData = new
+                {
+                    ArchivedAt = DateTime.UtcNow,
+                    AgentId = _agentId,
+                    LogCount = logs.Count,
+                    Logs = logs
+                };
+
+                var json = JsonSerializer.Serialize(archiveData, new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    PropertyNamingPolicy = null
+                });
+
+                await File.WriteAllTextAsync(filePath, json);
+
+                _logger.LogInformation("Archived {LogCount} logs to {FileName} ({SizeKB:F2} KB)",
+                    logs.Count, fileName, json.Length / 1024.0);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error archiving logs to file");
+            }
+        }
+
+        /// <summary>
+        /// Loads archived logs from file system
+        /// </summary>
+        public async Task<List<LogEntry>> LoadArchivedLogsAsync(DateTime fromDate, DateTime toDate)
+        {
+            var result = new List<LogEntry>();
+
+            try
+            {
+                if (!Directory.Exists(_archiveDirectory))
+                    return result;
+
+                var archiveFiles = Directory.GetFiles(_archiveDirectory, "*.json");
+                
+                foreach (var file in archiveFiles)
+                {
+                    var fileInfo = new FileInfo(file);
+                    
+                    // Check if file is within date range
+                    if (fileInfo.CreationTimeUtc >= fromDate && fileInfo.CreationTimeUtc <= toDate)
+                    {
+                        try
+                        {
+                            var json = await File.ReadAllTextAsync(file);
+                            var archiveData = JsonSerializer.Deserialize<JsonElement>(json);
+                            
+                            if (archiveData.TryGetProperty("Logs", out var logsProperty))
+                            {
+                                var logs = JsonSerializer.Deserialize<List<LogEntry>>(logsProperty.GetRawText());
+                                if (logs != null)
+                                {
+                                    result.AddRange(logs);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Error reading archive file: {FileName}", file);
+                        }
+                    }
+                }
+
+                _logger.LogInformation("Loaded {LogCount} archived logs from {FileCount} files between {FromDate} and {ToDate}",
+                    result.Count, archiveFiles.Length, fromDate.ToString("yyyy-MM-dd"), toDate.ToString("yyyy-MM-dd"));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading archived logs");
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Attempts automatic token deployment by fetching token from backend.
+        /// This enables plug-and-play installation experience.
+        /// </summary>
+        /// <param name="backendUrl">Backend URL provided during installation.</param>
+        /// <returns>True if token was successfully obtained.</returns>
+        public async Task<bool> TryAutoDeploymentAsync(string backendUrl)
+        {
+            try
+            {
+                _logger.LogInformation("Attempting automatic token deployment from backend: {BackendUrl}", backendUrl);
+                
+                if (string.IsNullOrWhiteSpace(backendUrl))
+                {
+                    _logger.LogWarning("Backend URL not provided for automatic token deployment");
+                    return false;
+                }
+
+                // Update manager URL for token fetch
+                _managerUrl = backendUrl.TrimEnd('/');
+                ConfigureHttpClient();
+
+                // Fetch deployment token from backend
+                var tokenRequest = new
+                {
+                    hostname = Environment.MachineName,
+                    ipAddress = GetLocalIpAddress(),
+                    platform = Environment.OSVersion.Platform.ToString(),
+                    osVersion = Environment.OSVersion.VersionString,
+                    requestTime = DateTime.UtcNow
+                };
+
+                var json = System.Text.Json.JsonSerializer.Serialize(tokenRequest);
+                var content = new StringContent(json, Encoding.UTF8, Constants.ContentTypes.ApplicationJson);
+
+                _logger.LogDebug("Requesting deployment token from: {Endpoint}", Constants.ApiEndpoints.GetDeploymentToken);
+                var response = await _httpClient.PostAsync(Constants.ApiEndpoints.GetDeploymentToken, content);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var responseContent = await response.Content.ReadAsStringAsync();
+                    var tokenResponse = System.Text.Json.JsonSerializer.Deserialize<DeploymentTokenResponse>(responseContent);
+
+                    if (tokenResponse != null && !string.IsNullOrEmpty(tokenResponse.Token))
+                    {
+                        // Update configuration with received token
+                        _configuration["Agent:RegistrationKey"] = tokenResponse.Token;
+                        _configuration["Agent:ManagerUrl"] = backendUrl;
+                        
+                        _logger.LogInformation("✅ Automatic token deployment successful! Token expires: {Expiry}", tokenResponse.ExpiresAt);
+                        return true;
+                    }
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("Automatic token deployment failed: {StatusCode} - {Content}", response.StatusCode, errorContent);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during automatic token deployment");
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Fetches configuration from backend including Event IDs, FIM paths, and detection thresholds.
+        /// This replaces hardcoded values with dynamic backend-controlled configuration.
+        /// </summary>
+        /// <param name="state">Timer state (not used).</param>
+        private async void FetchBackendConfiguration(object? state)
+        {
+            if (!_isConnected || string.IsNullOrEmpty(_agentId) || string.IsNullOrEmpty(_apiKey))
+            {
+                _logger.LogDebug("Skipping backend configuration fetch - not connected or authenticated");
+                return;
+            }
+
+            try
+            {
+                _logger.LogDebug("Fetching configuration from backend...");
+
+                // Fetch all configuration types
+                var configTasks = new List<Task<BackendConfigResult>>
+                {
+                    FetchConfigurationAsync(Constants.BackendConfig.ConfigurationTypeEventFiltering),
+                    FetchConfigurationAsync(Constants.BackendConfig.ConfigurationTypeFIM),
+                    FetchConfigurationAsync(Constants.BackendConfig.ConfigurationTypeDetectionThresholds),
+                    FetchConfigurationAsync(Constants.BackendConfig.ConfigurationTypeMonitoring)
+                };
+
+                var results = await Task.WhenAll(configTasks);
+                var updatedConfigs = new List<BackendConfigResult>();
+
+                foreach (var result in results)
+                {
+                    if (result.Success)
+                    {
+                        updatedConfigs.Add(result);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Failed to fetch {ConfigType} configuration: {Error}", result.ConfigType, result.Error);
+                    }
+                }
+
+                if (updatedConfigs.Any())
+                {
+                    _lastConfigUpdate = DateTime.UtcNow;
+                    
+                    // Fire configuration updated event
+                    ConfigurationUpdated?.Invoke(this, new BackendConfigurationUpdatedEventArgs
+                    {
+                        UpdatedConfigurations = updatedConfigs,
+                        UpdateTime = _lastConfigUpdate,
+                        ConfigurationVersion = _configurationVersion
+                    });
+
+                    _logger.LogInformation("Backend configuration updated successfully - {ConfigCount} configurations fetched", updatedConfigs.Count);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fetching backend configuration");
+            }
+        }
+
+        /// <summary>
+        /// Fetches a specific configuration type from backend.
+        /// </summary>
+        /// <param name="configType">Type of configuration to fetch.</param>
+        /// <returns>Configuration fetch result.</returns>
+        private async Task<BackendConfigResult> FetchConfigurationAsync(string configType)
+        {
+            try
+            {
+                var endpoint = configType switch
+                {
+                    Constants.BackendConfig.ConfigurationTypeEventFiltering => string.Format(Constants.ApiEndpoints.GetEventFilteringRules, _agentId),
+                    Constants.BackendConfig.ConfigurationTypeFIM => string.Format(Constants.ApiEndpoints.GetFIMConfiguration, _agentId),
+                    Constants.BackendConfig.ConfigurationTypeDetectionThresholds => string.Format(Constants.ApiEndpoints.GetDetectionThresholds, _agentId),
+                    _ => string.Format(Constants.ApiEndpoints.AgentConfiguration, _agentId)
+                };
+
+                _logger.LogDebug("Fetching {ConfigType} from: {Endpoint}", configType, endpoint);
+
+                var response = await _httpClient.GetAsync(endpoint);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    var content = await response.Content.ReadAsStringAsync();
+                    var configData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(content);
+
+                    return new BackendConfigResult
+                    {
+                        Success = true,
+                        ConfigType = configType,
+                        Configuration = configData ?? new Dictionary<string, object>(),
+                        FetchTime = DateTime.UtcNow
+                    };
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    return new BackendConfigResult
+                    {
+                        Success = false,
+                        ConfigType = configType,
+                        Error = $"HTTP {response.StatusCode}: {errorContent}"
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                return new BackendConfigResult
+                {
+                    Success = false,
+                    ConfigType = configType,
+                    Error = ex.Message
+                };
             }
         }
 
@@ -580,12 +1021,57 @@ namespace AthalaSIEM.UniversalAgent.Services
 
         public ValueTask DisposeAsync()
         {
-            _heartbeatTimer?.Dispose();
-            _batchTimer?.Dispose();
-            _sendSemaphore?.Dispose();
-            _httpClient?.Dispose();
+            try
+            {
+                _heartbeatTimer?.Dispose();
+                _batchTimer?.Dispose();
+                _archivalTimer?.Dispose();
+                _configUpdateTimer?.Dispose();
+                _httpClient?.Dispose();
+                _sendSemaphore?.Dispose();
+                
+                _logger.LogInformation("BackendCommunicationService disposed");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error disposing BackendCommunicationService");
+            }
             
             return ValueTask.CompletedTask;
         }
+    }
+
+    /// <summary>
+    /// Response model for automatic deployment token request.
+    /// </summary>
+    public sealed class DeploymentTokenResponse
+    {
+        public string Token { get; set; } = string.Empty;
+        public DateTime ExpiresAt { get; set; }
+        public string AgentVersion { get; set; } = string.Empty;
+        public Dictionary<string, object> InitialConfiguration { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Result of backend configuration fetch operation.
+    /// </summary>
+    public sealed class BackendConfigResult
+    {
+        public bool Success { get; set; }
+        public string ConfigType { get; set; } = string.Empty;
+        public Dictionary<string, object> Configuration { get; set; } = new();
+        public string Error { get; set; } = string.Empty;
+        public DateTime FetchTime { get; set; }
+    }
+
+    /// <summary>
+    /// Event arguments for backend configuration updates.
+    /// </summary>
+    public sealed class BackendConfigurationUpdatedEventArgs : EventArgs
+    {
+        public List<BackendConfigResult> UpdatedConfigurations { get; set; } = new();
+        public DateTime UpdateTime { get; set; }
+        public string ConfigurationVersion { get; set; } = string.Empty;
+        public string UpdateReason { get; set; } = Constants.BackendConfig.UpdateReasonScheduled;
     }
 } 

@@ -113,7 +113,11 @@ foreach ($server in $servers) {
 ### **Production Configuration Example:**
 ```json
 {
-  "BackendApiUrl": "https://siem-backend.company.com:9595",
+  "SiemManager": {
+    "ManagerIP": "192.168.1.100",
+    "ManagerPort": 9595,
+    "UseHTTPS": true
+  },
   "Agent": {
     "Id": "PROD-SRV-001",
     "Name": "Production Server 001",

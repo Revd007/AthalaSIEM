@@ -52,10 +52,23 @@ namespace AthalaSIEM.UniversalAgent.Services.Interfaces
         event EventHandler<ConnectionStatusChangedEventArgs>? ConnectionStatusChanged;
 
         /// <summary>
+        /// Event raised when backend configuration is updated.
+        /// </summary>
+        event EventHandler<BackendConfigurationUpdatedEventArgs>? ConfigurationUpdated;
+
+        /// <summary>
         /// Initializes the communication service.
         /// </summary>
         /// <returns>True if initialization was successful.</returns>
         Task<bool> InitializeAsync();
+
+        /// <summary>
+        /// Attempts automatic token deployment by fetching deployment token from backend.
+        /// This enables plug-and-play installation experience.
+        /// </summary>
+        /// <param name="backendUrl">Backend URL provided during installation.</param>
+        /// <returns>True if token was successfully obtained.</returns>
+        Task<bool> TryAutoDeploymentAsync(string backendUrl);
 
         /// <summary>
         /// Queues a single log entry for sending to the backend.
@@ -86,5 +99,13 @@ namespace AthalaSIEM.UniversalAgent.Services.Interfaces
         /// </summary>
         /// <returns>Health status information.</returns>
         CommunicationHealth GetHealthStatus();
+
+        /// <summary>
+        /// Loads archived logs from the file system within the specified date range.
+        /// </summary>
+        /// <param name="fromDate">Start date for archived logs.</param>
+        /// <param name="toDate">End date for archived logs.</param>
+        /// <returns>List of archived log entries.</returns>
+        Task<List<LogEntry>> LoadArchivedLogsAsync(DateTime fromDate, DateTime toDate);
     }
 } 

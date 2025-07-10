@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using AthalaSIEM.UniversalAgent.Models;
 
@@ -14,13 +15,14 @@ namespace AthalaSIEM.Agent.Core
     /// </summary>
     public class CollectorManager : IAsyncDisposable
     {
-        private readonly ILogger<CollectorManager> _logger;
+                private readonly ILogger<CollectorManager> _logger;
+        private readonly IConfiguration _configuration;
         private readonly Dictionary<string, ILogCollector> _collectors = new();
         private readonly Dictionary<string, Task> _collectorTasks = new();
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly List<LogEntry> _aggregatedLogs = new();
         private readonly object _logLock = new();
-        
+
         public bool IsRunning { get; private set; }
         public int ActiveCollectors => _collectors.Count(c => c.Value.IsActive);
         public long TotalLogsCollected => _collectors.Values.Sum(c => c.LogsCollected);
@@ -28,9 +30,10 @@ namespace AthalaSIEM.Agent.Core
         public event EventHandler<LogCollectedEventArgs>? LogsCollected;
         public event EventHandler<CollectorErrorEventArgs>? CollectorError;
 
-        public CollectorManager(ILogger<CollectorManager> logger)
+        public CollectorManager(ILogger<CollectorManager> logger, IConfiguration configuration)
         {
             _logger = logger;
+            _configuration = configuration;
         }
 
         /// <summary>
@@ -225,10 +228,15 @@ namespace AthalaSIEM.Agent.Core
                 {
                     _aggregatedLogs.AddRange(e.Logs);
                     
-                    // Prevent memory overflow
-                    if (_aggregatedLogs.Count > 10000)
+                    // Prevent memory overflow using configurable limits
+                    var maxAggregatedLogs = _configuration.GetValue<int>("Processing:CollectorLimits:MaxAggregatedLogs", 10000);
+                    var removalCount = _configuration.GetValue<int>("Processing:CollectorLimits:AggregatedLogsRemovalCount", 5000);
+                    
+                    if (_aggregatedLogs.Count > maxAggregatedLogs)
                     {
-                        _aggregatedLogs.RemoveRange(0, 5000);
+                        _aggregatedLogs.RemoveRange(0, removalCount);
+                        _logger.LogDebug("Aggregated logs limit reached in OnCollectorLogCollected. Removed {RemovalCount} oldest logs. Max={MaxLogs}", 
+                            removalCount, maxAggregatedLogs);
                     }
                 }
 

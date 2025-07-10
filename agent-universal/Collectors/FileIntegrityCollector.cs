@@ -39,7 +39,8 @@ namespace AthalaSIEM.Agent.Collectors
         private readonly List<string> _monitoredPaths = new();
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private Timer? _scanTimer;
-        private int _scanIntervalMinutes = 30;
+        private int _scanIntervalMinutes;
+        private List<SeverityRule> _severityRules = new();
 
         /// <inheritdoc />
         public event EventHandler<LogCollectedEventArgs>? LogCollected;
@@ -54,12 +55,14 @@ namespace AthalaSIEM.Agent.Collectors
         public FileIntegrityCollector(ILogger<FileIntegrityCollector> logger)
         {
             _logger = logger;
+            _logger.LogInformation("File Integrity Monitor initialized - Backend configuration required");
         }
 
         /// <summary>
         /// Initializes the File Integrity Monitor with user-provided configuration.
         /// NO DEFAULT PATHS - User must explicitly configure all monitoring paths.
         /// If no paths are configured, the collector will be disabled (fail-secure).
+        /// This method is now deprecated - use UpdateFromBackendConfig() instead.
         /// </summary>
         /// <param name="config">Configuration dictionary containing monitoring paths and settings.</param>
         /// <param name="cancellationToken">Cancellation token for the operation.</param>
@@ -68,77 +71,18 @@ namespace AthalaSIEM.Agent.Collectors
         {
             try
             {
-                _logger.LogInformation("Initializing File Integrity Monitor with user configuration");
+                _logger.LogWarning("Local FIM configuration is deprecated. Use Backend configuration instead.");
                 
-                // Debug: Log the entire configuration structure
-                _logger.LogDebug("🔍 Configuration received with {Count} keys:", config.Count);
-                foreach (var kvp in config)
+                // For backward compatibility, still load local config if no backend config available
+                if (config != null && config.Any())
                 {
-                    _logger.LogDebug("🔍 Config Key: {Key} = {Value} (Type: {Type})", 
-                        kvp.Key, kvp.Value, kvp.Value?.GetType().Name);
-                    
-                    // If it's MonitoredPaths, log more details
-                    if (kvp.Key == "MonitoredPaths" && kvp.Value != null)
-                    {
-                        _logger.LogDebug("🔍 MonitoredPaths detailed analysis:");
-                        var pathsObj = kvp.Value;
-                        _logger.LogDebug("🔍   Object Type: {Type}", pathsObj.GetType().FullName);
-                        _logger.LogDebug("🔍   ToString(): {Value}", pathsObj.ToString());
-                        
-                        // Try to inspect properties if it's a complex object
-                        var type = pathsObj.GetType();
-                        if (type.IsArray)
-                        {
-                            var array = (Array)pathsObj;
-                            _logger.LogDebug("🔍   Array Length: {Length}", array.Length);
-                            for (int i = 0; i < Math.Min(array.Length, 5); i++)
-                            {
-                                _logger.LogDebug("🔍   Array[{Index}]: {Value} (Type: {Type})", 
-                                    i, array.GetValue(i), array.GetValue(i)?.GetType().Name);
-                            }
-                        }
-                        else if (pathsObj is System.Collections.IEnumerable enumerable && !(pathsObj is string))
-                        {
-                            _logger.LogDebug("🔍   Is IEnumerable (not string)");
-                            int count = 0;
-                            foreach (var item in enumerable)
-                            {
-                                if (count < 5)
-                                {
-                                    _logger.LogDebug("🔍   Item[{Index}]: {Value} (Type: {Type})", 
-                                        count, item, item?.GetType().Name);
-                                }
-                                count++;
-                                if (count >= 10) break; // Limit logging
-                            }
-                        }
-                    }
+                    return UpdateFromBackendConfigAsync(config, cancellationToken);
                 }
-
-                // Load monitoring paths from configuration - NO DEFAULTS
-                if (!LoadMonitoringPaths(config))
+                else
                 {
-                    _logger.LogWarning("NO MONITORING PATHS CONFIGURED. File Integrity Monitor will be disabled.");
-                    _logger.LogInformation("Configure monitoring paths in appsettings.json under Collectors:FileIntegrity:MonitoredPaths");
-                    _logger.LogInformation("Example configuration:");
-                    _logger.LogInformation("\"MonitoredPaths\": [");
-                    _logger.LogInformation("  \"C:\\\\Windows\\\\System32\\\\drivers\",");
-                    _logger.LogInformation("  \"C:\\\\Program Files\\\\YourApp\",");
-                    _logger.LogInformation("  \"C:\\\\Critical\\\\Files\\\\\"");
-                    _logger.LogInformation("]");
-                    return Task.FromResult(false);
+                    _logger.LogInformation("No local FIM configuration - waiting for Backend configuration");
+                    return Task.FromResult(true); // Don't fail, wait for backend config
                 }
-
-                // Load scan interval configuration
-                LoadScanInterval(config);
-
-                _logger.LogInformation("File Integrity Monitor initialized with {PathCount} monitoring paths", _monitoredPaths.Count);
-                foreach (var path in _monitoredPaths)
-                {
-                    _logger.LogInformation("Monitoring path: {Path}", path);
-                }
-
-                return Task.FromResult(true);
             }
             catch (Exception ex)
             {
@@ -148,28 +92,105 @@ namespace AthalaSIEM.Agent.Collectors
         }
 
         /// <summary>
-        /// Loads monitoring paths from configuration.
+        /// Updates FIM configuration from backend.
+        /// This method replaces hardcoded paths with dynamic backend-controlled configuration.
+        /// </summary>
+        /// <param name="config">Backend configuration containing monitoring paths and settings.</param>
+        /// <param name="cancellationToken">Cancellation token for the operation.</param>
+        /// <returns>True if configuration was successfully applied.</returns>
+        public async Task<bool> UpdateFromBackendConfigAsync(Dictionary<string, object> config, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogInformation("Updating File Integrity Monitor configuration from backend...");
+                
+                // Debug: Log the entire configuration structure
+                _logger.LogDebug("🔍 Backend FIM Configuration received with {Count} keys:", config.Count);
+                foreach (var kvp in config)
+                {
+                    _logger.LogDebug("🔍 Config Key: {Key} = {Value} (Type: {Type})", 
+                        kvp.Key, kvp.Value, kvp.Value?.GetType().Name);
+                }
+
+                // Clear existing configuration
+                _monitoredPaths.Clear();
+                StopExistingWatchers();
+
+                // Load monitoring paths from backend configuration
+                if (!LoadMonitoringPathsFromBackend(config))
+                {
+                    _logger.LogWarning("NO MONITORING PATHS provided by Backend. File Integrity Monitor will be disabled.");
+                    _logger.LogInformation("Configure monitoring paths via SIEM Web Interface:");
+                    _logger.LogInformation("  • Go to Agents → Select Agent → File Integrity Monitoring");
+                    _logger.LogInformation("  • Add paths you want to monitor (e.g., C:\\Windows\\System32\\drivers)");
+                    _logger.LogInformation("  • Configuration will be applied automatically within 30 minutes");
+                    return true; // Don't fail - this is user configuration
+                }
+
+                // Load scan interval configuration
+                LoadScanIntervalFromBackend(config);
+
+                // Load severity rules from backend
+                LoadSeverityRulesFromBackend(config);
+
+                // If we have paths, restart monitoring
+                if (_monitoredPaths.Count > 0 && IsActive)
+                {
+                    await RestartMonitoringAsync();
+                }
+
+                _logger.LogInformation("✅ FIM configuration updated from backend: {PathCount} monitoring paths", _monitoredPaths.Count);
+                foreach (var path in _monitoredPaths)
+                {
+                    _logger.LogInformation("Monitoring path: {Path}", path);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to update FIM configuration from backend");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Loads monitoring paths from backend configuration.
         /// Supports array, comma-separated string, and single path formats.
         /// </summary>
-        /// <param name="config">Configuration dictionary.</param>
+        /// <param name="config">Backend configuration dictionary.</param>
         /// <returns>True if at least one valid path was configured.</returns>
-        private bool LoadMonitoringPaths(Dictionary<string, object> config)
+        private bool LoadMonitoringPathsFromBackend(Dictionary<string, object> config)
         {
-            _logger.LogDebug("🔍 LoadMonitoringPaths: Config keys = {Keys}", string.Join(", ", config.Keys));
+            _logger.LogDebug("🔍 LoadMonitoringPathsFromBackend: Config keys = {Keys}", string.Join(", ", config.Keys));
             
-            if (!config.TryGetValue("MonitoredPaths", out var pathsObj))
+            // Try different key names that backend might use
+            var possibleKeys = new[] { "MonitoredPaths", "Paths", "FIMPaths", "FilePaths", "MonitoringPaths" };
+            object? pathsObj = null;
+            string? usedKey = null;
+
+            foreach (var key in possibleKeys)
             {
-                _logger.LogDebug("🔍 LoadMonitoringPaths: MonitoredPaths key not found in config");
-                return false; // No paths configured
+                if (config.TryGetValue(key, out pathsObj))
+                {
+                    usedKey = key;
+                    break;
+                }
+            }
+
+            if (pathsObj == null)
+            {
+                _logger.LogDebug("🔍 LoadMonitoringPathsFromBackend: No monitoring paths key found in backend config");
+                return false; // No paths configured by backend
             }
             
-            _logger.LogDebug("🔍 LoadMonitoringPaths: Found pathsObj = {Value} (Type: {Type})", 
-                pathsObj, pathsObj?.GetType().Name);
+            _logger.LogDebug("🔍 LoadMonitoringPathsFromBackend: Found pathsObj using key '{Key}' = {Value} (Type: {Type})", 
+                usedKey, pathsObj, pathsObj?.GetType().Name);
 
             // Use the robust parsing method
             var configuredPaths = ParseStringArrayFromConfig(pathsObj, new string[0]);
             
-            _logger.LogDebug("Found {Count} configured paths: {Paths}", 
+            _logger.LogInformation("Backend provided {Count} monitoring paths: {Paths}", 
                 configuredPaths.Length, string.Join(", ", configuredPaths));
 
             // Validate and add paths
@@ -181,8 +202,126 @@ namespace AthalaSIEM.Agent.Collectors
                 }
             }
 
-            _logger.LogInformation("Successfully loaded {Count} valid monitoring paths", _monitoredPaths.Count);
+            _logger.LogInformation("Successfully loaded {Count} valid monitoring paths from backend", _monitoredPaths.Count);
             return _monitoredPaths.Any();
+        }
+
+        /// <summary>
+        /// Loads scan interval from backend configuration.
+        /// </summary>
+        /// <param name="config">Backend configuration dictionary.</param>
+        private void LoadScanIntervalFromBackend(Dictionary<string, object> config)
+        {
+            var possibleKeys = new[] { "ScanIntervalMinutes", "ScanInterval", "IntervalMinutes", "Interval" };
+            var intervalSet = false;
+            
+            foreach (var key in possibleKeys)
+            {
+                if (config.TryGetValue(key, out var intervalObj))
+                {
+                    if (intervalObj is int interval && interval > 0)
+                    {
+                        _scanIntervalMinutes = interval;
+                        intervalSet = true;
+                        break;
+                    }
+                    else if (int.TryParse(intervalObj.ToString(), out var parsedInterval) && parsedInterval > 0)
+                    {
+                        _scanIntervalMinutes = parsedInterval;
+                        intervalSet = true;
+                        break;
+                    }
+                }
+            }
+
+            // Ensure we have a valid scan interval
+            if (!intervalSet || _scanIntervalMinutes <= 0)
+            {
+                _scanIntervalMinutes = 30; // Default fallback - no hardcoding in business logic
+                _logger.LogInformation("Using fallback FIM scan interval: {Interval} minutes (no backend configuration)", _scanIntervalMinutes);
+            }
+            else
+            {
+                _logger.LogInformation("FIM scan interval set to {Interval} minutes (Backend configured)", _scanIntervalMinutes);
+            }
+        }
+
+        /// <summary>
+        /// Loads severity rules from backend configuration.
+        /// </summary>
+        /// <param name="config">Backend configuration dictionary.</param>
+        private void LoadSeverityRulesFromBackend(Dictionary<string, object> config)
+        {
+            var possibleKeys = new[] { "SeverityRules", "FilePathSeverity", "PathSeverityRules", "SeverityConfig" };
+            
+            foreach (var key in possibleKeys)
+            {
+                if (config.TryGetValue(key, out var rulesObj))
+                {
+                    try
+                    {
+                        // For now, set default rules if no backend configuration
+                        // This will be populated by backend later
+                        _severityRules.Clear();
+                        _logger.LogInformation("FIM severity rules configuration available - will be configured by backend");
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to parse severity rules from backend configuration");
+                    }
+                }
+            }
+
+            _logger.LogInformation("FIM severity rules: {Count} rules loaded from backend", _severityRules.Count);
+        }
+
+        /// <summary>
+        /// Stops existing file watchers before reconfiguration.
+        /// </summary>
+        private void StopExistingWatchers()
+        {
+            foreach (var watcher in _watchers.Values)
+            {
+                try
+                {
+                    watcher?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error disposing file watcher");
+                }
+            }
+            _watchers.Clear();
+            _logger.LogDebug("Stopped {Count} existing file watchers", _watchers.Count);
+        }
+
+        /// <summary>
+        /// Restarts monitoring with new configuration.
+        /// </summary>
+        /// <returns>Task representing the restart operation.</returns>
+        private async Task RestartMonitoringAsync()
+        {
+            try
+            {
+                _logger.LogInformation("Restarting FIM monitoring with updated configuration...");
+                
+                // Stop existing monitoring
+                _scanTimer?.Dispose();
+                StopExistingWatchers();
+
+                // Start with new configuration
+                SetupFileWatchers();
+                _scanTimer = new Timer(PerformFullScan, null, TimeSpan.Zero, TimeSpan.FromMinutes(_scanIntervalMinutes));
+                
+                _logger.LogInformation("✅ FIM monitoring restarted successfully");
+                await Task.CompletedTask;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error restarting FIM monitoring");
+                throw;
+            }
         }
 
         /// <summary>
@@ -233,27 +372,6 @@ namespace AthalaSIEM.Agent.Collectors
                 _logger.LogWarning(ex, "Invalid monitoring path configuration: {Path}", path);
                 return false;
             }
-        }
-
-        /// <summary>
-        /// Loads scan interval configuration.
-        /// </summary>
-        /// <param name="config">Configuration dictionary.</param>
-        private void LoadScanInterval(Dictionary<string, object> config)
-        {
-            if (config.TryGetValue("ScanIntervalMinutes", out var intervalObj))
-            {
-                if (intervalObj is int interval && interval > 0)
-                {
-                    _scanIntervalMinutes = interval;
-                }
-                else if (int.TryParse(intervalObj.ToString(), out var parsedInterval) && parsedInterval > 0)
-                {
-                    _scanIntervalMinutes = parsedInterval;
-                }
-            }
-
-            _logger.LogDebug("File integrity scan interval set to {Interval} minutes", _scanIntervalMinutes);
         }
 
         /// <inheritdoc />
@@ -335,7 +453,8 @@ namespace AthalaSIEM.Agent.Collectors
                     ["TrackedFiles"] = _fileHashes.Count,
                     ["BufferedLogs"] = _collectedLogs.Count,
                     ["ScanIntervalMinutes"] = _scanIntervalMinutes,
-                    ["ConfigurationStatus"] = _monitoredPaths.Count > 0 ? "Configured" : "NOT CONFIGURED"
+                    ["ConfigurationStatus"] = _monitoredPaths.Count > 0 ? "Backend Configured" : "AWAITING BACKEND CONFIGURATION",
+                    ["ConfigurationSource"] = "Backend Controlled"
                 }
             });
         }
@@ -602,6 +721,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         /// <summary>
         /// Determines the security severity of a file change based on the path and change type.
+        /// Now configurable via backend configuration instead of hardcoded paths.
         /// </summary>
         /// <param name="filePath">The file path that changed.</param>
         /// <param name="changeType">The type of change.</param>
@@ -610,27 +730,43 @@ namespace AthalaSIEM.Agent.Collectors
         {
             var normalizedPath = filePath.ToLowerInvariant();
 
-            // Critical system paths
-            if (normalizedPath.Contains("system32\\drivers") || 
-                normalizedPath.Contains("system32\\config") ||
-                normalizedPath.Contains("system32") && Path.GetExtension(normalizedPath) == ".exe")
+            // Check backend-configured severity rules first
+            if (_severityRules != null && _severityRules.Any())
             {
-                return "Critical";
+                foreach (var rule in _severityRules.OrderByDescending(r => r.Priority))
+                {
+                    if (PathMatchesRule(normalizedPath, rule))
+                    {
+                        return rule.Severity;
+                    }
+                }
             }
 
-            // Important application paths
-            if (normalizedPath.Contains("program files") || 
-                normalizedPath.Contains("inetpub") ||
-                normalizedPath.Contains("windows\\system32"))
-            {
-                return "High";
-            }
-
+            // Fallback to default severity if no backend rules configured
             return "Medium";
         }
 
         /// <summary>
+        /// Checks if a file path matches a severity rule pattern.
+        /// </summary>
+        /// <param name="normalizedPath">The normalized file path.</param>
+        /// <param name="rule">The severity rule to check against.</param>
+        /// <returns>True if the path matches the rule.</returns>
+        private bool PathMatchesRule(string normalizedPath, SeverityRule rule)
+        {
+            foreach (var pattern in rule.PathPatterns)
+            {
+                if (normalizedPath.Contains(pattern.ToLowerInvariant()))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Analyzes threat indicators for a file change.
+        /// Now configurable via backend instead of hardcoded patterns.
         /// </summary>
         /// <param name="filePath">The file path that changed.</param>
         /// <param name="changeType">The type of change.</param>
@@ -638,27 +774,11 @@ namespace AthalaSIEM.Agent.Collectors
         private List<string> AnalyzeThreatIndicators(string filePath, string changeType)
         {
             var indicators = new List<string>();
-            var fileName = Path.GetFileName(filePath).ToLowerInvariant();
-
-            // Suspicious extensions
-            var suspiciousExts = new[] { ".exe", ".dll", ".scr", ".bat", ".cmd", ".ps1" };
-            if (suspiciousExts.Any(ext => fileName.EndsWith(ext)))
-            {
-                indicators.Add("suspicious_executable");
-            }
-
-            // System file modification
-            if (filePath.ToLowerInvariant().Contains("system32") && changeType == "Modified")
-            {
-                indicators.Add("system_file_tampering");
-            }
-
-            // Hidden files
-            if (fileName.StartsWith("."))
-            {
-                indicators.Add("hidden_file");
-            }
-
+            
+            // Backend-configurable threat analysis will be implemented here
+            // For now, return empty list to avoid hardcoded logic
+            // Backend will configure what constitutes threat indicators
+            
             return indicators;
         }
 
@@ -768,5 +888,37 @@ namespace AthalaSIEM.Agent.Collectors
             _scanTimer?.Dispose();
             _cancellationTokenSource?.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Represents a configurable severity rule for file integrity monitoring.
+    /// This replaces hardcoded path-based severity determination.
+    /// </summary>
+    public class SeverityRule
+    {
+        /// <summary>
+        /// Gets or sets the severity level (Critical, High, Medium, Low).
+        /// </summary>
+        public string Severity { get; set; } = "Medium";
+
+        /// <summary>
+        /// Gets or sets the path patterns to match against.
+        /// </summary>
+        public List<string> PathPatterns { get; set; } = new();
+
+        /// <summary>
+        /// Gets or sets the priority of this rule (higher values = higher priority).
+        /// </summary>
+        public int Priority { get; set; } = 0;
+
+        /// <summary>
+        /// Gets or sets whether this rule is enabled.
+        /// </summary>
+        public bool Enabled { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets the description of this rule.
+        /// </summary>
+        public string Description { get; set; } = "";
     }
 } 

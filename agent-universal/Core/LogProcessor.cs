@@ -1009,12 +1009,15 @@ namespace AthalaSIEM.Agent.Core
                 _correlationTimer?.Dispose();
                 _correlationBuffer.Clear();
             
+                // Get configurable disposal timeout
+                var disposalTimeoutMs = _configuration.GetValue<int>("Processing:DisposalTimeoutMs", 1000);
+            
                 // Dispose of all components
                 foreach (var enricher in _enrichers.OfType<IAsyncDisposable>())
                 {
                     try
                     {
-                        enricher.DisposeAsync().AsTask().Wait(1000); // 1 second timeout
+                        enricher.DisposeAsync().AsTask().Wait(disposalTimeoutMs); // Configurable timeout
                     }
                     catch (Exception ex)
                     {

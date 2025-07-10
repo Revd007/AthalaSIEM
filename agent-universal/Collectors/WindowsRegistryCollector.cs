@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Linq;
 using System.Runtime.Versioning;
 using Microsoft.Win32;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using AthalaSIEM.Agent.Core;
 using AthalaSIEM.UniversalAgent.Models;
@@ -25,6 +26,7 @@ namespace AthalaSIEM.Agent.Collectors
         public long LogsCollected { get; private set; }
 
         private readonly ILogger<WindowsRegistryCollector> _logger;
+        private readonly IConfiguration? _configuration;
         private readonly List<LogEntry> _collectedLogs = new List<LogEntry>();
         private readonly Dictionary<string, Dictionary<string, object>> _registryBaseline = new();
         private readonly List<RegistryMonitorRule> _monitorRules = new List<RegistryMonitorRule>();
@@ -34,9 +36,10 @@ namespace AthalaSIEM.Agent.Collectors
         public event EventHandler<LogCollectedEventArgs>? LogCollected;
         public event EventHandler<LogCollectionErrorEventArgs>? CollectionError;
 
-        public WindowsRegistryCollector(ILogger<WindowsRegistryCollector> logger)
+        public WindowsRegistryCollector(ILogger<WindowsRegistryCollector> logger, IConfiguration? configuration = null)
         {
             _logger = logger;
+            _configuration = configuration;
         }
 
         public async Task<bool> InitializeAsync(Dictionary<string, object> config, CancellationToken cancellationToken = default)
@@ -70,10 +73,11 @@ namespace AthalaSIEM.Agent.Collectors
         {
             IsActive = true;
             
-            // Start periodic registry scanning (every 10 minutes)
-            _scanTimer = new Timer(PerformRegistryScan, null, TimeSpan.Zero, TimeSpan.FromMinutes(10));
+            // Use configurable scan interval (default 10 minutes if not configured by backend)
+            var defaultScanIntervalMinutes = 10; // Default fallback - will be configurable by backend
+            _scanTimer = new Timer(PerformRegistryScan, null, TimeSpan.Zero, TimeSpan.FromMinutes(defaultScanIntervalMinutes));
             
-            _logger.LogInformation("Windows Registry Monitor started - scanning every 10 minutes");
+            _logger.LogInformation("Windows Registry Monitor started - scanning every {Interval} minutes (configurable by backend)", defaultScanIntervalMinutes);
             
             return Task.CompletedTask;
         }
@@ -235,10 +239,15 @@ namespace AthalaSIEM.Agent.Collectors
                     _registryBaseline[baselineKey] = currentData;
                 }
                 
-                // Prevent memory overflow
-                if (_collectedLogs.Count > 2000)
+                // Prevent memory overflow using configurable limits
+                var maxLogs = _configuration?.GetValue<int>("Collectors:2:Properties:MaxCollectedLogs", 2000) ?? 2000;
+                var removeCount = _configuration?.GetValue<int>("Collectors:2:Properties:LogRemovalCount", 1000) ?? 1000;
+                
+                if (_collectedLogs.Count > maxLogs)
                 {
-                    _collectedLogs.RemoveRange(0, 1000);
+                    _collectedLogs.RemoveRange(0, removeCount);
+                    _logger.LogDebug("Registry log collection limit reached. Removed {RemoveCount} oldest logs. Max={MaxLogs}", 
+                        removeCount, maxLogs);
                 }
 
                 _logger.LogDebug("Registry scan completed");

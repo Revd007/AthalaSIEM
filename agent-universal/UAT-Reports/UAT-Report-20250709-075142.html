@@ -1,0 +1,52 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AthalaSIEM Universal Agent - UAT Test Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .header { background-color: #f0f0f0; padding: 20px; border-radius: 5px; }
+        .status { font-size: 24px; font-weight: bold; color: green; }
+        .test-result { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .passed { border-left: 5px solid green; }
+        .failed { border-left: 5px solid red; }
+        .steps { margin: 10px 0; }
+        .step { margin: 5px 0; color: #555; }
+        .error { color: red; font-weight: bold; }
+        .warning { color: orange; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class='header'>
+        <h1>🧪 AthalaSIEM Universal Agent - UAT Test Report</h1>
+        <div class='status'>Overall Status: PASSED</div>
+        <p><strong>Test Duration:</strong> 0,18 minutes</p>
+        <p><strong>Tests Passed:</strong> 4/4</p>
+        <p><strong>Generated:</strong> 2025-07-09 07:51:42</p>
+    </div>
+    <div class='test-result passed'>
+        <h2>FIM_Testing - ✅ PASSED</h2>
+        <p><strong>Duration:</strong> 5124,20 ms</p>
+        
+        <div class='steps'>
+            <h3>Test Steps:</h3><div class='step'>• 07:51:32 - FIM Collector initialized successfully</div><div class='step'>• 07:51:32 - FIM Collector started successfully</div><div class='step'>• 07:51:32 - Created test file: .\UAT-Test\TestFiles\new-file-20250709-075132.txt</div><div class='step'>• 07:51:32 - Modified existing file: .\UAT-Test\TestFiles\test-document.txt</div><div class='step'>• 07:51:37 - FIM collected 12 log entries</div><div class='step'>• 07:51:37 - FIM Health: Running, Logs Collected: 11</div><div class='step'>• 07:51:37 - FIM backend configuration update successful</div><div class='step'>• 07:51:37 - FIM Collector stopped successfully</div><div class='step'>• 07:51:37 - FIM Collector disposed successfully</div></div></div>
+    <div class='test-result passed'>
+        <h2>Event_Collection - ✅ PASSED</h2>
+        <p><strong>Duration:</strong> 3017,89 ms</p>
+        
+        <div class='steps'>
+            <h3>Test Steps:</h3><div class='step'>• 07:51:37 - Event Log Collector initialized successfully</div><div class='step'>• 07:51:37 - Event Collector Health: Stopped</div><div class='step'>• 07:51:40 - Event Collector started and is active</div><div class='step'>• 07:51:40 - Event Collector retrieved 0 log entries</div><div class='step'>• 07:51:40 - Event Log Collector stopped successfully</div><div class='step'>• 07:51:40 - Final Event Collector Health: Status=Stopped, LogsCollected=0</div><div class='step'>• 07:51:40 - Event Log Collector disposed successfully</div></div></div>
+    <div class='test-result passed'>
+        <h2>Communication_Test - ✅ PASSED</h2>
+        <p><strong>Duration:</strong> 94,36 ms</p>
+        
+        <div class='steps'>
+            <h3>Test Steps:</h3><div class='step'>• 07:51:40 - Communication Health: Connected=False, QueuedLogs=0</div><div class='step'>• 07:51:40 - Queued 5 test log entries</div><div class='step'>• 07:51:40 - Verified queued logs count: 5</div><div class='step'>• 07:51:40 - Connection test passed</div><div class='step'>• 07:51:40 - Final Communication Health: QueuedLogs=5, TotalLogsSent=0</div></div></div>
+    <div class='test-result passed'>
+        <h2>Performance_Test - ✅ PASSED</h2>
+        <p><strong>Duration:</strong> 2281,31 ms</p>
+        
+        <div class='steps'>
+            <h3>Test Steps:</h3><div class='step'>• 07:51:40 - Initial memory usage: 42 MB</div><div class='step'>• 07:51:42 - CPU test completed: 53.106.277 iterations in 2 seconds</div><div class='step'>• 07:51:42 - Starting log processing performance test</div><div class='step'>• 07:51:42 - LogProcessor initialized successfully</div><div class='step'>• 07:51:42 - Processed 100 logs in 105ms</div><div class='step'>• 07:51:42 - Processing rate: 950,43 logs/second</div><div class='step'>• 07:51:42 - Final memory usage: 45 MB (increase: 3 MB)</div><div class='step'>• 07:51:42 - Garbage collection: 2 Gen0 collections during test</div></div></div>
+</body>
+</html>

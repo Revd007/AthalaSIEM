@@ -22,23 +22,47 @@ The AthalaSIEM Universal Agent is a lightweight, enterprise-ready log collection
 - Windows 10/Server 2016 or later
 - Administrator privileges
 - .NET 8.0 Runtime (automatically included in self-contained build)
+- **SIEM Manager server running and accessible**
 
-#### **Simple Installation**
+#### **GUI Installation (Recommended)**
 ```powershell
-# Download and run MSI
+# Double-click MSI for GUI installation
 .\AthalaSIEM-UniversalAgent-1.0.0-x64.msi
 
-# Or silent installation with parameters
+# The installer will ask for:
+# - Manager IP Address: YOUR_BACKEND_SERVER_IP (REQUIRED!)
+# - Manager Port: 9595 (default)
+# - Agent Name: Unique name for this agent
+# - Deployment Token: Optional security token
+```
+
+#### **Silent Installation with Parameters**
+```powershell
+# Silent installation with pre-configured values
 msiexec /i "AthalaSIEM-UniversalAgent-1.0.0-x64.msi" ^
-    SERVERURL="http://your-backend:9595" ^
+    MANAGERIP="YOUR_BACKEND_SERVER_IP" ^
+    MANAGERPORT="9595" ^
     NAME="Production-Agent-01" ^
     TOKEN="your-deployment-token" ^
     /quiet /norestart
+
+# Example with real IP:
+msiexec /i "AthalaSIEM-UniversalAgent-1.0.0-x64.msi" ^
+    MANAGERIP="10.0.1.50" ^
+    MANAGERPORT="9595" ^
+    NAME="WebServer-01" ^
+    /quiet /norestart
 ```
+
+#### **⚠️ IMPORTANT: Manager IP is REQUIRED!**
+- ❌ **NO MORE hardcoded defaults** like 192.168.1.100
+- ✅ **You MUST specify your actual backend server IP**
+- ✅ **GUI installer will ask for Manager IP during setup**
+- ✅ **Silent install requires MANAGERIP parameter**
 
 #### **MSI Features**
 - ✅ Automatic Windows Service installation
-- ✅ GUI configuration during setup
+- ✅ GUI configuration during setup (asks for Manager IP)
 - ✅ Proper uninstall support
 - ✅ Appears in Programs & Features
 - ✅ Automatic configuration update
@@ -51,12 +75,15 @@ Perfect for deploying to multiple machines like **Splunk Universal Forwarder** o
 
 #### **Single Machine Deployment**
 ```powershell
-# Basic installation
-.\deploy-agent.ps1 -BackendUrl "http://your-backend:9595"
+# Basic installation - REPLACE with your backend IP!
+.\deploy-agent.ps1 -BackendUrl "http://YOUR_BACKEND_IP:9595"
+
+# Example with real backend server:
+.\deploy-agent.ps1 -BackendUrl "http://10.0.1.50:9595"
 
 # Full installation with all options
 .\deploy-agent.ps1 ^
-    -BackendUrl "http://your-backend:9595" ^
+    -BackendUrl "http://10.0.1.50:9595" ^
     -AgentName "Production-Agent-01" ^
     -DeploymentToken "your-token" ^
     -UseSSL ^
@@ -66,9 +93,9 @@ Perfect for deploying to multiple machines like **Splunk Universal Forwarder** o
 
 #### **Mass Deployment via Active Directory/SCCM**
 ```powershell
-# Create deployment package
+# Create deployment package - REPLACE with your backend IP!
 $servers = @("server1", "server2", "server3")
-$backendUrl = "http://your-siem-backend:9595"
+$backendUrl = "http://YOUR_BACKEND_IP:9595"  # ← CHANGE THIS!
 $token = "your-deployment-token"
 
 foreach ($server in $servers) {
@@ -79,7 +106,7 @@ foreach ($server in $servers) {
         Invoke-WebRequest -Uri "http://your-deployment-server/athala-agent.zip" -OutFile "C:\temp\athala-agent.zip"
         Expand-Archive "C:\temp\athala-agent.zip" "C:\temp\athala-agent"
         
-        # Run deployment
+        # Run deployment with YOUR backend IP
         & "C:\temp\athala-agent\deploy-agent.ps1" -BackendUrl $url -DeploymentToken $token -AgentName $serverName -StartService -SilentInstall
         
     } -ArgumentList $backendUrl, $token, $server
@@ -92,8 +119,9 @@ foreach ($server in $servers) {
 # Place in \\domain\sysvol\domain\scripts\athala-agent-install.ps1
 
 if (-not (Get-Service "AthalaSIEMUniversalAgent" -ErrorAction SilentlyContinue)) {
+    # REPLACE with your actual backend server IP!
     \\deployment-server\athala-agent\deploy-agent.ps1 ^
-        -BackendUrl "http://siem-backend:9595" ^
+        -BackendUrl "http://YOUR_BACKEND_IP:9595" ^
         -DeploymentToken "group-policy-token" ^
         -SilentInstall ^
         -StartService
@@ -110,7 +138,7 @@ For manual installations or custom deployment scenarios.
 # 1. Extract portable version
 Expand-Archive "athala-agent-portable.zip" "C:\AthalaSIEM"
 
-# 2. Configure
+# 2. Configure - EDIT with your backend IP!
 Edit "C:\AthalaSIEM\appsettings.json"
 
 # 3. Install service
@@ -128,7 +156,11 @@ Start-Service AthalaSIEMUniversalAgent
 
 ```json
 {
-  "BackendApiUrl": "http://your-backend:9595",
+  "SiemManager": {
+    "ManagerIP": "YOUR_BACKEND_SERVER_IP",
+    "ManagerPort": 9595,
+    "UseHTTPS": false
+  },
   "Agent": {
     "Name": "Production-Agent-01",
     "RegistrationKey": "your-deployment-token",
@@ -141,7 +173,11 @@ Start-Service AthalaSIEMUniversalAgent
 
 ```json
 {
-  "BackendApiUrl": "https://siem-backend.company.com:9595",
+  "SiemManager": {
+    "ManagerIP": "10.0.1.50",
+    "ManagerPort": 9595,
+    "UseHTTPS": true
+  },
   "Agent": {
     "Id": "PROD-SRV-001",
     "Name": "Production Server 001",
@@ -276,11 +312,25 @@ athala-agent.exe --test-connection
 # Check agent logs
 Get-Content "C:\Program Files\Athala SIEM Agent\Logs\agent-*.log"
 
-# Verify backend connectivity
-Test-NetConnection your-backend-server -Port 9595
+# Verify backend connectivity - REPLACE with your backend IP!
+Test-NetConnection YOUR_BACKEND_IP -Port 9595
 
 # Check queue status
 athala-agent.exe --console
+```
+
+#### **Connection Failed**
+```powershell
+# Most common issue: Wrong Manager IP!
+# 1. Check appsettings.json has correct IP
+# 2. Verify backend server is running
+# 3. Test network connectivity
+
+# Test with ping
+ping YOUR_BACKEND_IP
+
+# Test with telnet
+telnet YOUR_BACKEND_IP 9595
 ```
 
 #### **High Memory Usage**
@@ -317,6 +367,10 @@ Get-Counter "\Process(athala-agent)\% Processor Time"
 ### **Example 1: Domain Controller Monitoring**
 ```json
 {
+  "SiemManager": {
+    "ManagerIP": "10.0.1.50",
+    "ManagerPort": 9595
+  },
   "Agent": {
     "Name": "DC01-Security-Monitor",
     "BatchSize": 500
@@ -336,6 +390,10 @@ Get-Counter "\Process(athala-agent)\% Processor Time"
 ### **Example 2: Web Server Monitoring**
 ```json
 {
+  "SiemManager": {
+    "ManagerIP": "10.0.1.50",
+    "ManagerPort": 9595
+  },
   "Agent": {
     "Name": "WebServer-IIS-Monitor"
   },
@@ -360,6 +418,10 @@ Get-Counter "\Process(athala-agent)\% Processor Time"
 ### **Example 3: Database Server Monitoring**
 ```json
 {
+  "SiemManager": {
+    "ManagerIP": "10.0.1.50",
+    "ManagerPort": 9595
+  },
   "Agent": {
     "Name": "Database-Server-Monitor",
     "BatchSize": 200
@@ -410,3 +472,5 @@ Get-Counter "\Process(athala-agent)\% Processor Time"
 ---
 
 **🎉 You're all set!** The AthalaSIEM Universal Agent is now following ManageEngine EventLog Analyzer patterns for enterprise-grade security monitoring. 
+
+**⚠️ REMEMBER: Replace YOUR_BACKEND_IP with your actual backend server IP address!** 

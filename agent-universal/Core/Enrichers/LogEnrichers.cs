@@ -217,7 +217,7 @@ namespace AthalaSIEM.Agent.Core.Enrichers
         private List<IThreatIntelligenceProvider> _threatProviders = new();
         private Dictionary<string, ThreatIntelligenceData> _cache = new();
         private bool _isInitialized;
-        private int _cacheMaxSize = 10000;
+        private int _cacheMaxSize;
         private TimeSpan _cacheExpiry = TimeSpan.FromHours(1);
 
         /// <inheritdoc />
@@ -236,6 +236,7 @@ namespace AthalaSIEM.Agent.Core.Enrichers
         public EnterpriseThreatIntelligenceEnricher(ILogger<EnterpriseThreatIntelligenceEnricher> logger)
         {
             _logger = logger;
+            _cacheMaxSize = 10000; // Default value, will be configured during initialization
         }
 
         /// <inheritdoc />
@@ -243,10 +244,15 @@ namespace AthalaSIEM.Agent.Core.Enrichers
         {
             try
             {
-                // Configure cache settings
+                // Configure cache settings - prefer config parameter, fallback to appsettings
                 if (config.TryGetValue("CacheMaxSize", out var maxSize) && maxSize is int size)
                 {
                     _cacheMaxSize = size;
+                }
+                else
+                {
+                    // Use default if not provided in config
+                    _cacheMaxSize = 10000;
                 }
 
                 if (config.TryGetValue("CacheExpiryHours", out var expiry) && expiry is int hours)
