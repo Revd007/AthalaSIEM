@@ -141,7 +141,7 @@ namespace AthalaSIEM.UniversalAgent.Services
         /// <param name="password">Password to authenticate (SecureString recommended)</param>
         /// <param name="domain">Domain for authentication</param>
         /// <returns>True if authentication was successful</returns>
-        public async Task<bool> AuthenticateWithCredentialsAsync(string username, string password, string domain = ".")
+        public async Task<bool> AuthenticateWithCredentialsAsync(string username, string? password, string domain = ".")
         {
             if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
             {
@@ -177,6 +177,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                 // Note: In production, use SecureString for password parameter
                 password = null;
                 GC.Collect(); // Force garbage collection to clear sensitive data
+                await Task.CompletedTask;
             }
         }
 
@@ -208,11 +209,13 @@ namespace AthalaSIEM.UniversalAgent.Services
                     // }
                     
                     _serviceAccountName = serviceAccount;
+                    await Task.CompletedTask;
                     return true;
                 }
                 else
                 {
                     _logger.LogInformation("No service account configured, using current Windows identity");
+                    await Task.CompletedTask;
                     return true;
                 }
             }

@@ -1,0 +1,52 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AthalaSIEM Universal Agent - UAT Test Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .header { background-color: #f0f0f0; padding: 20px; border-radius: 5px; }
+        .status { font-size: 24px; font-weight: bold; color: green; }
+        .test-result { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .passed { border-left: 5px solid green; }
+        .failed { border-left: 5px solid red; }
+        .steps { margin: 10px 0; }
+        .step { margin: 5px 0; color: #555; }
+        .error { color: red; font-weight: bold; }
+        .warning { color: orange; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class='header'>
+        <h1>🧪 AthalaSIEM Universal Agent - UAT Test Report</h1>
+        <div class='status'>Overall Status: PASSED</div>
+        <p><strong>Test Duration:</strong> 0,19 minutes</p>
+        <p><strong>Tests Passed:</strong> 4/4</p>
+        <p><strong>Generated:</strong> 2025-07-10 03:10:30</p>
+    </div>
+    <div class='test-result passed'>
+        <h2>FIM_Testing - ✅ PASSED</h2>
+        <p><strong>Duration:</strong> 5105,05 ms</p>
+        
+        <div class='steps'>
+            <h3>Test Steps:</h3><div class='step'>• 03:10:18 - FIM Collector initialized successfully</div><div class='step'>• 03:10:18 - FIM Collector started successfully</div><div class='step'>• 03:10:18 - Created test file: .\UAT-Test\TestFiles\new-file-20250710-031018.txt</div><div class='step'>• 03:10:18 - Modified existing file: .\UAT-Test\TestFiles\test-document.txt</div><div class='step'>• 03:10:23 - FIM collected 12 log entries</div><div class='step'>• 03:10:23 - FIM Health: Running, Logs Collected: 12</div><div class='step'>• 03:10:23 - FIM backend configuration update successful</div><div class='step'>• 03:10:23 - FIM Collector stopped successfully</div><div class='step'>• 03:10:23 - FIM Collector disposed successfully</div></div></div>
+    <div class='test-result passed'>
+        <h2>Event_Collection - ✅ PASSED</h2>
+        <p><strong>Duration:</strong> 3150,56 ms</p>
+        
+        <div class='steps'>
+            <h3>Test Steps:</h3><div class='step'>• 03:10:24 - Event Log Collector initialized successfully</div><div class='step'>• 03:10:24 - Event Collector Health: Stopped</div><div class='step'>• 03:10:27 - Event Collector started and is active</div><div class='step'>• 03:10:27 - Event Collector retrieved 1 log entries</div><div class='step'>• 03:10:27 - Event Log Collector stopped successfully</div><div class='step'>• 03:10:27 - Final Event Collector Health: Status=Stopped, LogsCollected=1</div><div class='step'>• 03:10:27 - Event Log Collector disposed successfully</div></div></div>
+    <div class='test-result passed'>
+        <h2>Communication_Test - ✅ PASSED</h2>
+        <p><strong>Duration:</strong> 284,64 ms</p>
+        
+        <div class='steps'>
+            <h3>Test Steps:</h3><div class='step'>• 03:10:27 - Communication Health: Connected=False, QueuedLogs=0</div><div class='step'>• 03:10:27 - Queued 5 test log entries</div><div class='step'>• 03:10:27 - Verified queued logs count: 5</div><div class='step'>• 03:10:27 - 🔒 UAT Mode: Testing offline behavior (no backend connection attempts)</div><div class='step'>• 03:10:27 - Queued 3 more logs, total queued: 8</div><div class='step'>• 03:10:27 - Final Communication Health: Connected=False, QueuedLogs=8, TotalLogsSent=0</div><div class='step'>• 03:10:27 - ✅ IsConnected=false - Correct UAT behavior (no backend)</div><div class='step'>• 03:10:27 - ✅ QueuedLogs=8 - Correct UAT behavior (logs queued)</div><div class='step'>• 03:10:27 - ✅ TotalLogsSent=0 - Correct UAT behavior (no logs sent)</div><div class='step'>• 03:10:27 - 🎯 UAT Communication Test: PASSED - Agent correctly handles offline backend</div></div></div>
+    <div class='test-result passed'>
+        <h2>Performance_Test - ✅ PASSED</h2>
+        <p><strong>Duration:</strong> 2613,54 ms</p>
+        
+        <div class='steps'>
+            <h3>Test Steps:</h3><div class='step'>• 03:10:27 - Initial memory usage: 38 MB</div><div class='step'>• 03:10:29 - CPU test completed: 54.886.093 iterations in 2 seconds</div><div class='step'>• 03:10:29 - Starting log processing performance test</div><div class='step'>• 03:10:29 - LogProcessor initialized successfully</div><div class='step'>• 03:10:30 - Processed 100 logs in 429ms</div><div class='step'>• 03:10:30 - Processing rate: 232,59 logs/second</div><div class='step'>• 03:10:30 - Final memory usage: 41 MB (increase: 2 MB)</div><div class='step'>• 03:10:30 - Garbage collection: 2 Gen0 collections during test</div></div></div>
+</body>
+</html>

@@ -83,11 +83,12 @@ namespace AthalaSIEM.UniversalAgent.Services
             _batchIntervalSeconds = _configuration.GetValue<int>("Communication:BatchIntervalSeconds", 30);
             _configUpdateIntervalMinutes = _configuration.GetValue<int>("Communication:ConfigUpdateIntervalMinutes", 30);
             _archivalIntervalHours = _configuration.GetValue<int>("Communication:ArchivalIntervalHours", 24);
-            _fallbackLocalIp = _configuration.GetValue<string>("Communication:FallbackLocalIp", "127.0.0.1");
+            _fallbackLocalIp = _configuration.GetValue<string>("Communication:FallbackLocalIp") ?? "127.0.0.1";
 
             // Create archive directory
             var baseDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? Environment.CurrentDirectory;
-            _archiveDirectory = Path.Combine(baseDir, _configuration.GetValue<string>("Communication:ArchiveDirectory", "LogArchive"));
+            var archiveDir = _configuration.GetValue<string>("Communication:ArchiveDirectory") ?? "LogArchive";
+            _archiveDirectory = Path.Combine(baseDir, archiveDir);
             Directory.CreateDirectory(_archiveDirectory);
 
             // Initialize timers with configurable intervals
@@ -253,7 +254,7 @@ namespace AthalaSIEM.UniversalAgent.Services
             }
             
             _managerUrl = $"{protocol}://{managerIP}:{managerPort}";
-            _agentId = string.IsNullOrEmpty(_configuration[ConfigurationKeys.AgentId]) ? Environment.MachineName : _configuration[ConfigurationKeys.AgentId];
+            _agentId = string.IsNullOrEmpty(_configuration[ConfigurationKeys.AgentId]) ? Environment.MachineName : _configuration[ConfigurationKeys.AgentId] ?? Environment.MachineName;
             _apiKey = _configuration[ConfigurationKeys.ApiKey] ?? "";
             _batchSize = _configuration.GetValue<int>(ConfigurationKeys.BatchSize, Defaults.BatchSize);
 

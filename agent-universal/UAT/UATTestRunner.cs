@@ -444,7 +444,6 @@ namespace AthalaSIEM.UniversalAgent.UAT
 
                 // Test 7: Verify UAT behavior is correct
                 bool isUATBehaviorCorrect = true;
-                var behaviorMessage = "✅ UAT Communication behavior verified";
                 
                 // In UAT, we expect:
                 // - IsConnected = false (no backend to connect to)
@@ -492,6 +491,7 @@ namespace AthalaSIEM.UniversalAgent.UAT
                 }
 
                 _logger.LogInformation("✅ Communication Tests completed successfully");
+                await Task.CompletedTask;
             }
             catch (Exception ex)
             {

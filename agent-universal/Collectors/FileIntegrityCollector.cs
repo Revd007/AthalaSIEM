@@ -188,7 +188,7 @@ namespace AthalaSIEM.Agent.Collectors
                 usedKey, pathsObj, pathsObj?.GetType().Name);
 
             // Use the robust parsing method
-            var configuredPaths = ParseStringArrayFromConfig(pathsObj, new string[0]);
+            var configuredPaths = pathsObj != null ? ParseStringArrayFromConfig(pathsObj, new string[0]) : new string[0];
             
             _logger.LogInformation("Backend provided {Count} monitoring paths: {Paths}", 
                 configuredPaths.Length, string.Join(", ", configuredPaths));

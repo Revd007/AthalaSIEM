@@ -36,7 +36,7 @@ namespace AthalaSIEM.UniversalAgent.Services
         private bool _isConnected;
         private DateTime _lastSuccessfulSend;
         private GrpcChannel? _channel;
-        private object? _client; // Temporary until proto is generated
+        private object? _client = null; // Temporary until proto is generated
 
         public bool IsConnected => _isConnected;
         public long QueuedLogs => _logQueue.Count;
@@ -75,7 +75,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                 // _client = new SiemService.SiemServiceClient(_channel);
                 
                 // Test connection and register agent
-                // await RegisterAgentAsync();
+                await RegisterAgentAsync();
                 
                 _isConnected = true;
                 _lastSuccessfulSend = DateTime.UtcNow;
@@ -87,6 +87,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                 });
 
                 _logger.LogInformation("gRPC communication service initialized successfully");
+                await Task.CompletedTask;
                 return true;
             }
             catch (Exception ex)
@@ -150,6 +151,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                 // var response = await _client.SendHeartbeatAsync(request);
                 
                 _logger.LogInformation("gRPC connection test - channel ready: {IsReady}", _channel?.State);
+                await Task.CompletedTask;
                 return _channel?.State == ConnectivityState.Ready;
             }
             catch (Exception ex)
@@ -214,6 +216,7 @@ namespace AthalaSIEM.UniversalAgent.Services
 
                 // TODO: Implement when proto is generated  
                 _logger.LogDebug("gRPC heartbeat placeholder");
+                await Task.CompletedTask;
             }
             catch (Exception ex)
             {
