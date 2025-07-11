@@ -531,8 +531,26 @@ namespace AthalaSIEM.UniversalAgent.UAT
                 {
                     result.AddStep("Starting log processing performance test");
                     
-                    // Initialize the LogProcessor before using it
-                    var initialized = await logProcessor.InitializeAsync();
+                                    // Initialize the LogProcessor first, then update with UAT testing configuration
+                var initialized = await logProcessor.InitializeAsync();
+                
+                if (initialized)
+                {
+                    // Update with UAT testing configuration for detection thresholds
+                    var uatDetectionThresholds = new Dictionary<string, object>
+                    {
+                        ["TestMode"] = true,
+                        ["UAT_Testing"] = true,
+                        ["IsUATEnvironment"] = true,
+                        ["BruteForceThreshold"] = 5,
+                        ["TimeWindowMinutes"] = 15,
+                        ["CredentialStuffingThreshold"] = 10,
+                        ["SuccessAfterFailuresThreshold"] = 3,
+                        ["PrivilegeUseThreshold"] = 5
+                    };
+                    
+                    await logProcessor.UpdateFromBackendConfigAsync("DetectionThresholds", uatDetectionThresholds);
+                }
                     if (!initialized)
                     {
                         result.AddError("Failed to initialize LogProcessor");
@@ -793,51 +811,6 @@ namespace AthalaSIEM.UniversalAgent.UAT
         }
     }
 
-    /// <summary>
-    /// UAT Configuration settings.
-    /// </summary>
-    public class UATConfiguration
-    {
-        public bool TestMode { get; set; } = true;
-        public string TestDuration { get; set; } = "PT30M";
-        public List<string> TestScenarios { get; set; } = new();
-        public List<string> TestDataPaths { get; set; } = new();
-        public bool CleanupAfterTest { get; set; } = true;
-        public bool GenerateTestReport { get; set; } = true;
-        public string TestReportPath { get; set; } = ".\\UAT-Reports";
-    }
-
-    /// <summary>
-    /// Individual UAT test result.
-    /// </summary>
-    public class UATTestResult
-    {
-        public string TestName { get; set; } = "";
-        public DateTime StartTime { get; set; }
-        public DateTime EndTime { get; set; }
-        public TimeSpan Duration { get; set; }
-        public bool Passed { get; set; }
-        public List<string> Steps { get; set; } = new();
-        public List<string> Warnings { get; set; } = new();
-        public List<string> Errors { get; set; } = new();
-
-        public void AddStep(string step) => Steps.Add($"{DateTime.UtcNow:HH:mm:ss} - {step}");
-        public void AddWarning(string warning) => Warnings.Add(warning);
-        public void AddError(string error) => Errors.Add(error);
-    }
-
-    /// <summary>
-    /// Overall UAT test result.
-    /// </summary>
-    public class UATOverallResult
-    {
-        public DateTime StartTime { get; set; }
-        public DateTime EndTime { get; set; }
-        public TimeSpan TotalDuration { get; set; }
-        public List<UATTestResult> TestResults { get; set; } = new();
-        public int TotalTests { get; set; }
-        public int PassedTests { get; set; }
-        public int FailedTests { get; set; }
-        public string OverallStatus { get; set; } = "";
-    }
+    // NOTE: All UAT models (UATConfiguration, UATTestResult, UATOverallResult) have been moved to 
+    // AthalaSIEM.UniversalAgent.Models.UATModels.cs for clean architecture separation
 } 

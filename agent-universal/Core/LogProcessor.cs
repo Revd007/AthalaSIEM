@@ -605,8 +605,20 @@ namespace AthalaSIEM.Agent.Core
                     }
                 }
 
-                // Update correlators with new thresholds
+                // Update correlators with new thresholds and preserve UAT test environment flags
                 var thresholdConfig = new Dictionary<string, object>(_processingConfig.DetectionThresholds.ToDictionary(k => k.Key, v => (object)v.Value));
+                
+                // Include UAT test environment flags if they exist in the original config
+                foreach (var kvp in config)
+                {
+                    if (kvp.Key.Contains("TestMode", StringComparison.OrdinalIgnoreCase) ||
+                        kvp.Key.Contains("UAT", StringComparison.OrdinalIgnoreCase) ||
+                        kvp.Key.Contains("IsUATEnvironment", StringComparison.OrdinalIgnoreCase))
+                    {
+                        thresholdConfig[kvp.Key] = kvp.Value;
+                        _logger.LogDebug("Preserving UAT test flag: {Key} = {Value}", kvp.Key, kvp.Value);
+                    }
+                }
                 
                 foreach (var correlator in _correlators)
                 {

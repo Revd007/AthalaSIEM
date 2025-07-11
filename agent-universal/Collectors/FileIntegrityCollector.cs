@@ -890,35 +890,6 @@ namespace AthalaSIEM.Agent.Collectors
         }
     }
 
-    /// <summary>
-    /// Represents a configurable severity rule for file integrity monitoring.
-    /// This replaces hardcoded path-based severity determination.
-    /// </summary>
-    public class SeverityRule
-    {
-        /// <summary>
-        /// Gets or sets the severity level (Critical, High, Medium, Low).
-        /// </summary>
-        public string Severity { get; set; } = "Medium";
-
-        /// <summary>
-        /// Gets or sets the path patterns to match against.
-        /// </summary>
-        public List<string> PathPatterns { get; set; } = new();
-
-        /// <summary>
-        /// Gets or sets the priority of this rule (higher values = higher priority).
-        /// </summary>
-        public int Priority { get; set; } = 0;
-
-        /// <summary>
-        /// Gets or sets whether this rule is enabled.
-        /// </summary>
-        public bool Enabled { get; set; } = true;
-
-        /// <summary>
-        /// Gets or sets the description of this rule.
-        /// </summary>
-        public string Description { get; set; } = "";
-    }
+    // NOTE: SeverityRule model has been moved to 
+    // AthalaSIEM.UniversalAgent.Models.CollectorModels.cs for clean architecture separation
 } 

@@ -89,34 +89,8 @@ namespace AthalaSIEM.UniversalAgent.Models
         }
     }
 
-    /// <summary>
-    /// Health status model for backend communication service.
-    /// </summary>
-    public sealed class CommunicationHealth
-    {
-        public bool IsConnected { get; init; }
-        public string ManagerUrl { get; init; } = string.Empty;
-        public long QueuedLogs { get; init; }
-        public long TotalLogsSent { get; init; }
-        public long TotalSendErrors { get; init; }
-        public DateTime LastSuccessfulSend { get; init; }
-        public DateTime LastHealthCheck { get; init; } = DateTime.UtcNow;
-
-        /// <summary>
-        /// Calculates the health score based on connection status and error rate.
-        /// </summary>
-        /// <returns>Health score between 0.0 and 1.0.</returns>
-        public double GetHealthScore()
-        {
-            if (!IsConnected) return 0.0;
-            
-            var totalOperations = TotalLogsSent + TotalSendErrors;
-            if (totalOperations == 0) return 1.0;
-            
-            var successRate = (double)TotalLogsSent / totalOperations;
-            return Math.Max(0.0, Math.Min(1.0, successRate));
-        }
-    }
+    // NOTE: CommunicationHealth model has been moved to 
+    // AthalaSIEM.UniversalAgent.Models.CommunicationServiceModels.cs for clean architecture separation
 
 
 
@@ -162,17 +136,8 @@ namespace AthalaSIEM.UniversalAgent.Models
         public bool RequiresAdditionalSetup { get; set; }
     }
 
-    /// <summary>
-    /// Event arguments for backend configuration updates.
-    /// </summary>
-    public class BackendConfigurationUpdatedEventArgs : EventArgs
-    {
-        public string ConfigurationType { get; set; } = "";
-        public Dictionary<string, object> Configuration { get; set; } = new();
-        public DateTime UpdateTime { get; set; }
-        public bool Success { get; set; }
-        public string Error { get; set; } = "";
-    }
+    // NOTE: BackendConfigurationUpdatedEventArgs has been moved to 
+    // AthalaSIEM.UniversalAgent.Models.CommunicationServiceModels.cs for clean architecture separation
 
     /// <summary>
     /// Event arguments for auto-deployment events.

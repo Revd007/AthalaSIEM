@@ -485,29 +485,6 @@ namespace AthalaSIEM.Agent.Collectors
         }
     }
 
-    /// <summary>
-    /// Registry monitoring rule definition
-    /// </summary>
-    public class RegistryMonitorRule
-    {
-        public RegistryHive HiveRoot { get; set; }
-        public string KeyPath { get; set; } = "";
-        public string Description { get; set; } = "";
-        public string SecurityRelevance { get; set; } = "Medium"; // Critical, High, Medium, Low
-        public bool MonitorSubKeys { get; set; } = false;
-        public bool Enabled { get; set; } = true;
-    }
-
-    /// <summary>
-    /// Registry change detection result
-    /// </summary>
-    public class RegistryChange
-    {
-        public string ChangeType { get; set; } = ""; // Added, Removed, Modified
-        public string KeyPath { get; set; } = "";
-        public string ValueName { get; set; } = "";
-        public object? OldValue { get; set; }
-        public object? NewValue { get; set; }
-        public RegistryMonitorRule Rule { get; set; } = new();
-    }
+    // NOTE: RegistryMonitorRule and RegistryChange models have been moved to 
+    // AthalaSIEM.UniversalAgent.Models.CollectorModels.cs for clean architecture separation
 } 

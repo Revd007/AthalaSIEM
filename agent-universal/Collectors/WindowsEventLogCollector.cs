@@ -536,16 +536,6 @@ namespace AthalaSIEM.Agent.Collectors
         }
     }
 
-    /// <summary>
-    /// Event filter for security-focused log collection
-    /// Based on ManageEngine's filtering patterns
-    /// </summary>
-    public class EventLogFilter
-    {
-        public int EventId { get; set; }
-        public string Description { get; set; } = "";
-        public string SecurityRelevance { get; set; } = "Medium"; // Critical, High, Medium, Low
-        public string Category { get; set; } = "";
-        public bool Enabled { get; set; } = true;
-    }
+    // NOTE: EventLogFilter model has been moved to 
+    // AthalaSIEM.UniversalAgent.Models.CollectorModels.cs for clean architecture separation
 }

@@ -10,6 +10,7 @@ using AthalaSIEM.Agent.Core;
 using AthalaSIEM.Agent.Collectors;
 using AthalaSIEM.UniversalAgent.Services;
 using AthalaSIEM.UniversalAgent.Services.Interfaces;
+using AthalaSIEM.UniversalAgent.Models;
 
 namespace AthalaSIEM.UniversalAgent.UAT
 {

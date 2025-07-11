@@ -1042,37 +1042,6 @@ namespace AthalaSIEM.UniversalAgent.Services
         }
     }
 
-    /// <summary>
-    /// Response model for automatic deployment token request.
-    /// </summary>
-    public sealed class DeploymentTokenResponse
-    {
-        public string Token { get; set; } = string.Empty;
-        public DateTime ExpiresAt { get; set; }
-        public string AgentVersion { get; set; } = string.Empty;
-        public Dictionary<string, object> InitialConfiguration { get; set; } = new();
-    }
-
-    /// <summary>
-    /// Result of backend configuration fetch operation.
-    /// </summary>
-    public sealed class BackendConfigResult
-    {
-        public bool Success { get; set; }
-        public string ConfigType { get; set; } = string.Empty;
-        public Dictionary<string, object> Configuration { get; set; } = new();
-        public string Error { get; set; } = string.Empty;
-        public DateTime FetchTime { get; set; }
-    }
-
-    /// <summary>
-    /// Event arguments for backend configuration updates.
-    /// </summary>
-    public sealed class BackendConfigurationUpdatedEventArgs : EventArgs
-    {
-        public List<BackendConfigResult> UpdatedConfigurations { get; set; } = new();
-        public DateTime UpdateTime { get; set; }
-        public string ConfigurationVersion { get; set; } = string.Empty;
-        public string UpdateReason { get; set; } = Constants.BackendConfig.UpdateReasonScheduled;
-    }
+    // NOTE: All models (DeploymentTokenResponse, BackendConfigResult, BackendConfigurationUpdatedEventArgs) 
+    // have been moved to AthalaSIEM.UniversalAgent.Models.CommunicationServiceModels.cs for clean architecture separation
 } 

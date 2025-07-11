@@ -6,6 +6,7 @@ using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using System.Runtime.Versioning;
+using AthalaSIEM.UniversalAgent.Models;
 
 namespace AthalaSIEM.UniversalAgent.Services
 {
@@ -265,19 +266,6 @@ namespace AthalaSIEM.UniversalAgent.Services
         }
     }
 
-    /// <summary>
-    /// Authentication status information
-    /// </summary>
-    public class AuthenticationStatus
-    {
-        public bool IsAuthenticated { get; set; }
-        public bool HasAdminPrivileges { get; set; }
-        public string CurrentUser { get; set; } = "";
-        public string ServiceAccount { get; set; } = "";
-        public DateTime AuthenticationTime { get; set; }
-        public bool CanAccessSecurityLog { get; set; }
-        public bool CanAccessRegistry { get; set; }
-        public bool CanAccessFileSystem { get; set; }
-        public bool RequiresElevation { get; set; }
-    }
+    // NOTE: AuthenticationStatus model has been moved to 
+    // AthalaSIEM.UniversalAgent.Models.CommunicationServiceModels.cs for clean architecture separation
 } 
