@@ -12,6 +12,7 @@ using System.IO;
 using System.Net.Http;
 using System.Threading;
 using AthalaSIEM.Agent.Collectors;
+using AthalaSIEM.Agent.Core.Collectors;
 using System.Threading.Tasks;
 using AthalaSIEM.UniversalAgent.Services.Interfaces;
 using AthalaSIEM.UniversalAgent.Models;
@@ -95,10 +96,28 @@ namespace AthalaSIEM.UniversalAgent
                     services.AddSingleton<BackendCommunicationService>();
                     services.AddHttpClient<BackendCommunicationService>();
                     
-                    // Register Windows Authentication Service (Windows only)
+                    // Register Enterprise Services - NO HARDCODED VALUES
+                    services.AddSingleton<AgentDiscoveryService>();
+                    services.AddHttpClient<AgentDiscoveryService>();
+                    services.AddSingleton<FIMConfigurationService>();
+                    services.AddHttpClient<FIMConfigurationService>();
+                    
+                    // Register Cross-Platform Collectors - Enterprise Architecture
+                    services.AddSingleton<FirewallCollector>(); // Universal firewall monitoring
+                    
+                    // Register Windows-specific services
                     if (System.OperatingSystem.IsWindows())
                     {
                         services.AddSingleton<WindowsAuthenticationService>();
+                        services.AddSingleton<WindowsEventLogCollector>();
+                        services.AddSingleton<FileIntegrityCollector>();
+                        services.AddSingleton<WindowsRegistryCollector>();
+                    }
+
+                    // Register Linux-specific collectors  
+                    if (System.OperatingSystem.IsLinux())
+                    {
+                        services.AddSingleton<LinuxSyslogCollector>();
                     }
                     
                     // Register the main service
@@ -216,7 +235,7 @@ namespace AthalaSIEM.UniversalAgent
                 .Build();
 
             var managerIP = configuration["SiemManager:ManagerIP"];
-            var managerPort = configuration.GetValue<int>("SiemManager:ManagerPort", 9595);
+            var managerPort = configuration.GetValue<int>("SiemManager:ManagerPort");
             var agentName = configuration["Agent:Name"] ?? Environment.MachineName;
             var apiKey = configuration["Agent:ApiKey"];
 
@@ -225,6 +244,13 @@ namespace AthalaSIEM.UniversalAgent
             {
                 Console.WriteLine("❌ CONFIGURATION ERROR: SIEM Manager IP not configured!");
                 Console.WriteLine("💡 Please configure SiemManager:ManagerIP in appsettings.json or environment variable ATHALA_SiemManager__ManagerIP");
+                return;
+            }
+            
+            if (managerPort == 0)
+            {
+                Console.WriteLine("❌ CONFIGURATION ERROR: SIEM Manager Port not configured!");
+                Console.WriteLine("💡 Please configure SiemManager:ManagerPort in appsettings.json or environment variable ATHALA_SiemManager__ManagerPort");
                 return;
             }
 
@@ -523,4 +549,4 @@ namespace AthalaSIEM.UniversalAgent
             }
         }
     }
-} 
+}

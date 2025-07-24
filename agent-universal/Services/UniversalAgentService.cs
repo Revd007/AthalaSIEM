@@ -11,6 +11,7 @@ using AthalaSIEM.Agent.Core;
 using AthalaSIEM.UniversalAgent.Services;
 using AthalaSIEM.UniversalAgent.Models;
 using AthalaSIEM.Agent.Collectors;
+using AthalaSIEM.Agent.Core.Collectors;
 
 namespace AthalaSIEM.UniversalAgent
 {
@@ -27,6 +28,7 @@ namespace AthalaSIEM.UniversalAgent
         private readonly LogProcessor _logProcessor;
         private readonly BackendCommunicationService _communicationService;
         private readonly WindowsAuthenticationService _authenticationService;
+        private readonly FIMConfigurationService _fimConfigService;
         private readonly Timer _statusTimer;
 
         private DateTime _startTime;
@@ -39,7 +41,8 @@ namespace AthalaSIEM.UniversalAgent
             CollectorManager collectorManager,
             LogProcessor logProcessor,
             BackendCommunicationService communicationService,
-            WindowsAuthenticationService authenticationService)
+            WindowsAuthenticationService authenticationService,
+            FIMConfigurationService fimConfigService)
         {
             _logger = logger;
             _loggerFactory = loggerFactory;
@@ -48,6 +51,7 @@ namespace AthalaSIEM.UniversalAgent
             _logProcessor = logProcessor;
             _communicationService = communicationService;
             _authenticationService = authenticationService;
+            _fimConfigService = fimConfigService;
 
             // Setup status reporting timer (every 5 minutes)
             _statusTimer = new Timer(ReportStatus, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
@@ -204,10 +208,10 @@ namespace AthalaSIEM.UniversalAgent
                         ILogCollector? collector = config.Type.ToLowerInvariant() switch
                         {
                             "windowseventlog" when System.OperatingSystem.IsWindows() => new WindowsEventLogCollector(_loggerFactory.CreateLogger<WindowsEventLogCollector>()),
-                            "fileintegrity" => new FileIntegrityCollector(_loggerFactory.CreateLogger<FileIntegrityCollector>()),
+                            "fileintegrity" => CreateFileIntegrityCollector(),
                             "windowsregistry" when System.OperatingSystem.IsWindows() => new WindowsRegistryCollector(_loggerFactory.CreateLogger<WindowsRegistryCollector>()),
+                            "linuxsyslog" when System.OperatingSystem.IsLinux() => new LinuxSyslogCollector(_loggerFactory.CreateLogger<LinuxSyslogCollector>()),
                             // Add more collectors as needed
-                            // "syslog" => new SyslogCollector(),
                             // "iis" => new IISLogCollector(),
                             _ => null
                         };
@@ -258,6 +262,16 @@ namespace AthalaSIEM.UniversalAgent
                 _logger.LogError(ex, "Error during collector registration");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Creates FileIntegrityCollector with FIMConfigurationService dependency
+        /// </summary>
+        private FileIntegrityCollector CreateFileIntegrityCollector()
+        {
+            return new FileIntegrityCollector(
+                _loggerFactory.CreateLogger<FileIntegrityCollector>(),
+                _fimConfigService);
         }
 
         /// <summary>
@@ -539,4 +553,4 @@ namespace AthalaSIEM.UniversalAgent
     // CollectorConfiguration moved to Program.cs to avoid duplication
 
     #endregion
-} 
+}

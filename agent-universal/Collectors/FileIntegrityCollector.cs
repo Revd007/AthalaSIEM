@@ -8,6 +8,8 @@ using System.Linq;
 using Microsoft.Extensions.Logging;
 using AthalaSIEM.Agent.Core;
 using AthalaSIEM.UniversalAgent.Models;
+using AthalaSIEM.UniversalAgent.Services;
+using AthalaSIEM.UniversalAgent.DTOs;
 using Core = AthalaSIEM.Agent.Core;
 
 namespace AthalaSIEM.Agent.Collectors
@@ -33,14 +35,17 @@ namespace AthalaSIEM.Agent.Collectors
         public long LogsCollected { get; private set; }
 
         private readonly ILogger<FileIntegrityCollector> _logger;
+        private readonly FIMConfigurationService _fimConfigService;
         private readonly List<LogEntry> _collectedLogs = new List<LogEntry>();
         private readonly Dictionary<string, FileSystemWatcher> _watchers = new();
         private readonly Dictionary<string, string> _fileHashes = new();
         private readonly List<string> _monitoredPaths = new();
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private Timer? _scanTimer;
+        private Timer? _configRefreshTimer;
         private int _scanIntervalMinutes;
         private List<SeverityRule> _severityRules = new();
+        private string _lastConfigurationVersion = "";
 
         /// <inheritdoc />
         public event EventHandler<LogCollectedEventArgs>? LogCollected;
@@ -52,10 +57,12 @@ namespace AthalaSIEM.Agent.Collectors
         /// Initializes a new instance of the FileIntegrityCollector.
         /// </summary>
         /// <param name="logger">Logger instance for this collector.</param>
-        public FileIntegrityCollector(ILogger<FileIntegrityCollector> logger)
+        /// <param name="fimConfigService">FIM Configuration Service for dynamic backend configuration.</param>
+        public FileIntegrityCollector(ILogger<FileIntegrityCollector> logger, FIMConfigurationService fimConfigService)
         {
             _logger = logger;
-            _logger.LogInformation("File Integrity Monitor initialized - Backend configuration required");
+            _fimConfigService = fimConfigService;
+            _logger.LogInformation("File Integrity Monitor initialized - Using dynamic backend configuration");
         }
 
         /// <summary>
@@ -92,38 +99,140 @@ namespace AthalaSIEM.Agent.Collectors
         }
 
         /// <summary>
-        /// Updates FIM configuration from backend.
-        /// This method replaces hardcoded paths with dynamic backend-controlled configuration.
+        /// Updates FIM configuration from backend using FIMConfigurationService.
+        /// This method fetches dynamic FIM configuration from SIEM backend.
         /// </summary>
-        /// <param name="config">Backend configuration containing monitoring paths and settings.</param>
+        /// <param name="config">Legacy configuration (for backward compatibility).</param>
         /// <param name="cancellationToken">Cancellation token for the operation.</param>
         /// <returns>True if configuration was successfully applied.</returns>
         public async Task<bool> UpdateFromBackendConfigAsync(Dictionary<string, object> config, CancellationToken cancellationToken = default)
         {
             try
             {
-                _logger.LogInformation("Updating File Integrity Monitor configuration from backend...");
-                
-                // Debug: Log the entire configuration structure
-                _logger.LogDebug("🔍 Backend FIM Configuration received with {Count} keys:", config.Count);
-                foreach (var kvp in config)
-                {
-                    _logger.LogDebug("🔍 Config Key: {Key} = {Value} (Type: {Type})", 
-                        kvp.Key, kvp.Value, kvp.Value?.GetType().Name);
-                }
+                _logger.LogInformation("🔄 Fetching FIM configuration from backend via API...");
 
+                // First try to get configuration from backend API
+                var fimConfigurations = await _fimConfigService.GetFIMConfigurationsAsync();
+                
+                if (fimConfigurations.Any())
+                {
+                    _logger.LogInformation("✅ Retrieved {Count} FIM configurations from backend API", fimConfigurations.Count);
+                    
+                    // Clear existing configuration
+                    _monitoredPaths.Clear();
+                    StopExistingWatchers();
+                    
+                    // Process each FIM configuration
+                    foreach (var fimConfig in fimConfigurations.Where(c => c.Enabled))
+                    {
+                        await ProcessFIMConfiguration(fimConfig);
+                    }
+                    
+                    // Update configuration version for change detection
+                    _lastConfigurationVersion = string.Join("|", fimConfigurations.Select(c => $"{c.Id}:{c.Name}"));
+                    
+                    // If we have paths, restart monitoring
+                    if (_monitoredPaths.Count > 0 && IsActive)
+                    {
+                        await RestartMonitoringAsync();
+                    }
+                    
+                    _logger.LogInformation("✅ FIM configuration updated from backend API: {PathCount} monitoring paths", _monitoredPaths.Count);
+                    foreach (var path in _monitoredPaths)
+                    {
+                        _logger.LogInformation("📁 Monitoring path: {Path}", path);
+                    }
+                    
+                    return true;
+                }
+                else
+                {
+                    _logger.LogWarning("⚠️ No FIM configurations found in backend API, falling back to legacy configuration");
+                    return await UpdateFromLegacyConfigAsync(config, cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Failed to fetch FIM configuration from backend API, falling back to legacy configuration");
+                return await UpdateFromLegacyConfigAsync(config, cancellationToken);
+            }
+        }
+
+        /// <summary>
+        /// Process a single FIM configuration from backend
+        /// </summary>
+        private async Task ProcessFIMConfiguration(FIMConfigurationDto fimConfig)
+        {
+            _logger.LogInformation("📋 Processing FIM configuration: {Name}", fimConfig.Name);
+            
+            foreach (var rule in fimConfig.Rules.Where(r => r.Enabled))
+            {
+                _logger.LogDebug("📝 Processing FIM rule: {RuleName} - {Path}", rule.Name, rule.MonitorPath);
+                
+                // Expand environment variables and validate path
+                var expandedPath = Environment.ExpandEnvironmentVariables(rule.MonitorPath);
+                
+                if (ValidateMonitoringPath(expandedPath))
+                {
+                    _monitoredPaths.Add(expandedPath);
+                    
+                    // Send rule metadata to backend if needed
+                    await SendFIMRuleStatusToBackend(rule, "Active");
+                }
+                else
+                {
+                    _logger.LogWarning("⚠️ Invalid monitoring path in rule {RuleName}: {Path}", rule.Name, expandedPath);
+                    await SendFIMRuleStatusToBackend(rule, "Invalid");
+                }
+            }
+            
+            // Update scan interval from global settings
+            if (fimConfig.GlobalSettings.DefaultScanInterval > 0)
+            {
+                _scanIntervalMinutes = fimConfig.GlobalSettings.DefaultScanInterval;
+                _logger.LogInformation("📊 FIM scan interval set to {Interval} minutes from backend configuration", _scanIntervalMinutes);
+            }
+        }
+
+        /// <summary>
+        /// Send FIM rule status back to backend
+        /// </summary>
+        private async Task SendFIMRuleStatusToBackend(FIMRuleDto rule, string status)
+        {
+            try
+            {
+                // This could be expanded to send rule status updates to backend
+                _logger.LogDebug("📤 FIM rule {RuleId} status: {Status}", rule.Id, status);
+                // await _fimConfigService.UpdateRuleStatusAsync(rule.Id, status);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send FIM rule status to backend");
+            }
+        }
+
+        /// <summary>
+        /// Legacy configuration fallback method
+        /// </summary>
+        private async Task<bool> UpdateFromLegacyConfigAsync(Dictionary<string, object> config, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogInformation("🔄 Using legacy FIM configuration method...");
+                
                 // Clear existing configuration
                 _monitoredPaths.Clear();
                 StopExistingWatchers();
 
-                // Load monitoring paths from backend configuration
+                // Load monitoring paths from legacy configuration
                 if (!LoadMonitoringPathsFromBackend(config))
                 {
-                    _logger.LogWarning("NO MONITORING PATHS provided by Backend. File Integrity Monitor will be disabled.");
-                    _logger.LogInformation("Configure monitoring paths via SIEM Web Interface:");
-                    _logger.LogInformation("  • Go to Agents → Select Agent → File Integrity Monitoring");
-                    _logger.LogInformation("  • Add paths you want to monitor (e.g., C:\\Windows\\System32\\drivers)");
-                    _logger.LogInformation("  • Configuration will be applied automatically within 30 minutes");
+                    _logger.LogWarning("⚠️ NO MONITORING PATHS provided. File Integrity Monitor will be disabled.");
+                    _logger.LogInformation("💡 Configure monitoring paths via SIEM Web Interface:");
+                    _logger.LogInformation("   • Go to FIM → Configurations → Create New Configuration");
+                    _logger.LogInformation("   • Add paths you want to monitor (e.g., C:\\Windows\\System32\\drivers)");
+                    _logger.LogInformation("   • Assign configuration to this agent");
+                    _logger.LogInformation("   • Configuration will be applied automatically within 5 minutes");
                     return true; // Don't fail - this is user configuration
                 }
 
@@ -139,17 +248,12 @@ namespace AthalaSIEM.Agent.Collectors
                     await RestartMonitoringAsync();
                 }
 
-                _logger.LogInformation("✅ FIM configuration updated from backend: {PathCount} monitoring paths", _monitoredPaths.Count);
-                foreach (var path in _monitoredPaths)
-                {
-                    _logger.LogInformation("Monitoring path: {Path}", path);
-                }
-
+                _logger.LogInformation("✅ Legacy FIM configuration applied: {PathCount} monitoring paths", _monitoredPaths.Count);
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to update FIM configuration from backend");
+                _logger.LogError(ex, "Failed to apply legacy FIM configuration");
                 return false;
             }
         }
@@ -377,24 +481,29 @@ namespace AthalaSIEM.Agent.Collectors
         /// <inheritdoc />
         public Task StartCollectionAsync(CancellationToken cancellationToken = default)
         {
-            if (_monitoredPaths.Count == 0)
-            {
-                _logger.LogWarning("Cannot start File Integrity Monitor: No monitoring paths configured");
-                return Task.CompletedTask;
-            }
-
             IsActive = true;
             
             try
             {
-                // Setup file system watchers for real-time monitoring
-                SetupFileWatchers();
+                // Start configuration refresh timer (every 5 minutes)
+                _configRefreshTimer = new Timer(RefreshConfigurationFromBackend, null, 
+                    TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5));
                 
-                // Start periodic full scan
-                _scanTimer = new Timer(PerformFullScan, null, TimeSpan.Zero, TimeSpan.FromMinutes(_scanIntervalMinutes));
-                
-                _logger.LogInformation("File Integrity Monitor started - monitoring {Count} paths, scan interval: {Interval} minutes", 
-                    _monitoredPaths.Count, _scanIntervalMinutes);
+                if (_monitoredPaths.Count > 0)
+                {
+                    // Setup file system watchers for real-time monitoring
+                    SetupFileWatchers();
+                    
+                    // Start periodic full scan
+                    _scanTimer = new Timer(PerformFullScan, null, TimeSpan.Zero, TimeSpan.FromMinutes(_scanIntervalMinutes));
+                    
+                    _logger.LogInformation("✅ File Integrity Monitor started - monitoring {Count} paths, scan interval: {Interval} minutes", 
+                        _monitoredPaths.Count, _scanIntervalMinutes);
+                }
+                else
+                {
+                    _logger.LogInformation("⏳ File Integrity Monitor started - waiting for backend configuration");
+                }
             }
             catch (Exception ex)
             {
@@ -410,12 +519,35 @@ namespace AthalaSIEM.Agent.Collectors
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// Refresh FIM configuration from backend (called by timer)
+        /// </summary>
+        private async void RefreshConfigurationFromBackend(object? state)
+        {
+            try
+            {
+                _logger.LogDebug("🔄 Checking for FIM configuration updates from backend...");
+                
+                var hasUpdates = await _fimConfigService.HasConfigurationUpdatedAsync(_lastConfigurationVersion);
+                if (hasUpdates)
+                {
+                    _logger.LogInformation("🔄 FIM configuration updates detected, refreshing...");
+                    await UpdateFromBackendConfigAsync(new Dictionary<string, object>());
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error refreshing FIM configuration from backend");
+            }
+        }
+
         /// <inheritdoc />
         public Task StopCollectionAsync(CancellationToken cancellationToken = default)
         {
             IsActive = false;
             
             _scanTimer?.Dispose();
+            _configRefreshTimer?.Dispose();
             
             foreach (var watcher in _watchers.Values)
             {
@@ -677,7 +809,7 @@ namespace AthalaSIEM.Agent.Collectors
         }
 
         /// <summary>
-        /// Creates a File Integrity Monitoring event log entry.
+        /// Creates a File Integrity Monitoring event log entry and sends to backend.
         /// </summary>
         /// <param name="filePath">The file path that changed.</param>
         /// <param name="changeType">The type of change (Created, Modified, Deleted, etc.).</param>
@@ -690,7 +822,7 @@ namespace AthalaSIEM.Agent.Collectors
                 var fileInfo = File.Exists(filePath) ? new FileInfo(filePath) : null;
                 var severity = DetermineSeverity(filePath, changeType);
 
-                return new LogEntry
+                var logEntry = new LogEntry
                 {
                     Timestamp = DateTime.UtcNow,
                     Source = "FileIntegrity",
@@ -711,11 +843,74 @@ namespace AthalaSIEM.Agent.Collectors
                         ["ThreatIndicators"] = AnalyzeThreatIndicators(filePath, changeType)
                     }
                 };
+
+                // Send FIM event to backend asynchronously
+                _ = Task.Run(async () => await SendFIMEventToBackend(logEntry, fileInfo));
+
+                return logEntry;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating FIM event for: {Path}", filePath);
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Send FIM event to backend using FIMConfigurationService
+        /// </summary>
+        private async Task SendFIMEventToBackend(LogEntry logEntry, FileInfo? fileInfo)
+        {
+            try
+            {
+                var fimEvent = new FIMEventDto
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    RuleId = "", // Will be populated when we have rule matching
+                    RuleName = "Dynamic FIM Rule",
+                    AgentId = Environment.MachineName,
+                    Timestamp = logEntry.Timestamp,
+                    FilePath = logEntry.Properties["FilePath"].ToString() ?? "",
+                    EventType = logEntry.Properties["ChangeType"].ToString() ?? "",
+                    OldFilePath = logEntry.Properties["OldPath"].ToString() ?? "",
+                    User = Environment.UserName,
+                    Process = "FileIntegrityCollector",
+                    SecurityLevel = logEntry.SecurityRelevance,
+                    Metadata = logEntry.Properties,
+                    AlertGenerated = logEntry.SecurityRelevance == "Critical",
+                    Tags = new List<string> { "FIM", "FileIntegrity", logEntry.SecurityRelevance }
+                };
+
+                // Add file info if available
+                if (fileInfo != null)
+                {
+                    fimEvent.NewFileInfo = new FIMFileInfoDto
+                    {
+                        Size = fileInfo.Length,
+                        CreatedTime = fileInfo.CreationTimeUtc,
+                        ModifiedTime = fileInfo.LastWriteTimeUtc,
+                        AccessedTime = fileInfo.LastAccessTimeUtc,
+                        Permissions = fileInfo.Attributes.ToString(),
+                        Hashes = new Dictionary<string, string>
+                        {
+                            ["SHA256"] = logEntry.Properties["FileHash"].ToString() ?? ""
+                        }
+                    };
+                }
+
+                var success = await _fimConfigService.SendFIMEventAsync(fimEvent);
+                if (success)
+                {
+                    _logger.LogDebug("📤 FIM event sent to backend: {FilePath}", fimEvent.FilePath);
+                }
+                else
+                {
+                    _logger.LogWarning("⚠️ Failed to send FIM event to backend: {FilePath}", fimEvent.FilePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error sending FIM event to backend");
             }
         }
 

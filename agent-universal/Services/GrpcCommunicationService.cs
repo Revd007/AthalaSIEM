@@ -178,8 +178,19 @@ namespace AthalaSIEM.UniversalAgent.Services
         private void LoadConfiguration()
         {
             // Get server URL from configuration
-            var managerIP = _configuration["SiemManager:ManagerIP"] ?? "localhost";
-            var managerPort = _configuration.GetValue<int>("SiemManager:ManagerPort", 9595);
+            var managerIP = _configuration["SiemManager:ManagerIP"];
+            if (string.IsNullOrEmpty(managerIP))
+            {
+                _logger.LogError("❌ SiemManager:ManagerIP is REQUIRED and not configured!");
+                throw new InvalidOperationException("SiemManager:ManagerIP configuration is required.");
+            }
+            
+            var managerPort = _configuration.GetValue<int>("SiemManager:ManagerPort");
+            if (managerPort == 0)
+            {
+                _logger.LogError("❌ SiemManager:ManagerPort is REQUIRED and not configured!");
+                throw new InvalidOperationException("SiemManager:ManagerPort configuration is required.");
+            }
             var useHTTPS = _configuration.GetValue<bool>("SiemManager:UseHTTPS", false);
             var protocol = useHTTPS ? "https" : "http";
             

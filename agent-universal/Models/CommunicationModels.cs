@@ -208,7 +208,7 @@ namespace AthalaSIEM.UniversalAgent.Models
     /// <summary>
     /// Represents File Integrity Monitoring configuration from backend.
     /// </summary>
-    public class FIMConfiguration
+    public class LegacyFIMConfiguration
     {
         public List<string> MonitoredPaths { get; set; } = new();
         public List<string> ExcludedPaths { get; set; } = new();
@@ -255,7 +255,7 @@ namespace AthalaSIEM.UniversalAgent.Models
     public class AgentConfiguration
     {
         public EventIdConfiguration EventIds { get; set; } = new();
-        public FIMConfiguration FileIntegrity { get; set; } = new();
+        public LegacyFIMConfiguration FileIntegrity { get; set; } = new();
         public DetectionThresholdsConfiguration DetectionThresholds { get; set; } = new();
         public MonitoringConfiguration Monitoring { get; set; } = new();
         public Dictionary<string, object> CustomSettings { get; set; } = new();

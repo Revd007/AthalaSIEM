@@ -1,0 +1,67 @@
+<Project Sdk="WixToolset.Sdk/5.0.0">
+
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">x64</Platform>
+    <ProductVersion>1.0.0</ProductVersion>
+    <ProjectGuid>12345678-1234-1234-1234-123456789012</ProjectGuid>
+    <OutputName>AthalaSIEM-UniversalAgent-1.0.0-x64</OutputName>
+    <OutputType>Package</OutputType>
+    <Name>AthalaSIEM Universal Agent Installer</Name>
+    <InstallScope>perMachine</InstallScope>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <IntermediateOutputPath>obj\$(Configuration)\</IntermediateOutputPath>
+    <DefineConstants>Debug</DefineConstants>
+  </PropertyGroup>
+  
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <IntermediateOutputPath>obj\$(Configuration)\</IntermediateOutputPath>
+  </PropertyGroup>
+
+  <!-- Source Path Configuration -->
+  <PropertyGroup>
+    <SourcePath Condition="'$(SourcePath)' == ''">$(MSBuildProjectDirectory)\..\bin\Release\net8.0\win-x64\publish</SourcePath>
+    <DefineConstants>$(DefineConstants);SourcePath=$(SourcePath)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="LICENSE.rtf" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="5.0.0" />
+    <PackageReference Include="WixToolset.Util.wixext" Version="5.0.0" />
+  </ItemGroup>
+
+  <!-- Pre-build: Ensure source files exist -->
+  <Target Name="ValidateSourceFiles" BeforeTargets="Build">
+    <Message Text="Validating source files in: $(SourcePath)" Importance="high" />
+    <Error Condition="!Exists('$(SourcePath)\athala-agent.exe')" Text="Source executable not found: $(SourcePath)\athala-agent.exe. Please build the agent first." />
+    <Error Condition="!Exists('$(SourcePath)\appsettings.json')" Text="Configuration file not found: $(SourcePath)\appsettings.json" />
+    <Message Text="[OK] All source files validated successfully" Importance="high" />
+  </Target>
+
+  <!-- Post-build: Copy MSI to distribution folder -->
+  <Target Name="CopyToDistribution" AfterTargets="Build">
+    <PropertyGroup>
+      <DistributionPath>$(MSBuildProjectDirectory)\..\dist\installer</DistributionPath>
+    </PropertyGroup>
+    
+    <MakeDir Directories="$(DistributionPath)" />
+    
+    <Copy SourceFiles="$(OutputPath)$(OutputName).msi" 
+          DestinationFolder="$(DistributionPath)" />
+    
+    <Copy SourceFiles="$(OutputPath)$(OutputName).wixpdb" 
+          DestinationFolder="$(DistributionPath)" 
+          Condition="Exists('$(OutputPath)$(OutputName).wixpdb')" />
+    
+    <Message Text="[OK] MSI installer copied to: $(DistributionPath)\$(OutputName).msi" Importance="high" />
+  </Target>
+
+</Project> 

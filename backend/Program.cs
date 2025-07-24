@@ -80,15 +80,23 @@ builder.Services.AddSwaggerGen(c =>
 builder.Services.AddGrpc(options =>
 {
     options.EnableDetailedErrors = true;
-    options.MaxReceiveMessageSize = 16 * 1024 * 1024; // 16 MB
-    options.MaxSendMessageSize = 16 * 1024 * 1024; // 16 MB
+    options.MaxReceiveMessageSize = 1024 * 1024 * 100; // 100MB
+    options.MaxSendMessageSize = 1024 * 1024 * 100;    // 100MB
+    
+    // Get gRPC URL from configuration with fallback
+    var grpcUrl = builder.Configuration["GrpcServer:Url"] ?? "http://0.0.0.0:9595";
+    Console.WriteLine($"🔧 gRPC server configured for: {grpcUrl}");
 });
 
 // Configure gRPC client
 builder.Services.AddGrpcClient<AthalaSIEM.Agent.SiemService.SiemServiceClient>(options =>
 {
-    // options.Address = new Uri(builder.Configuration["GrpcServer:Url"] ?? "https://localhost:9596"); // COMMENTED OUT FOR DEVELOPMENT
-    options.Address = new Uri("http://localhost:9595"); // CHANGED TO HTTP FOR DEVELOPMENT
+    var grpcUrl = builder.Configuration["GrpcServer:Url"];
+    if (string.IsNullOrEmpty(grpcUrl))
+    {
+        throw new InvalidOperationException("GrpcServer:Url configuration is required. Please configure your gRPC server URL.");
+    }
+    options.Address = new Uri(grpcUrl);
 })
 .ConfigureChannel(options =>
 {
@@ -107,38 +115,24 @@ builder.Services.AddGrpcClient<AthalaSIEM.Agent.SiemService.SiemServiceClient>(o
     };
 });
 
-// Configure CORS - updated to properly handle preflight requests
+// Configure CORS with default + environment override
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowFrontend", builder =>
+    options.AddDefaultPolicy(corsBuilder =>
     {
-        builder.WithOrigins(
-                "http://localhost:3000",  // Development
-                "http://localhost:9595",  // Backend
-                "http://localhost:7654",  // Development
-                "http://localhost:7655",  // Production
-                // "https://localhost:9596", // Secure Production // COMMENTED OUT FOR DEVELOPMENT
-                "http://localhost:7657"   // Test
-            )
+        // Get allowed origins from configuration (defaults + environment override)
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
+            ?? new[] { "http://localhost:3000", "http://localhost:7654", "http://localhost:9595" };
+
+        corsBuilder
+            .WithOrigins(allowedOrigins)
             .AllowAnyMethod()
             .AllowAnyHeader()
-            .AllowCredentials()
-            .WithExposedHeaders("Content-Disposition"); // For file downloads
-    });
-    
-    // Add a more permissive CORS policy for gRPC clients that doesn't use credentials
-    options.AddPolicy("AllowAll", builder =>
-    {
-        builder.WithOrigins(
-                "http://localhost:3000",
-                "http://localhost:9595",
-                "http://localhost:7654",
-                "http://localhost:7655",
-                // "https://localhost:9596", // COMMENTED OUT FOR DEVELOPMENT
-                "http://localhost:7657"
-            )
-            .AllowAnyMethod()
-            .AllowAnyHeader();
+            .AllowCredentials();
+        
+        // Log configured origins for debugging
+        var logger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("CORS");
+        logger.LogInformation("🌐 CORS configured with origins: {Origins}", string.Join(", ", allowedOrigins));
     });
 });
 
@@ -190,23 +184,31 @@ builder.Services.AddAuthorization(options =>
               .RequireClaim("permission", "agent:read"));
 });
 
-// Configure Kestrel - Support HTTP/2 over HTTP for gRPC
+// Configure Kestrel with default + configurable ports
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
-    // Configure HTTP endpoint with HTTP/2 support for gRPC
-    serverOptions.ListenAnyIP(9595, listenOptions =>
+    // Get port from configuration with fallback to default
+    var httpPort = builder.Configuration.GetValue<int>("Enterprise:DefaultPorts:Backend");
+    if (httpPort == 0)
+    {
+        httpPort = 9595; // Ultimate fallback
+    }
+
+    // Allow environment override
+    var configuredUrl = builder.Configuration["Kestrel:Endpoints:Http:Url"];
+    if (!string.IsNullOrEmpty(configuredUrl) && Uri.TryCreate(configuredUrl, UriKind.Absolute, out var uri))
+    {
+        httpPort = uri.Port;
+    }
+
+    serverOptions.ListenAnyIP(httpPort, listenOptions =>
     {
         listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
-        
-        // Enable HTTP/2 over HTTP (without TLS) for gRPC
         listenOptions.UseConnectionLogging();
     });
     
-    // Allow HTTP/2 over HTTP (insecure) for development
-    serverOptions.ConfigureEndpointDefaults(listenOptions =>
-    {
-        listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
-    });
+    Console.WriteLine($"🚀 Backend server listening on port: {httpPort}");
+    Console.WriteLine($"💡 Override via environment: ATHALA_Kestrel__Endpoints__Http__Url=http://0.0.0.0:YOUR_PORT");
 });
 
 // Register repositories
@@ -273,7 +275,7 @@ app.Use(async (context, next) =>
 });
 
 // Apply CORS middleware for handling standard requests
-app.UseCors("AllowFrontend");
+app.UseCors();
 
 // Only apply HTTPS redirection in production environment
 // if (!app.Environment.IsDevelopment())

@@ -242,7 +242,12 @@ namespace AthalaSIEM.UniversalAgent.Services
             // Build Manager URL from IP and Port (SIEM standard)
             // REMOVED HARDCODED IP - Backend configuration is now REQUIRED
             var managerIP = _configuration["SiemManager:ManagerIP"];
-            var managerPort = _configuration.GetValue<int>("SiemManager:ManagerPort", 9595);
+            var managerPort = _configuration.GetValue<int>("SiemManager:ManagerPort");
+            if (managerPort == 0)
+            {
+                _logger.LogError("❌ SiemManager:ManagerPort is REQUIRED and not configured! Please provide your backend server port.");
+                throw new InvalidOperationException("SiemManager:ManagerPort configuration is required. Please specify your backend server port.");
+            }
             var useHTTPS = _configuration.GetValue<bool>("SiemManager:UseHTTPS", false);
             var protocol = useHTTPS ? "https" : "http";
 

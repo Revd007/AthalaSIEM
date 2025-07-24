@@ -46,6 +46,21 @@ namespace Backend.Data
         public DbSet<AlertModels> Alerts { get; set; } = null!;
 
         /// <summary>
+        /// Gets or sets the FIM configurations
+        /// </summary>
+        public DbSet<FIMConfiguration> FIMConfigurations { get; set; } = null!;
+
+        /// <summary>
+        /// Gets or sets the FIM templates
+        /// </summary>
+        public DbSet<FIMTemplate> FIMTemplates { get; set; } = null!;
+
+        /// <summary>
+        /// Gets or sets the FIM events
+        /// </summary>
+        public DbSet<FIMEvent> FIMEvents { get; set; } = null!;
+
+        /// <summary>
         /// Gets or sets the security events
         /// </summary>
         public DbSet<SecurityEventModels> SecurityEvents { get; set; } = null!;
