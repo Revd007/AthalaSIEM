@@ -260,7 +260,7 @@ namespace Backend.Controllers
 
                 // Check if agent already exists
                 var existingAgent = await _context.Agents
-                    .FirstOrDefaultAsync(a => a.Hostname == request.Hostname && a.IpAddress == request.IpAddress);
+                    .FirstOrDefaultAsync(a => a.Hostname == request.Hostname && a.IPAddress == request.IpAddress);
 
                 if (existingAgent != null)
                 {
@@ -272,7 +272,7 @@ namespace Backend.Controllers
                 {
                     Name = $"{request.Hostname}_{request.Platform}",
                     Hostname = request.Hostname,
-                    IpAddress = request.IpAddress,
+                    IPAddress = request.IpAddress,
                     Platform = request.Platform,
                     OsVersion = request.OsVersion,
                     AgentVersion = request.AgentVersion,
@@ -317,6 +317,100 @@ namespace Backend.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error registering agent");
+                return StatusCode(500, "Internal server error");
+            }
+        }
+
+        /// <summary>
+        /// Register new agent WITHOUT deployment token (Development/Testing mode)
+        /// </summary>
+        [HttpPost("register-dev")]
+        [AllowAnonymous]
+        public async Task<ActionResult<AgentRegistrationResponse>> RegisterAgentDev([FromBody] AgentRegistrationRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("🧪 Development mode: Registering agent without deployment token for {Hostname}", request.Hostname);
+
+                // Check if agent already exists
+                var existingAgent = await _context.Agents
+                    .FirstOrDefaultAsync(a => a.Hostname == request.Hostname && a.IPAddress == request.IpAddress);
+
+                if (existingAgent != null)
+                {
+                    _logger.LogInformation("Agent already exists, updating existing agent: {Hostname}", request.Hostname);
+                    
+                    // Update existing agent
+                    existingAgent.Platform = request.Platform;
+                    existingAgent.OsVersion = request.OsVersion;
+                    existingAgent.AgentVersion = request.AgentVersion;
+                    existingAgent.Status = AgentStatus.Online;
+                    existingAgent.LastSeen = DateTime.UtcNow;
+                    existingAgent.UpdatedAt = DateTime.UtcNow;
+
+                    await _context.SaveChangesAsync();
+
+                    // Get existing configuration
+                    var existingConfig = await _context.AgentConfigs
+                        .FirstOrDefaultAsync(c => c.AgentId == existingAgent.Id);
+
+                    return Ok(new AgentRegistrationResponse
+                    {
+                        AgentId = existingAgent.Id,
+                        ApiKey = existingAgent.ApiKey,
+                        BackendUrl = GetBackendUrl(),
+                        Configuration = existingConfig?.Configuration ?? GetDefaultConfiguration(request.Platform, null),
+                        UpdateIntervalSeconds = 300,
+                        HeartbeatIntervalSeconds = 60
+                    });
+                }
+
+                // Create new agent
+                var agent = new AgentModels
+                {
+                    Name = $"{request.Hostname}_{request.Platform}_DEV",
+                    Hostname = request.Hostname,
+                    IPAddress = request.IpAddress,
+                    Platform = request.Platform,
+                    OsVersion = request.OsVersion,
+                    AgentVersion = request.AgentVersion,
+                    ApiKey = GenerateApiKey(),
+                    Status = AgentStatus.Online,
+                    Type = GetAgentTypeFromPlatform(request.Platform),
+                    LastSeen = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow,
+                    DeploymentTokenId = null // No token required for dev mode
+                };
+
+                // Create agent configuration with default settings
+                var config = new AgentConfigModels
+                {
+                    AgentId = agent.Id,
+                    Configuration = GetDefaultConfiguration(request.Platform, null),
+                    LastUpdated = DateTime.UtcNow
+                };
+
+                _context.Agents.Add(agent);
+                _context.AgentConfigs.Add(config);
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("✅ Agent registered successfully in DEV mode: {AgentName} ({Platform})", 
+                    agent.Name, request.Platform);
+
+                return Ok(new AgentRegistrationResponse
+                {
+                    AgentId = agent.Id,
+                    ApiKey = agent.ApiKey,
+                    BackendUrl = GetBackendUrl(),
+                    Configuration = config.Configuration,
+                    UpdateIntervalSeconds = 300,
+                    HeartbeatIntervalSeconds = 60
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error registering agent in development mode");
                 return StatusCode(500, "Internal server error");
             }
         }
@@ -978,12 +1072,25 @@ Manual Installation Steps:
             };
         }
 
-        private string GetDefaultConfiguration(string platform, AthalaSIEM.Backend.Models.AgentDeploymentToken token)
+        private string GetDefaultConfiguration(string platform, AthalaSIEM.Backend.Models.AgentDeploymentToken? token)
         {
-            var config = JsonSerializer.Deserialize<Dictionary<string, object>>(token.Configuration ?? "{}") ?? new Dictionary<string, object>();
+            var config = new Dictionary<string, object>();
+            
+            // If token is provided, use its configuration
+            if (token != null && !string.IsNullOrEmpty(token.Configuration))
+            {
+                config = JsonSerializer.Deserialize<Dictionary<string, object>>(token.Configuration) ?? new Dictionary<string, object>();
+            }
+            
+            // Set default values
             config["platform"] = platform;
-            config["deployment_token"] = token.Token ?? string.Empty;
+            config["deployment_token"] = token?.Token ?? "dev-mode-no-token";
             config["backend_url"] = GetBackendUrl();
+            config["heartbeat_interval"] = 60;
+            config["batch_size"] = 100;
+            config["enable_real_time_monitoring"] = true;
+            config["collect_event_logs"] = true;
+            config["collect_system_metrics"] = true;
             
             return JsonSerializer.Serialize(config);
         }

@@ -268,7 +268,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                 var json = JsonSerializer.Serialize(registrationRequest);
                 var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
                 
-                var response = await _httpClient.PostAsync($"{serverUrl}/api/agentdeployment/register", content);
+                var response = await _httpClient.PostAsync($"{serverUrl}/api/agentdeployment/register-dev", content);
                 
                 if (response.IsSuccessStatusCode)
                 {

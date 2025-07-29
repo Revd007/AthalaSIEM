@@ -309,7 +309,7 @@ namespace AthalaSIEM.UniversalAgent.Services
 
                 var registrationRequest = new AgentRegistrationRequest
                 {
-                    DeploymentToken = _configuration.GetValue<string>("Agent:RegistrationKey") ?? "",
+                    DeploymentToken = _configuration.GetValue<string>("Agent:DeploymentToken") ?? "",
                     Hostname = Environment.MachineName,
                     IpAddress = GetLocalIpAddress(),
                     Platform = Environment.OSVersion.Platform.ToString(),
@@ -572,6 +572,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                     // Create a copy with cleaned ProcessId
                     var cleanLog = new LogEntry
                     {
+                        Id = log.Id, // Preserve unique log ID
                         Timestamp = log.Timestamp,
                         Source = log.Source,
                         Level = log.Level,

@@ -395,6 +395,7 @@ namespace AthalaSIEM.Agent.Collectors
             {
                 var logEntry = new LogEntry
                 {
+                    Id = LogEntryIdGenerator.GenerateId("REG"),
                     Timestamp = DateTime.UtcNow,
                     Source = "WindowsRegistry",
                     Level = DetermineEventLevel(change, rule),
@@ -402,6 +403,7 @@ namespace AthalaSIEM.Agent.Collectors
                     EventId = $"REG_{change.ChangeType.ToUpper()}",
                     Category = "RegistryMonitoring",
                     SecurityRelevance = rule.SecurityRelevance,
+                    CollectorType = "WindowsRegistry",
                     Properties = new Dictionary<string, object>
                     {
                         ["ChangeType"] = change.ChangeType,

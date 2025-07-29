@@ -14,7 +14,7 @@ namespace AthalaSIEM.UniversalAgent.Models
         public static class ApiEndpoints
         {
             // Agent registration and configuration endpoints
-            public const string AgentRegistration = "/api/agentdeployment/register";
+            public const string AgentRegistration = "/api/agentdeployment/register-dev";
             public const string Heartbeat = "/api/agents/{0}/heartbeat";
             public const string LogSubmission = "/api/logs/batch";
             public const string AgentConfiguration = "/api/agents/{0}/configuration";

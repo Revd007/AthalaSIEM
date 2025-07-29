@@ -332,13 +332,15 @@ namespace AthalaSIEM.Agent.Collectors
         {
             var logEntry = new LogEntry
             {
+                Id = LogEntryIdGenerator.GenerateId("WEVT"),
                 Timestamp = eventRecord.TimeCreated ?? DateTime.UtcNow,
                 Source = sourceName,
                 Level = MapEventLevel(eventRecord.Level),
                 Message = eventRecord.FormatDescription() ?? "No description",
                 EventId = eventRecord.Id.ToString(),
                 Category = filter?.Description ?? eventRecord.LogName ?? sourceName,
-                SecurityRelevance = filter?.SecurityRelevance ?? "Medium"
+                SecurityRelevance = filter?.SecurityRelevance ?? "Medium",
+                CollectorType = "WindowsEventLog"
             };
 
             // Extract structured data (device name, username, etc.)

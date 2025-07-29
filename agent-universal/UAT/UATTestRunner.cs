@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Http;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Diagnostics;
@@ -230,7 +231,14 @@ namespace AthalaSIEM.UniversalAgent.UAT
             try
             {
                 // Test 1: Initialize FIM Collector
-                var fimCollector = new FileIntegrityCollector(_serviceProvider.GetRequiredService<ILogger<FileIntegrityCollector>>());
+                var httpClient = new HttpClient();
+                var fimConfigService = new FIMConfigurationService(
+                    _serviceProvider.GetRequiredService<ILogger<FIMConfigurationService>>(),
+                    _configuration,
+                    httpClient);
+                var fimCollector = new FileIntegrityCollector(
+                    _serviceProvider.GetRequiredService<ILogger<FileIntegrityCollector>>(),
+                    fimConfigService);
                 
                 var fimConfig = new Dictionary<string, object>
                 {

@@ -73,13 +73,16 @@ namespace Backend.Services
                     }
                 }
 
-                // Bulk insert logs for better performance
+                // Bulk insert logs for better performance with duplicate ID safety net
                 if (logEntries.Count > 0)
                 {
-                    await _context.LogEntries.AddRangeAsync(logEntries);
-                await _context.SaveChangesAsync();
+                    // Safety net: Ensure all IDs are unique within the batch
+                    var uniqueLogEntries = EnsureUniqueIds(logEntries);
+                    
+                    await _context.LogEntries.AddRangeAsync(uniqueLogEntries);
+                    await _context.SaveChangesAsync();
 
-                    result.ProcessedLogs = logEntries;
+                    result.ProcessedLogs = uniqueLogEntries;
                 }
 
                 result.ProcessedCount = processedCount;
@@ -497,7 +500,7 @@ namespace Backend.Services
         {
             return new LogEntryModels
             {
-                Id = dto.Id ?? Guid.NewGuid().ToString(),
+                Id = string.IsNullOrEmpty(dto.Id) ? Guid.NewGuid().ToString() : dto.Id,
                 AgentId = agentId,
                 Timestamp = dto.Timestamp,
                 Level = dto.Level,
@@ -521,6 +524,43 @@ namespace Backend.Services
                 StackTrace = dto.StackTrace,
                 Details = dto.Details
             };
+        }
+
+        /// <summary>
+        /// Ensures all log entries have unique IDs within the batch (safety net)
+        /// </summary>
+        /// <param name="logEntries">List of log entries to check</param>
+        /// <returns>List with guaranteed unique IDs</returns>
+        private List<LogEntryModels> EnsureUniqueIds(List<LogEntryModels> logEntries)
+        {
+            var seenIds = new HashSet<string>();
+            var uniqueLogEntries = new List<LogEntryModels>();
+
+            foreach (var logEntry in logEntries)
+            {
+                var originalId = logEntry.Id;
+                
+                // If ID already exists, generate a new unique one
+                if (seenIds.Contains(originalId))
+                {
+                    var counter = 1;
+                    var newId = $"{originalId}_DUP_{counter}";
+                    
+                    while (seenIds.Contains(newId))
+                    {
+                        counter++;
+                        newId = $"{originalId}_DUP_{counter}";
+                    }
+                    
+                    logEntry.Id = newId;
+                    _logger.LogWarning("Duplicate log ID detected and fixed: {OriginalId} -> {NewId}", originalId, newId);
+                }
+                
+                seenIds.Add(logEntry.Id);
+                uniqueLogEntries.Add(logEntry);
+            }
+
+            return uniqueLogEntries;
         }
 
         /// <summary>

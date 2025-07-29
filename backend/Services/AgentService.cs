@@ -330,13 +330,19 @@ namespace Backend.Services
         {
             try
             {
+                _logger.LogInformation("🔍 API Key validation - AgentId: {AgentId}, ApiKey provided: {ApiKeyProvided}", 
+                    agentId, string.IsNullOrEmpty(apiKey) ? "EMPTY" : "PROVIDED");
+                
                 var agent = await _agentRepository.GetByIdAsync(agentId.ToString());
                 
                 if (agent == null)
                 {
-                    _logger.LogWarning("Agent not found during API key validation: {AgentId}", agentId);
+                    _logger.LogWarning("❌ Agent not found during API key validation: {AgentId}", agentId);
                     return false;
                 }
+                
+                _logger.LogInformation("✅ Agent found - Name: {AgentName}, ApiKey match: {Match}", 
+                    agent.Name, agent.ApiKey == apiKey);
                 
                 return agent.ApiKey == apiKey;
             }

@@ -824,6 +824,7 @@ namespace AthalaSIEM.Agent.Collectors
 
                 var logEntry = new LogEntry
                 {
+                    Id = LogEntryIdGenerator.GenerateId("FIM"),
                     Timestamp = DateTime.UtcNow,
                     Source = "FileIntegrity",
                     Level = severity == "Critical" ? "Error" : "Warning",
@@ -831,6 +832,7 @@ namespace AthalaSIEM.Agent.Collectors
                     EventId = $"FIM_{changeType.ToUpper()}",
                     Category = "FileIntegrityMonitoring",
                     SecurityRelevance = severity,
+                    CollectorType = "FileIntegrity",
                     ComputerName = Environment.MachineName,
                     Properties = new Dictionary<string, object>
                     {
