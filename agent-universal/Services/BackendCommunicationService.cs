@@ -34,7 +34,7 @@ namespace AthalaSIEM.UniversalAgent.Services
         private readonly Queue<LogEntry> _logQueue = new();
         private readonly object _queueLock = new();
         private readonly SemaphoreSlim _sendSemaphore = new(1, 1);
-        private readonly string _archiveDirectory;
+        private readonly string _archiveDirectory = "./LogArchive";
         
         // Configurable values - no more hardcoding
         private readonly int _retentionDays;
@@ -758,7 +758,7 @@ namespace AthalaSIEM.UniversalAgent.Services
             try
             {
                 var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
-                var fileName = $"archived_logs_{timestamp}_{Guid.NewGuid():N}.json";
+                var fileName = $"logs_{timestamp}_{Guid.NewGuid():N}.json.gz";
                 var filePath = Path.Combine(_archiveDirectory, fileName);
 
                 var archiveData = new
