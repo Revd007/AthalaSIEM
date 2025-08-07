@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using AthalaSIEM.UniversalAgent.Models;
 
-namespace AthalaSIEM.Agent.Core
+namespace AthalaSIEM.UniversalAgent.Core
 {
     /// <summary>
     /// Defines the contract for log filtering components in the processing pipeline.

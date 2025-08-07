@@ -7,7 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using AthalaSIEM.UniversalAgent.Models;
 
-namespace AthalaSIEM.Agent.Core
+namespace AthalaSIEM.UniversalAgent.Core
 {
     /// <summary>
     /// Central manager for all log collectors following ManageEngine EventLog Analyzer pattern

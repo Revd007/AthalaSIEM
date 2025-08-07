@@ -1,13 +1,13 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 using System.Runtime.Versioning;
-using AthalaSIEM.Agent.Core;
+using AthalaSIEM.UniversalAgent.Core;
 using AthalaSIEM.UniversalAgent.Models;
-using Core = AthalaSIEM.Agent.Core;
+using Core = AthalaSIEM.UniversalAgent.Core;
 using Microsoft.Extensions.Logging;
 
 namespace AthalaSIEM.Agent.Collectors
@@ -50,20 +50,20 @@ namespace AthalaSIEM.Agent.Collectors
                 var isAdmin = IsRunningAsAdministrator();
                 if (!isAdmin)
                 {
-                    _logger.LogWarning("⚠️ NOT running as Administrator - Security Event Log will be unavailable!");
+                    _logger.LogWarning("?? NOT running as Administrator - Security Event Log will be unavailable!");
                     _logger.LogWarning("For full SIEM functionality, run as Administrator. Continuing with available logs...");
                     
                     // Continue initialization but exclude Security log
                     CollectionError?.Invoke(this, new LogCollectionErrorEventArgs 
                     { 
                         Exception = new UnauthorizedAccessException("Administrator privileges required for Security logs"),
-                        Message = "⚠️ Security Event Log unavailable - not running as Administrator",
+                        Message = "?? Security Event Log unavailable - not running as Administrator",
                         Source = CollectorName
                     });
                 }
                 else
                 {
-                    _logger.LogInformation("✅ Running as Administrator - Full SIEM functionality available");
+                    _logger.LogInformation("? Running as Administrator - Full SIEM functionality available");
                 }
 
                 // Initialize security-focused filters (ManageEngine pattern)
@@ -298,7 +298,7 @@ namespace AthalaSIEM.Agent.Collectors
                     { 
                         Exception = ex,
                         Source = sourceName,
-                        Message = "🚨 CRITICAL: Cannot access Security Event Log! SIEM functionality compromised. " +
+                        Message = "?? CRITICAL: Cannot access Security Event Log! SIEM functionality compromised. " +
                                  "Agent must run with Administrator privileges to collect security events. " +
                                  "Without Security logs, this is NOT a functional SIEM agent!"
                     });

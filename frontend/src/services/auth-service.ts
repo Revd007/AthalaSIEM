@@ -1,4 +1,4 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9598';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9595';
 
 interface LoginCredentials {
   username: string;

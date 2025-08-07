@@ -950,6 +950,254 @@ namespace Backend.Services
             }
         }
 
+        /// <summary>
+        /// Loads archived logs based on query criteria
+        /// </summary>
+        public async Task<ArchiveQueryResult> LoadArchivedLogsAsync(ArchiveQueryRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Loading archived logs for query: {Query}", JsonSerializer.Serialize(request));
+                
+                var result = new ArchiveQueryResult
+                {
+                    Success = true,
+                    Logs = new List<LogEntryModels>(),
+                    TotalFound = 0
+                };
+
+                var archiveFiles = await GetArchiveFilesAsync(request.CollectorType, request.StartDate, request.EndDate);
+                
+                foreach (var archiveFile in archiveFiles)
+                {
+                    try
+                    {
+                        var logs = await LoadLogsFromArchiveFileAsync(archiveFile.FileName, request);
+                        result.Logs.AddRange(logs);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error loading logs from archive file: {File}", archiveFile.FileName);
+                    }
+                }
+
+                result.TotalFound = result.Logs.Count;
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading archived logs");
+                return new ArchiveQueryResult { Success = false, Message = ex.Message };
+            }
+        }
+
+        /// <summary>
+        /// Restores logs from archive back to hot storage
+        /// </summary>
+        public async Task<bool> RestoreLogsFromArchiveAsync(LogRestorationRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Restoring logs from archive: {Request}", JsonSerializer.Serialize(request));
+                
+                using var scope = _scopeFactory.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                
+                var archiveQuery = new ArchiveQueryRequest
+                {
+                    StartDate = request.StartDate ?? DateTime.MinValue,
+                    EndDate = request.EndDate ?? DateTime.MaxValue,
+                    CollectorType = request.CollectorType
+                };
+                
+                var archivedLogs = await LoadArchivedLogsAsync(archiveQuery);
+                if (!archivedLogs.Success || !archivedLogs.Logs.Any())
+                {
+                    return false;
+                }
+
+                // Restore logs to database
+                context.LogEntries.AddRange(archivedLogs.Logs);
+                await context.SaveChangesAsync();
+                
+                _logger.LogInformation("Restored {Count} logs to hot storage", archivedLogs.Logs.Count);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error restoring logs from archive");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Moves archive file to cold storage
+        /// </summary>
+        public async Task<bool> MoveToColdStorageAsync(ArchiveFile archiveFile)
+        {
+            try
+            {
+                _logger.LogInformation("Moving archive to cold storage: {File}", archiveFile.FileName);
+                
+                var coldStorageConfig = _configuration.GetSection("Storage:ColdStorage");
+                var coldStoragePath = coldStorageConfig.GetValue<string>("Path");
+                
+                if (string.IsNullOrEmpty(coldStoragePath))
+                {
+                    _logger.LogWarning("Cold storage path not configured");
+                    return false;
+                }
+
+                var sourceFile = Path.Combine(_archiveDirectory, archiveFile.FileName);
+                var destinationFile = Path.Combine(coldStoragePath, archiveFile.FileName);
+                
+                Directory.CreateDirectory(Path.GetDirectoryName(destinationFile)!);
+                File.Move(sourceFile, destinationFile);
+                
+                _logger.LogInformation("Successfully moved {File} to cold storage", archiveFile.FileName);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error moving archive to cold storage: {File}", archiveFile.FileName);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Exports archived logs to specified format
+        /// </summary>
+        public async Task<string?> ExportArchivedLogsAsync(ArchiveQueryRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("Exporting archived logs: {Query}", JsonSerializer.Serialize(request));
+                
+                var archivedLogs = await LoadArchivedLogsAsync(request);
+                if (!archivedLogs.Success || !archivedLogs.Logs.Any())
+                {
+                    return null;
+                }
+
+                var exportFormat = request.ExportFormat ?? "json";
+                var timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
+                var fileName = $"athala_siem_export_{timestamp}.{exportFormat.ToLower()}";
+                var exportPath = Path.Combine(_archiveDirectory, "exports", fileName);
+                
+                Directory.CreateDirectory(Path.GetDirectoryName(exportPath)!);
+                
+                switch (exportFormat.ToLower())
+                {
+                    case "json":
+                        await File.WriteAllTextAsync(exportPath, JsonSerializer.Serialize(archivedLogs.Logs, new JsonSerializerOptions { WriteIndented = true }));
+                        break;
+                        
+                    case "csv":
+                        await ExportToCsvAsync(exportPath, archivedLogs.Logs);
+                        break;
+                        
+                    default:
+                        throw new NotSupportedException($"Export format {exportFormat} not supported");
+                }
+                
+                _logger.LogInformation("Exported {Count} logs to {File}", archivedLogs.Logs.Count, exportPath);
+                return exportPath;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting archived logs");
+                return null;
+            }
+        }
+
+        private async Task<List<LogEntryModels>> LoadLogsFromArchiveFileAsync(string filePath, ArchiveQueryRequest request)
+        {
+            var logs = new List<LogEntryModels>();
+            
+            try
+            {
+                byte[] compressedData = await File.ReadAllBytesAsync(filePath);
+                string jsonContent;
+                
+                using (var memoryStream = new MemoryStream(compressedData))
+                using (var gzipStream = new GZipStream(memoryStream, CompressionMode.Decompress))
+                using (var reader = new StreamReader(gzipStream))
+                {
+                    jsonContent = await reader.ReadToEndAsync();
+                }
+                
+                var archiveData = JsonSerializer.Deserialize<LogArchiveData>(jsonContent);
+                if (archiveData?.Logs != null)
+                {
+                    var convertedLogs = archiveData.Logs
+                        .Where(archivedLog => MatchesArchivedQuery(archivedLog, request))
+                        .Select(ConvertArchivedLogToLogEntry)
+                        .ToList();
+                    logs.AddRange(convertedLogs);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error loading logs from archive file: {File}", filePath);
+            }
+            
+            return logs;
+        }
+
+        private bool MatchesArchivedQuery(ArchivedLogEntry log, ArchiveQueryRequest request)
+        {
+            if (!string.IsNullOrEmpty(request.CollectorType) && log.Source != request.CollectorType)
+                return false;
+                
+            if (!string.IsNullOrEmpty(request.LogLevel) && log.Level != request.LogLevel)
+                return false;
+                
+            if (!string.IsNullOrEmpty(request.SearchQuery) && 
+                !log.Message.Contains(request.SearchQuery, StringComparison.OrdinalIgnoreCase))
+                return false;
+                
+            return true;
+        }
+
+        private LogEntryModels ConvertArchivedLogToLogEntry(ArchivedLogEntry archivedLog)
+        {
+            return new LogEntryModels
+            {
+                Id = archivedLog.Id,
+                Timestamp = archivedLog.Timestamp,
+                Level = archivedLog.Level,
+                Source = archivedLog.Source,
+                Message = archivedLog.Message,
+                AgentId = archivedLog.AgentId,
+                Details = archivedLog.Details,
+                Category = archivedLog.Category,
+                ProcessId = 0 // Not available in archived format
+            };
+        }
+
+        private async Task ExportToCsvAsync(string filePath, List<LogEntryModels> logs)
+        {
+            var csv = new StringBuilder();
+            csv.AppendLine("Timestamp,Level,Source,Message,AgentId,ProcessId");
+            
+            foreach (var log in logs)
+            {
+                csv.AppendLine($"{log.Timestamp:yyyy-MM-dd HH:mm:ss},{log.Level},{log.Source},{EscapeCsv(log.Message)},{log.AgentId},{log.ProcessId}");
+            }
+            
+            await File.WriteAllTextAsync(filePath, csv.ToString());
+        }
+
+        private string EscapeCsv(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return "";
+            if (value.Contains(",") || value.Contains("\"") || value.Contains("\n"))
+            {
+                return $"\"{value.Replace("\"", "\"\"")}\"";
+            }
+            return value;
+        }
+
         private LogArchiveData DeserializeArchiveData(byte[]? archiveBytes)
         {
             if (archiveBytes == null || archiveBytes.Length == 0)

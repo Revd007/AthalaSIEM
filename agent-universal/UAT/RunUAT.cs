@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using AthalaSIEM.UniversalAgent.UAT;
-using AthalaSIEM.Agent.Core;
+using AthalaSIEM.UniversalAgent.Core;
 using AthalaSIEM.Agent.Collectors;
 using AthalaSIEM.UniversalAgent.Services;
 using AthalaSIEM.UniversalAgent.Services.Interfaces;

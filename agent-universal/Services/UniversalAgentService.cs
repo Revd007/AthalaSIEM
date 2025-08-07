@@ -7,11 +7,11 @@ using System;
 using System.Net.Http;
 using System.Collections.Generic;
 using System.Linq;
-using AthalaSIEM.Agent.Core;
+using AthalaSIEM.UniversalAgent.Core;
 using AthalaSIEM.UniversalAgent.Services;
 using AthalaSIEM.UniversalAgent.Models;
 using AthalaSIEM.Agent.Collectors;
-using AthalaSIEM.Agent.Core.Collectors;
+using AthalaSIEM.UniversalAgent.Core.Collectors;
 
 namespace AthalaSIEM.UniversalAgent
 {

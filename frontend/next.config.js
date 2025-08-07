@@ -11,7 +11,7 @@ const nextConfig = {
   
   async rewrites() {
     // Ensure we have a valid API URL, falling back to the default HTTP port
-    const apiUrl = env.NEXT_PUBLIC_API_URL || 'http://localhost:9598';
+    const apiUrl = env.NEXT_PUBLIC_API_URL || 'http://localhost:9595';
     
     return [
       // Auth endpoints with correct casing

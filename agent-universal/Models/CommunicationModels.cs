@@ -252,7 +252,7 @@ namespace AthalaSIEM.UniversalAgent.Models
     /// <summary>
     /// Represents complete agent configuration from backend.
     /// </summary>
-    public class AgentConfiguration
+    public class BackendAgentConfiguration
     {
         public EventIdConfiguration EventIds { get; set; } = new();
         public LegacyFIMConfiguration FileIntegrity { get; set; } = new();

@@ -6,9 +6,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 using Microsoft.Extensions.Logging;
-using AthalaSIEM.Agent.Core;
+using AthalaSIEM.UniversalAgent.Core;
 using AthalaSIEM.UniversalAgent.Models;
-using Core = AthalaSIEM.Agent.Core;
+using Core = AthalaSIEM.UniversalAgent.Core;
 
 namespace AthalaSIEM.Agent.Collectors
 {

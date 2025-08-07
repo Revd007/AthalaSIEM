@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using AthalaSIEM.UniversalAgent.Models;
 
-namespace AthalaSIEM.Agent.Core.Filters
+namespace AthalaSIEM.UniversalAgent.Core.Filters
 {
     /// <summary>
     /// Enterprise-grade security relevance filter that processes logs based on configurable security levels.

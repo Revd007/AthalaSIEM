@@ -1,7 +1,7 @@
 using System;
 using AthalaSIEM.UniversalAgent.Models;
 
-namespace AthalaSIEM.Agent.Core
+namespace AthalaSIEM.UniversalAgent.Core
 {
     /// <summary>
     /// Event arguments for when a batch of logs has been processed.

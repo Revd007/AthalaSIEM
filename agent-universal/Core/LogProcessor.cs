@@ -9,11 +9,11 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using AthalaSIEM.UniversalAgent.Models;
-using AthalaSIEM.Agent.Core.Filters;
-using AthalaSIEM.Agent.Core.Enrichers;
-using AthalaSIEM.Agent.Core.Correlators;
+using AthalaSIEM.UniversalAgent.Core.Filters;
+using AthalaSIEM.UniversalAgent.Core.Enrichers;
+using AthalaSIEM.UniversalAgent.Core.Correlators;
 
-namespace AthalaSIEM.Agent.Core
+namespace AthalaSIEM.UniversalAgent.Core
 {
     /// <summary>
     /// Enterprise log processor implementing ManageEngine EventLog Analyzer processing pipeline.

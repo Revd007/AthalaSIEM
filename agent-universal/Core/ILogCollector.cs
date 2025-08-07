@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AthalaSIEM.UniversalAgent.Models;
 
-namespace AthalaSIEM.Agent.Core
+namespace AthalaSIEM.UniversalAgent.Core
 {
     /// <summary>
     /// Core interface for log collection across different platforms and sources.
@@ -114,14 +114,5 @@ namespace AthalaSIEM.Agent.Core
     /// <summary>
     /// Health status for a log collector
     /// </summary>
-    public class CollectorHealth
-    {
-        public bool IsHealthy { get; set; }
-        public string Status { get; set; } = "Unknown";
-        public long LogsCollected { get; set; }
-        public DateTime LastCollection { get; set; }
-        public TimeSpan Uptime { get; set; }
-        public Dictionary<string, object> Metrics { get; set; } = new Dictionary<string, object>();
-        public List<string> Errors { get; set; } = new List<string>();
-    }
+
 } 

@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using AthalaSIEM.UniversalAgent.Models;
 
-namespace AthalaSIEM.Agent.Core.Enrichers
+namespace AthalaSIEM.UniversalAgent.Core.Enrichers
 {
     /// <summary>
     /// Enterprise GeoIP enricher that adds geographical information to logs based on IP addresses.

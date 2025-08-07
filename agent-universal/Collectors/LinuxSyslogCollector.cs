@@ -1,4 +1,4 @@
-using AthalaSIEM.Agent.Core;
+using AthalaSIEM.UniversalAgent.Core;
 using AthalaSIEM.UniversalAgent.Models;
 using Microsoft.Extensions.Logging;
 using System.Runtime.InteropServices;
@@ -10,7 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System;
 
-namespace AthalaSIEM.Agent.Core.Collectors
+namespace AthalaSIEM.UniversalAgent.Core.Collectors
 {
     /// <summary>
     /// Linux Syslog Collector - Cross-distribution compatibility

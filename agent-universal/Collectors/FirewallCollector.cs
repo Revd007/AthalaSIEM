@@ -5,7 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using AthalaSIEM.Agent.Core;
+using AthalaSIEM.UniversalAgent.Core;
 using AthalaSIEM.UniversalAgent.Models;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
@@ -23,7 +23,7 @@ namespace AthalaSIEM.Agent.Collectors
         public string CollectorName => "Firewall Monitor";
         
         /// <inheritdoc />
-        public Core.OperatingSystem SupportedOS => Core.OperatingSystem.Universal;
+        public AthalaSIEM.UniversalAgent.Core.OperatingSystem SupportedOS => AthalaSIEM.UniversalAgent.Core.OperatingSystem.Universal;
         
         /// <inheritdoc />
         public bool IsActive { get; private set; }

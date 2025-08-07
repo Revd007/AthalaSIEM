@@ -13,7 +13,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using AthalaSIEM.UniversalAgent.Models;
 using AthalaSIEM.UniversalAgent.Services.Interfaces;
-using AthalaSIEM.Agent.Core;
+using AthalaSIEM.UniversalAgent.Core;
 using static AthalaSIEM.UniversalAgent.Models.Constants;
 
 namespace AthalaSIEM.UniversalAgent.Services

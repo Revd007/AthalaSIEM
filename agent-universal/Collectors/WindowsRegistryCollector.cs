@@ -7,9 +7,9 @@ using System.Runtime.Versioning;
 using Microsoft.Win32;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using AthalaSIEM.Agent.Core;
+using AthalaSIEM.UniversalAgent.Core;
 using AthalaSIEM.UniversalAgent.Models;
-using Core = AthalaSIEM.Agent.Core;
+using Core = AthalaSIEM.UniversalAgent.Core;
 
 namespace AthalaSIEM.Agent.Collectors
 {

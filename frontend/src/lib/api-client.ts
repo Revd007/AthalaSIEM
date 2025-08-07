@@ -4,7 +4,7 @@ import type { AppRouter } from './trpc';
 export const api = createTRPCProxyClient<AppRouter>({
   links: [
     httpBatchLink({
-      url: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9598/api/trpc',
+      url: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9595/api/trpc',
       headers: () => {
         const token = localStorage.getItem('auth_token');
         return {
@@ -15,7 +15,7 @@ export const api = createTRPCProxyClient<AppRouter>({
   ],
 });
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9598';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:9595';
 
 export async function fetchApi(endpoint: string, options?: RequestInit) {
   const response = await fetch(`${BASE_URL}${endpoint}`, {

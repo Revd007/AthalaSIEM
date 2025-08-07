@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using AthalaSIEM.UniversalAgent.Models;
 
-namespace AthalaSIEM.Agent.Core.Correlators
+namespace AthalaSIEM.UniversalAgent.Core.Correlators
 {
     /// <summary>
     /// Enterprise authentication correlator that detects advanced authentication-based attacks.

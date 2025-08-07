@@ -106,5 +106,33 @@ namespace Backend.Services
         /// <param name="collectorType">Optional collector type filter</param>
         /// <returns>Archive statistics</returns>
         Task<ArchiveStatisticsSummary> GetArchiveStatisticsAsync(string? collectorType = null);
+        
+        /// <summary>
+        /// Loads archived logs from file system for user access (3-TIER SYSTEM)
+        /// </summary>
+        /// <param name="request">Archive query request</param>
+        /// <returns>Query result with logs</returns>
+        Task<ArchiveQueryResult> LoadArchivedLogsAsync(ArchiveQueryRequest request);
+        
+        /// <summary>
+        /// Restores logs from archive files back to hot storage (database)
+        /// </summary>
+        /// <param name="request">Restoration request</param>
+        /// <returns>True if successful</returns>
+        Task<bool> RestoreLogsFromArchiveAsync(LogRestorationRequest request);
+        
+        /// <summary>
+        /// Moves logs from warm to cold storage (external)
+        /// </summary>
+        /// <param name="archiveFile">Archive file to move</param>
+        /// <returns>True if successful</returns>
+        Task<bool> MoveToColdStorageAsync(ArchiveFile archiveFile);
+        
+        /// <summary>
+        /// Exports logs to user-specified format (JSON, CSV, XML)
+        /// </summary>
+        /// <param name="request">Archive query request with export format</param>
+        /// <returns>Exported file path</returns>
+        Task<string?> ExportArchivedLogsAsync(ArchiveQueryRequest request);
     }
 } 
