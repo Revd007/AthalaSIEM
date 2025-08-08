@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 
@@ -10,24 +11,54 @@ namespace AthalaSIEM.UniversalAgent.Models
     /// </summary>
     public static class LogEntryIdGenerator
     {
-        private static long _counter = 0;
-        private static readonly object _lock = new object();
+        // Thread-safe atomic counters per collector type
+        private static readonly ConcurrentDictionary<string, long> _collectorCounters = new();
+        private static readonly object _globalLock = new object();
         
+        // Cache process ID and machine hash for performance
+        private static readonly int _processId = Environment.ProcessId;
+        private static readonly string _machineHash = Environment.MachineName.GetHashCode().ToString("X8");
+
         /// <summary>
-        /// Generates a guaranteed unique ID for log entries
-        /// Format: [COLLECTOR]_[MACHINE]_[TICKS]_[COUNTER]_[GUID8]
+        /// ENTERPRISE SIEM ID GENERATION - Guaranteed unique across distributed environments
+        /// Uses database-grade uniqueness strategy with multiple entropy sources
         /// </summary>
         public static string GenerateId(string collectorPrefix = "LOG")
         {
-            lock (_lock)
+            // Primary strategy: Use GUID + timestamp + collector-specific counter
+            var guid = Guid.NewGuid().ToString("N"); // 32 chars, no hyphens
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var counter = _collectorCounters.AddOrUpdate(collectorPrefix, 1, (key, oldValue) => oldValue + 1);
+            
+            // Format: COLLECTOR_GUID_TIMESTAMP_COUNTER (guaranteed unique)
+            return $"{collectorPrefix}_{guid}_{timestamp}_{counter:D8}";
+        }
+
+        /// <summary>
+        /// Reset counters (for testing purposes only)
+        /// </summary>
+        public static void ResetCounters()
+        {
+            lock (_globalLock)
             {
-                var counter = Interlocked.Increment(ref _counter);
-                var ticks = DateTime.UtcNow.Ticks;
-                var machineId = Environment.MachineName.GetHashCode().ToString("X");
-                var guidPart = Guid.NewGuid().ToString("N")[..8];
-                
-                return $"{collectorPrefix}_{machineId}_{ticks}_{counter:D6}_{guidPart}";
+                _collectorCounters.Clear();
             }
+        }
+
+        /// <summary>
+        /// Get current counter value for a collector (for monitoring)
+        /// </summary>
+        public static long GetCounterValue(string collectorPrefix)
+        {
+            return _collectorCounters.GetValueOrDefault(collectorPrefix, 0);
+        }
+
+        /// <summary>
+        /// Get statistics about ID generation
+        /// </summary>
+        public static Dictionary<string, long> GetCounterStatistics()
+        {
+            return new Dictionary<string, long>(_collectorCounters);
         }
     }
 

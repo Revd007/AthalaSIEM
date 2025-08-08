@@ -33,6 +33,47 @@ namespace Backend.Controllers
         }
 
         /// <summary>
+        /// Force archive creation for testing purposes
+        /// </summary>
+        [HttpPost("force-archive")]
+        public async Task<ActionResult> ForceArchiveCreation()
+        {
+            try
+            {
+                _logger.LogInformation("🧪 Force archive creation requested");
+                
+                // Archive all logs regardless of age (for testing)
+                var result = await _archivingService.ArchiveLogsAsync(
+                    DateTime.UtcNow.AddDays(-1), // Yesterday
+                    DateTime.UtcNow,             // Now
+                    null                         // All collectors
+                );
+                
+                if (result)
+                {
+                    return Ok(new { 
+                        Success = true, 
+                        Message = "Archive creation forced successfully",
+                        Timestamp = DateTime.UtcNow
+                    });
+                }
+                
+                return BadRequest(new { 
+                    Success = false, 
+                    Message = "No logs found to archive" 
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error forcing archive creation");
+                return StatusCode(500, new { 
+                    Success = false, 
+                    Message = ex.Message 
+                });
+            }
+        }
+
+        /// <summary>
         /// Get storage usage across all tiers (HOT/WARM/COLD)
         /// </summary>
         [HttpGet("storage-usage")]

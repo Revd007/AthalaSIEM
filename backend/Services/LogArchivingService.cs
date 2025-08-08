@@ -48,8 +48,25 @@ namespace Backend.Services
             _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
 
-            // Load configuration
-            _archiveInterval = TimeSpan.FromHours(_configuration.GetValue<int>("LogArchiving:IntervalHours", 24));
+            // Load configuration - support both minutes and hours for flexibility
+            var intervalMinutes = _configuration.GetValue<int?>("LogArchiving:IntervalMinutes");
+            var intervalHours = _configuration.GetValue<int?>("LogArchiving:IntervalHours");
+            
+            if (intervalMinutes.HasValue)
+            {
+                _archiveInterval = TimeSpan.FromMinutes(intervalMinutes.Value);
+                _logger.LogInformation("🕐 Archive interval set to {Minutes} minutes", intervalMinutes.Value);
+            }
+            else if (intervalHours.HasValue)
+            {
+                _archiveInterval = TimeSpan.FromHours(intervalHours.Value);
+                _logger.LogInformation("🕐 Archive interval set to {Hours} hours", intervalHours.Value);
+            }
+            else
+            {
+                _archiveInterval = TimeSpan.FromHours(24); // Default fallback
+                _logger.LogInformation("🕐 Archive interval set to default 24 hours");
+            }
             _retentionPeriod = TimeSpan.FromDays(_configuration.GetValue<int>("LogArchiving:RetentionDays", 90));
             _batchSize = _configuration.GetValue<int>("LogArchiving:BatchSize", 10000);
             _archiveDirectory = _configuration.GetValue<string>("LogArchiving:Directory") ?? "archives/logs";
@@ -68,14 +85,22 @@ namespace Backend.Services
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Log Archiving Service started");
+            _logger.LogInformation("🗂️ Log Archiving Service started - Interval: {Interval}, Retention: {Retention} days", 
+                _archiveInterval, _retentionPeriod.TotalDays);
 
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
+                    var startTime = DateTime.UtcNow;
+                    _logger.LogInformation("🔄 Starting archive cycle at {Time}", startTime.ToString("yyyy-MM-dd HH:mm:ss"));
+                    
                     await PerformArchivingCycle();
                     await PerformCleanupCycle();
+                    
+                    var duration = DateTime.UtcNow - startTime;
+                    _logger.LogInformation("✅ Archive cycle completed in {Duration}ms. Next cycle in {Interval}", 
+                        duration.TotalMilliseconds, _archiveInterval);
                     
                     await Task.Delay(_archiveInterval, stoppingToken);
                 }
@@ -85,12 +110,12 @@ namespace Backend.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error in log archiving cycle");
+                    _logger.LogError(ex, "❌ Error in log archiving cycle - retrying in 5 minutes");
                     await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
                 }
             }
 
-            _logger.LogInformation("Log Archiving Service stopped");
+            _logger.LogInformation("🛑 Log Archiving Service stopped");
         }
 
         public async Task<ArchiveResult> ArchiveLogsByCollectorAsync(string collectorType, DateTime fromDate, DateTime toDate)
@@ -282,19 +307,29 @@ namespace Backend.Services
 
         private async Task PerformArchivingCycle()
         {
-            _logger.LogInformation("Starting archiving cycle");
+            _logger.LogInformation("🔄 Starting archiving cycle with retention period: {RetentionDays} days", _retentionPeriod.TotalDays);
 
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
             var cutoffDate = DateTime.UtcNow - _retentionPeriod;
+            _logger.LogInformation("📅 Cutoff date for archiving: {CutoffDate} (logs older than this will be archived)", cutoffDate.ToString("yyyy-MM-dd HH:mm:ss"));
 
-            // Get distinct sources from logs first, then convert to collector types
+            // Get distinct sources from logs that are eligible for archiving
             var sources = await context.LogEntries
                 .Where(l => l.Timestamp < cutoffDate)
                 .Select(l => l.Source)
                 .Distinct()
                 .ToListAsync();
+
+            _logger.LogInformation("📊 Found {SourceCount} distinct log sources eligible for archiving: {Sources}", 
+                sources.Count, string.Join(", ", sources));
+
+            if (!sources.Any())
+            {
+                _logger.LogInformation("ℹ️ No logs found for archiving (all logs are within retention period)");
+                return;
+            }
 
             // Convert sources to collector types on the client side
             var collectorTypes = sources.Select(GetCollectorTypeFromSource).Distinct().ToList();
@@ -303,15 +338,19 @@ namespace Backend.Services
             {
                 try
                 {
-                    await ArchiveLogsByCollectorAsync(collectorType, cutoffDate, cutoffDate);
+                    _logger.LogInformation("🗂️ Archiving logs for collector type: {CollectorType}", collectorType);
+                    
+                    // Archive logs from earliest available to cutoff date
+                    var earliestDate = DateTime.MinValue; // Get all logs up to cutoff date
+                    await ArchiveLogsByCollectorAsync(collectorType, earliestDate, cutoffDate);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error archiving logs for collector {CollectorType}", collectorType);
+                    _logger.LogError(ex, "❌ Error archiving logs for collector {CollectorType}", collectorType);
                 }
             }
 
-            _logger.LogInformation("Archiving cycle completed");
+            _logger.LogInformation("✅ Archiving cycle completed");
         }
 
         private Task PerformCleanupCycle()
@@ -625,8 +664,8 @@ namespace Backend.Services
         {
             try
             {
-                _logger.LogInformation("Archiving logs from {FromDate} to {ToDate} for collector {CollectorType}", 
-                    fromDate, toDate, collectorType ?? "All");
+                _logger.LogInformation("📦 Archiving logs from {FromDate} to {ToDate} for collector {CollectorType}", 
+                    fromDate.ToString("yyyy-MM-dd HH:mm:ss"), toDate.ToString("yyyy-MM-dd HH:mm:ss"), collectorType ?? "All");
 
                 using var scope = _scopeFactory.CreateScope();
                 var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -638,26 +677,32 @@ namespace Backend.Services
                     query = query.Where(l => l.Source.Contains(collectorType));
                 }
 
-                var logsToArchive = await query.OrderBy(l => l.Timestamp).ToListAsync();
+                // Count first to provide better logging
+                var totalCount = await query.CountAsync();
+                _logger.LogInformation("🔍 Found {TotalCount} logs matching criteria for archiving", totalCount);
 
-                if (!logsToArchive.Any())
+                if (totalCount == 0)
                 {
-                    _logger.LogInformation("No logs found to archive for the specified criteria");
+                    _logger.LogInformation("ℹ️ No logs found to archive for the specified criteria");
                     return true;
                 }
+
+                var logsToArchive = await query.OrderBy(l => l.Timestamp).ToListAsync();
 
                 var archiveFileName = GenerateArchiveFileName(collectorType ?? "Mixed", fromDate);
                 var archiveFilePath = Path.Combine(_archiveDirectory, archiveFileName);
                 var settings = _collectorSettings.GetValueOrDefault(collectorType ?? "Default", new CollectorArchiveSettings());
 
-                await CreateArchiveFile(logsToArchive, archiveFilePath, settings);
+                _logger.LogInformation("💾 Creating archive file: {ArchiveFileName}", archiveFileName);
+                var archivedCount = await CreateArchiveFile(logsToArchive, archiveFilePath, settings);
 
                 // Remove archived logs from database
+                _logger.LogInformation("🗑️ Removing {Count} archived logs from database", logsToArchive.Count);
                 context.LogEntries.RemoveRange(logsToArchive);
                 await context.SaveChangesAsync();
 
-                _logger.LogInformation("Successfully archived {Count} logs to {FileName}", 
-                    logsToArchive.Count, archiveFileName);
+                _logger.LogInformation("✅ Successfully archived {Count} logs to {FileName} (file size: {FileSize})", 
+                    logsToArchive.Count, archiveFileName, GetFileSize(archiveFilePath));
 
                 return true;
             }
@@ -665,6 +710,34 @@ namespace Backend.Services
             {
                 _logger.LogError(ex, "Error archiving logs from {FromDate} to {ToDate}", fromDate, toDate);
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Get file size in human-readable format
+        /// </summary>
+        private string GetFileSize(string filePath)
+        {
+            try
+            {
+                if (!File.Exists(filePath))
+                    return "File not found";
+
+                var fileInfo = new FileInfo(filePath);
+                var sizeInBytes = fileInfo.Length;
+
+                if (sizeInBytes < 1024)
+                    return $"{sizeInBytes} bytes";
+                else if (sizeInBytes < 1024 * 1024)
+                    return $"{sizeInBytes / 1024:F1} KB";
+                else if (sizeInBytes < 1024 * 1024 * 1024)
+                    return $"{sizeInBytes / (1024 * 1024):F1} MB";
+                else
+                    return $"{sizeInBytes / (1024 * 1024 * 1024):F1} GB";
+            }
+            catch
+            {
+                return "Unknown size";
             }
         }
 

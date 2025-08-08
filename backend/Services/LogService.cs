@@ -73,11 +73,11 @@ namespace Backend.Services
                     }
                 }
 
-                // Bulk insert logs for better performance with duplicate ID safety net
+                // Bulk insert logs for better performance with enterprise duplicate ID safety net
                 if (logEntries.Count > 0)
                 {
-                    // Safety net: Ensure all IDs are unique within the batch
-                    var uniqueLogEntries = EnsureUniqueIds(logEntries);
+                    // Enterprise safety net: Check against both batch and database
+                    var uniqueLogEntries = await EnsureUniqueIdsAsync(logEntries);
                     
                     await _context.LogEntries.AddRangeAsync(uniqueLogEntries);
                     await _context.SaveChangesAsync();
@@ -527,40 +527,92 @@ namespace Backend.Services
         }
 
         /// <summary>
-        /// Ensures all log entries have unique IDs within the batch (safety net)
+        /// Enterprise-grade duplicate ID detection and resolution with database-level fallback
+        /// Checks against both batch duplicates and existing database records
         /// </summary>
         /// <param name="logEntries">List of log entries to check</param>
         /// <returns>List with guaranteed unique IDs</returns>
-        private List<LogEntryModels> EnsureUniqueIds(List<LogEntryModels> logEntries)
+        private async Task<List<LogEntryModels>> EnsureUniqueIdsAsync(List<LogEntryModels> logEntries)
         {
             var seenIds = new HashSet<string>();
-            var uniqueLogEntries = new List<LogEntryModels>();
-
-            foreach (var logEntry in logEntries)
+            var processedEntries = new List<LogEntryModels>();
+            var duplicateCount = 0;
+            
+            // Get existing IDs from database to prevent conflicts with persisted data
+            var proposedIds = logEntries.Select(e => e.Id).ToList();
+            var existingIds = new HashSet<string>();
+            
+            if (proposedIds.Count > 0)
             {
-                var originalId = logEntry.Id;
-                
-                // If ID already exists, generate a new unique one
-                if (seenIds.Contains(originalId))
+                try
                 {
-                    var counter = 1;
-                    var newId = $"{originalId}_DUP_{counter}";
+                    existingIds = await _context.LogEntries
+                        .Where(le => proposedIds.Contains(le.Id))
+                        .Select(le => le.Id)
+                        .ToHashSetAsync();
                     
-                    while (seenIds.Contains(newId))
+                    if (existingIds.Count > 0)
                     {
-                        counter++;
-                        newId = $"{originalId}_DUP_{counter}";
+                        _logger.LogWarning("🗄️ Found {Count} existing IDs in database that conflict with current batch", 
+                            existingIds.Count);
                     }
-                    
-                    logEntry.Id = newId;
-                    _logger.LogWarning("Duplicate log ID detected and fixed: {OriginalId} -> {NewId}", originalId, newId);
                 }
-                
-                seenIds.Add(logEntry.Id);
-                uniqueLogEntries.Add(logEntry);
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to check existing IDs in database, proceeding with batch-only check");
+                }
             }
 
-            return uniqueLogEntries;
+            foreach (var entry in logEntries)
+            {
+                var originalId = entry.Id;
+                var finalId = originalId;
+                
+                // Check for duplicates within current batch
+                if (seenIds.Contains(originalId))
+                {
+                    duplicateCount++;
+                    finalId = GenerateUniqueIdWithSuffix(originalId, "BATCH", duplicateCount);
+                    _logger.LogWarning("🔄 Batch duplicate ID fixed: {OriginalId} -> {NewId}", originalId, finalId);
+                }
+                // Check for conflicts with existing database records
+                else if (existingIds.Contains(originalId))
+                {
+                    duplicateCount++;
+                    finalId = GenerateUniqueIdWithSuffix(originalId, "DB", duplicateCount);
+                    _logger.LogWarning("🗄️ Database conflict ID fixed: {OriginalId} -> {NewId}", originalId, finalId);
+                }
+                
+                // Final safety check - ensure even our generated ID is unique
+                while (seenIds.Contains(finalId) || existingIds.Contains(finalId))
+                {
+                    duplicateCount++;
+                    finalId = GenerateUniqueIdWithSuffix(originalId, "FINAL", duplicateCount);
+                    _logger.LogWarning("🚨 Final safety ID fix: {OriginalId} -> {NewId}", originalId, finalId);
+                }
+                
+                entry.Id = finalId;
+                seenIds.Add(finalId);
+                processedEntries.Add(entry);
+            }
+
+            if (duplicateCount > 0)
+            {
+                _logger.LogWarning("✅ Total duplicate IDs resolved: {Count} out of {Total} logs", 
+                    duplicateCount, logEntries.Count);
+            }
+
+            return processedEntries;
+        }
+
+        /// <summary>
+        /// Generate a unique ID with suffix, timestamp, and random component for maximum uniqueness
+        /// </summary>
+        private string GenerateUniqueIdWithSuffix(string originalId, string reason, int count)
+        {
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var randomPart = Guid.NewGuid().ToString("N")[..8];
+            return $"{originalId}_{reason}_{count:D4}_{timestamp}_{randomPart}";
         }
 
         /// <summary>
