@@ -312,44 +312,61 @@ namespace Backend.Services
             using var scope = _scopeFactory.CreateScope();
             var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-            var cutoffDate = DateTime.UtcNow - _retentionPeriod;
-            _logger.LogInformation("📅 Cutoff date for archiving: {CutoffDate} (logs older than this will be archived)", cutoffDate.ToString("yyyy-MM-dd HH:mm:ss"));
-
             // FOR IMMEDIATE TESTING: Get ALL logs if retention is 0 days
-            var query = _retentionPeriod.TotalDays == 0 
-                ? context.LogEntries.AsQueryable()
-                : context.LogEntries.Where(l => l.Timestamp < cutoffDate);
+            var totalLogs = await context.LogEntries.CountAsync();
+            _logger.LogInformation("📊 Total logs in database: {TotalLogs}", totalLogs);
 
-            var sources = await query
+            if (totalLogs == 0)
+            {
+                _logger.LogInformation("ℹ️ No logs found in database to archive");
+                return;
+            }
+
+            // Get actual log sources from database for debugging
+            var sources = await context.LogEntries
                 .Select(l => l.Source)
                 .Distinct()
                 .ToListAsync();
 
-            _logger.LogInformation("📊 Found {SourceCount} distinct log sources eligible for archiving: {Sources}", 
+            _logger.LogInformation("📊 Found {SourceCount} distinct log sources in database: {Sources}", 
                 sources.Count, string.Join(", ", sources));
 
-            if (!sources.Any())
+            // FOR TESTING: Archive ALL logs regardless of source
+            if (_retentionPeriod.TotalDays == 0)
             {
-                _logger.LogInformation("ℹ️ No logs found for archiving (all logs are within retention period)");
-                return;
-            }
-
-            // Convert sources to collector types on the client side
-            var collectorTypes = sources.Select(GetCollectorTypeFromSource).Distinct().ToList();
-
-            foreach (var collectorType in collectorTypes)
-            {
-                try
+                _logger.LogInformation("🧪 Testing mode: Archiving ALL {TotalLogs} logs immediately", totalLogs);
+                
+                // Group logs by source and archive each group
+                foreach (var source in sources)
                 {
-                    _logger.LogInformation("🗂️ Archiving logs for collector type: {CollectorType}", collectorType);
-                    
-                    // Archive logs from earliest available to cutoff date
-                    var earliestDate = DateTime.MinValue; // Get all logs up to cutoff date
-                    await ArchiveLogsByCollectorAsync(collectorType, earliestDate, cutoffDate);
+                    try
+                    {
+                        _logger.LogInformation("🗂️ Archiving logs from source: {Source}", source);
+                        await ArchiveLogsBySourceAsync(source);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "❌ Error archiving logs for source {Source}", source);
+                    }
                 }
-                catch (Exception ex)
+            }
+            else
+            {
+                // Normal retention-based archiving
+                var cutoffDate = DateTime.UtcNow - _retentionPeriod;
+                _logger.LogInformation("📅 Cutoff date for archiving: {CutoffDate}", cutoffDate.ToString("yyyy-MM-dd HH:mm:ss"));
+                
+                var collectorTypes = sources.Select(GetCollectorTypeFromSource).Distinct().ToList();
+                foreach (var collectorType in collectorTypes)
                 {
-                    _logger.LogError(ex, "❌ Error archiving logs for collector {CollectorType}", collectorType);
+                    try
+                    {
+                        await ArchiveLogsByCollectorAsync(collectorType, DateTime.MinValue, cutoffDate);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "❌ Error archiving logs for collector {CollectorType}", collectorType);
+                    }
                 }
             }
 
@@ -358,7 +375,7 @@ namespace Backend.Services
 
         private Task PerformCleanupCycle()
         {
-            _logger.LogInformation("Starting cleanup cycle");
+            _logger.LogInformation("🧹 Starting cleanup cycle (corrupt/temp files only)");
 
             try
             {
@@ -368,26 +385,42 @@ namespace Backend.Services
                 foreach (var filePath in files)
                 {
                     var fileInfo = new FileInfo(filePath);
+                    bool shouldDelete = false;
+                    string reason = "";
                     
-                    // Check if file is older than retention period + archive period
-                    var cleanupCutoff = DateTime.UtcNow - _retentionPeriod - _archiveInterval;
+                    // Only delete corrupt or temp files, NOT old archives
+                    if (fileInfo.Name.Contains(".tmp") || fileInfo.Name.Contains(".temp"))
+                    {
+                        shouldDelete = true;
+                        reason = "temporary file";
+                    }
+                    else if (fileInfo.Length == 0)
+                    {
+                        shouldDelete = true;
+                        reason = "empty/corrupt file";
+                    }
+                    else if (fileInfo.Name.EndsWith(".partial"))
+                    {
+                        shouldDelete = true;
+                        reason = "incomplete archive file";
+                    }
                     
-                    if (fileInfo.CreationTimeUtc < cleanupCutoff)
+                    if (shouldDelete)
                     {
                         try
                         {
                             File.Delete(filePath);
                             deletedCount++;
-                            _logger.LogInformation("Deleted old archive file: {FileName}", fileInfo.Name);
+                            _logger.LogInformation("🗑️ Deleted {Reason}: {FileName}", reason, fileInfo.Name);
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogWarning(ex, "Failed to delete archive file: {FileName}", fileInfo.Name);
+                            _logger.LogWarning(ex, "Failed to delete file: {FileName}", fileInfo.Name);
                         }
                     }
                 }
 
-                _logger.LogInformation("Cleanup cycle completed, deleted {Count} files", deletedCount);
+                _logger.LogInformation("✅ Cleanup cycle completed, deleted {Count} corrupt/temp files (archives preserved)", deletedCount);
             }
             catch (Exception ex)
             {
@@ -724,6 +757,93 @@ namespace Backend.Services
                 _logger.LogError(ex, "Error archiving logs from {FromDate} to {ToDate}", fromDate, toDate);
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Archive logs by source (direct approach for testing)
+        /// </summary>
+        private async Task ArchiveLogsBySourceAsync(string source)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                var logsToArchive = await context.LogEntries
+                    .Where(l => l.Source == source)
+                    .OrderBy(l => l.Timestamp)
+                    .ToListAsync();
+
+                if (!logsToArchive.Any())
+                {
+                    _logger.LogInformation("ℹ️ No logs found for source: {Source}", source);
+                    return;
+                }
+
+                _logger.LogInformation("📦 Found {Count} logs for source {Source}", logsToArchive.Count, source);
+
+                // Group logs by agent/device for proper naming
+                var logsByAgent = logsToArchive.GroupBy(l => l.AgentId).ToList();
+
+                foreach (var agentGroup in logsByAgent)
+                {
+                    var agentLogs = agentGroup.ToList();
+                    var agentId = agentGroup.Key;
+                    
+                    // Get agent info for filename
+                    var agent = await context.Agents.FirstOrDefaultAsync(a => a.Id == agentId);
+                    var deviceName = agent?.Name ?? agent?.Hostname ?? agentId ?? "Unknown";
+                    
+                    // Create device-specific directory
+                    var deviceDirectory = Path.Combine(_archiveDirectory, SanitizeDirectoryName(deviceName));
+                    Directory.CreateDirectory(deviceDirectory);
+                    
+                    // Create archive file with device name (simpler filename since folder already identifies device)
+                    var archiveFileName = GenerateArchiveFileNameForDevice(source, DateTime.UtcNow);
+                    var archiveFilePath = Path.Combine(deviceDirectory, archiveFileName);
+                    var settings = _collectorSettings.GetValueOrDefault("Default", new CollectorArchiveSettings());
+
+                    _logger.LogInformation("💾 Creating archive file for {DeviceName}: {ArchiveFileName}", deviceName, archiveFileName);
+                    await CreateArchiveFile(agentLogs, archiveFilePath, settings);
+
+                    // Remove archived logs from database
+                    _logger.LogInformation("🗑️ Removing {Count} archived logs from database for {DeviceName}", agentLogs.Count, deviceName);
+                    context.LogEntries.RemoveRange(agentLogs);
+
+                    _logger.LogInformation("✅ Successfully archived {Count} logs from {DeviceName}_{Source} to {DeviceDirectory}/{FileName}", 
+                        agentLogs.Count, deviceName, source, SanitizeDirectoryName(deviceName), archiveFileName);
+                }
+
+                await context.SaveChangesAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Error archiving logs for source {Source}", source);
+            }
+        }
+
+        /// <summary>
+        /// Generate archive filename for device folder (device name sudah di folder path)
+        /// Format: SOURCE_YYYY-MM-DD_UNIQUEID.archive.json (without .gz, akan ditambah di CreateArchiveFile)
+        /// </summary>
+        private string GenerateArchiveFileNameForDevice(string source, DateTime timestamp)
+        {
+            var cleanSource = string.Join("", source.Split(Path.GetInvalidFileNameChars()));
+            var dateStr = timestamp.ToString("yyyy-MM-dd");
+            var uniqueId = Guid.NewGuid().ToString("N")[..8];
+            
+            // Filename lebih simple karena device name sudah di folder
+            return $"{cleanSource}_{dateStr}_{uniqueId}.archive.json";
+        }
+
+        /// <summary>
+        /// Sanitize directory name untuk folder per device
+        /// </summary>
+        private string SanitizeDirectoryName(string deviceName)
+        {
+            // Remove invalid characters and limit length
+            var cleanName = string.Join("", deviceName.Split(Path.GetInvalidFileNameChars()));
+            return cleanName.Length > 50 ? cleanName[..50] : cleanName;
         }
 
         /// <summary>
