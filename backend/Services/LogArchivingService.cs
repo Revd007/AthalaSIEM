@@ -315,9 +315,12 @@ namespace Backend.Services
             var cutoffDate = DateTime.UtcNow - _retentionPeriod;
             _logger.LogInformation("📅 Cutoff date for archiving: {CutoffDate} (logs older than this will be archived)", cutoffDate.ToString("yyyy-MM-dd HH:mm:ss"));
 
-            // Get distinct sources from logs that are eligible for archiving
-            var sources = await context.LogEntries
-                .Where(l => l.Timestamp < cutoffDate)
+            // FOR IMMEDIATE TESTING: Get ALL logs if retention is 0 days
+            var query = _retentionPeriod.TotalDays == 0 
+                ? context.LogEntries.AsQueryable()
+                : context.LogEntries.Where(l => l.Timestamp < cutoffDate);
+
+            var sources = await query
                 .Select(l => l.Source)
                 .Distinct()
                 .ToListAsync();
@@ -670,7 +673,17 @@ namespace Backend.Services
                 using var scope = _scopeFactory.CreateScope();
                 var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-                var query = context.LogEntries.Where(l => l.Timestamp >= fromDate && l.Timestamp <= toDate);
+                // FOR TESTING: If retention is 0 days, archive ALL logs
+                IQueryable<LogEntryModels> query;
+                if (_retentionPeriod.TotalDays == 0)
+                {
+                    query = context.LogEntries.AsQueryable();
+                    _logger.LogInformation("🧪 Testing mode: Archiving ALL logs (retention = 0 days)");
+                }
+                else
+                {
+                    query = context.LogEntries.Where(l => l.Timestamp >= fromDate && l.Timestamp <= toDate);
+                }
                 
                 if (!string.IsNullOrEmpty(collectorType))
                 {
