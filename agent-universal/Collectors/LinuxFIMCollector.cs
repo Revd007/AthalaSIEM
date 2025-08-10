@@ -896,10 +896,10 @@ namespace AthalaSIEM.UniversalAgent.Collectors
             {
                 using var algorithm = _config.HashAlgorithm.ToUpper() switch
                 {
-                    "SHA256" => SHA256.Create(),
-                    "SHA1" => SHA1.Create(),
-                    "MD5" => MD5.Create(),
-                    _ => SHA256.Create()
+                    "SHA256" => (HashAlgorithm)SHA256.Create(),
+                    "SHA1" => (HashAlgorithm)SHA1.Create(),
+                    "MD5" => (HashAlgorithm)MD5.Create(),
+                    _ => (HashAlgorithm)SHA256.Create()
                 };
 
                 using var stream = File.OpenRead(filePath);
@@ -1192,7 +1192,7 @@ namespace AthalaSIEM.UniversalAgent.Collectors
         public LinuxFileInfo? NewFileInfo { get; set; }
         public string User { get; set; } = "";
         public string Process { get; set; } = "";
-        public int ProcessId { get; set; }
+        public new int ProcessId { get; set; } // Use 'new' keyword to explicitly hide inherited member
         public List<string> ThreatIndicators { get; set; } = new();
     }
 

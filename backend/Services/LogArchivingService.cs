@@ -1258,7 +1258,9 @@ namespace Backend.Services
                 var destinationFile = Path.Combine(coldStoragePath, archiveFile.FileName);
                 
                 Directory.CreateDirectory(Path.GetDirectoryName(destinationFile)!);
-                File.Move(sourceFile, destinationFile);
+                
+                // Use async file operations
+                await Task.Run(() => File.Move(sourceFile, destinationFile));
                 
                 _logger.LogInformation("Successfully moved {File} to cold storage", archiveFile.FileName);
                 return true;
@@ -1372,7 +1374,7 @@ namespace Backend.Services
                 Id = archivedLog.Id,
                 Timestamp = archivedLog.Timestamp,
                 Level = archivedLog.Level,
-                Source = archivedLog.Source,
+                Source = archivedLog.Source ?? "",
                 Message = archivedLog.Message,
                 AgentId = archivedLog.AgentId,
                 Details = archivedLog.Details,

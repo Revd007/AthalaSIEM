@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -494,7 +495,7 @@ namespace AthalaSIEM.UniversalAgent.Core.Collectors
         private Task? _readingTask;
         private bool _isRunning = false;
         private readonly object _lock = new();
-
+        
         public event EventHandler<JournalEntryEventArgs>? JournalEntryReceived;
 
         public SystemdJournalReader(ILogger logger)
@@ -1216,11 +1217,11 @@ namespace AthalaSIEM.UniversalAgent.Core.Collectors
                     {
                         var value = property.Value.ValueKind switch
                         {
-                            System.Text.Json.JsonValueKind.String => property.Value.GetString(),
-                            System.Text.Json.JsonValueKind.Number => property.Value.GetDouble(),
-                            System.Text.Json.JsonValueKind.True => true,
-                            System.Text.Json.JsonValueKind.False => false,
-                            _ => property.Value.ToString()
+                            System.Text.Json.JsonValueKind.String => (object?)property.Value.GetString(),
+                            System.Text.Json.JsonValueKind.Number => (object?)property.Value.GetDouble(),
+                            System.Text.Json.JsonValueKind.True => (object?)true,
+                            System.Text.Json.JsonValueKind.False => (object?)false,
+                            _ => (object?)property.Value.ToString()
                         };
                         syslogEntry.Properties[$"JSON_{property.Name}"] = value ?? "";
                     }
@@ -1307,10 +1308,10 @@ namespace AthalaSIEM.UniversalAgent.Core.Collectors
                         Timestamp = DateTime.UtcNow,
                         Source = "traditional-syslog",
                         Message = line,
-                        Level = "Information",
-                        Category = logType,
-                        CollectorType = "LinuxSyslog",
-                        SecurityRelevance = DetermineSecurityRelevance(line, logType),
+                    Level = "Information",
+                    Category = logType,
+                    CollectorType = "LinuxSyslog",
+                    SecurityRelevance = DetermineSecurityRelevance(line, logType),
                         CollectionTime = DateTime.UtcNow,
                         Properties = new Dictionary<string, object> { ["Format"] = "Traditional" }
                     };

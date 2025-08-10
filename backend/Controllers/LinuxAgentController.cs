@@ -98,7 +98,7 @@ namespace Backend.Controllers
                 };
 
                 // Process through log service
-                await _logService.ProcessLogBatchAsync(logEntry);
+                await _logService.ProcessLogBatchAsync(agentId, logEntry);
 
                 return Ok(new 
                 { 
@@ -199,7 +199,7 @@ namespace Backend.Controllers
                     Logs = logEntries
                 };
 
-                await _logService.ProcessLogBatchAsync(logBatch);
+                await _logService.ProcessLogBatchAsync(agentId, logBatch);
 
                 return Ok(new 
                 { 
@@ -278,7 +278,7 @@ namespace Backend.Controllers
                     Logs = logEntries
                 };
 
-                await _logService.ProcessLogBatchAsync(logBatch);
+                await _logService.ProcessLogBatchAsync(agentId, logBatch);
 
                 return Ok(new 
                 { 

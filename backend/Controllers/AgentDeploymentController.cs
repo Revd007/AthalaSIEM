@@ -146,7 +146,7 @@ namespace Backend.Controllers
                     {
                         Id = existingToken.Id,
                         Name = existingToken.Name,
-                        Description = existingToken.Description,
+                        Description = existingToken.Description ?? "",
                         PlatformType = existingToken.PlatformType,
                         Token = existingToken.Token,
                         ExpiresAt = existingToken.ExpiresAt,

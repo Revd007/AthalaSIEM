@@ -45,11 +45,11 @@ namespace Backend.DTOs
         public double SwapUsagePercent { get; set; }
 
         // Disk Metrics
-        public Dictionary<string, DiskMetricsDto> DiskUsage { get; set; } = new();
+        public Dictionary<string, LinuxDiskMetricsDto> DiskUsage { get; set; } = new();
         public Dictionary<string, DiskIOMetricsDto> DiskIOStats { get; set; } = new();
 
         // Network Metrics
-        public Dictionary<string, NetworkMetricsDto> NetworkStats { get; set; } = new();
+        public Dictionary<string, LinuxNetworkMetricsDto> NetworkStats { get; set; } = new();
 
         // Process Metrics
         public int TotalProcesses { get; set; }
@@ -70,9 +70,9 @@ namespace Backend.DTOs
     }
 
     /// <summary>
-    /// Disk usage metrics DTO
+    /// Linux disk usage metrics DTO
     /// </summary>
-    public class DiskMetricsDto
+    public class LinuxDiskMetricsDto
     {
         public string Filesystem { get; set; } = "";
         public string MountPoint { get; set; } = "";
@@ -104,9 +104,9 @@ namespace Backend.DTOs
     }
 
     /// <summary>
-    /// Network interface statistics DTO
+    /// Linux network interface statistics DTO
     /// </summary>
-    public class NetworkMetricsDto
+    public class LinuxNetworkMetricsDto
     {
         public string InterfaceName { get; set; } = "";
         public string InterfaceType { get; set; } = "";
