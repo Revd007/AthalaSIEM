@@ -52,15 +52,15 @@ namespace Backend.Services
             var intervalMinutes = _configuration.GetValue<int?>("LogArchiving:IntervalMinutes");
             var intervalHours = _configuration.GetValue<int?>("LogArchiving:IntervalHours");
             
-            if (intervalMinutes.HasValue)
-            {
-                _archiveInterval = TimeSpan.FromMinutes(intervalMinutes.Value);
-                _logger.LogInformation("🕐 Archive interval set to {Minutes} minutes", intervalMinutes.Value);
-            }
-            else if (intervalHours.HasValue)
+            if (intervalHours.HasValue)
             {
                 _archiveInterval = TimeSpan.FromHours(intervalHours.Value);
-                _logger.LogInformation("🕐 Archive interval set to {Hours} hours", intervalHours.Value);
+                _logger.LogInformation("🕐 Archive interval set to {Minutes} minutes", intervalHours.Value);
+            }
+            else if (intervalMinutes.HasValue)
+            {
+                _archiveInterval = TimeSpan.FromHours(intervalMinutes.Value);
+                _logger.LogInformation("🕐 Archive interval set to {Hours} hours", intervalMinutes.Value);
             }
             else
             {
