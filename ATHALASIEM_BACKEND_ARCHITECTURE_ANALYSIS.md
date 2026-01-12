@@ -3,7 +3,7 @@
 
 **Document Version:** 1.0  
 **Date:** 2025-01-27  
-**Authors:** Senior Software Architect & Security Architect Analysis  
+**Authors:** Revian Ravil Athala 
 **Project:** AthalaSIEM - Security Information and Event Management System
 
 ---
