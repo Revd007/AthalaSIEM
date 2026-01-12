@@ -91,6 +91,11 @@ const mockAlerts = [
 ]
 
 export function DeviceDetails({ deviceId }: DeviceDetailsProps) {
+  // TODO: Replace with actual API call to fetch agent by ID
+  // const { data: agent } = useQuery({
+  //   queryKey: ['agent', deviceId],
+  //   queryFn: () => agentService.getAgentStatus(deviceId)
+  // });
   const device = mockDevice // Replace with API call
 
   return (

@@ -21,20 +21,9 @@ export function IncidentDashboard({ filters }: IncidentDashboardProps) {
 
   const handleUpdateIncident = async (updatedIncident: Incident) => {
     try {
-      const response = await fetch(`/api/incidents/${updatedIncident.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updatedIncident)
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to update incident');
-      }
-      
-      const updated = await response.json();
-      setSelectedIncident(updated);
+      const { api } = await import('@/lib/api');
+      const { data } = await api.put<Incident>(`/api/incidents/${updatedIncident.id}`, updatedIncident);
+      setSelectedIncident(data);
     } catch (error) {
       console.error('Error updating incident:', error);
     }
@@ -44,20 +33,9 @@ export function IncidentDashboard({ filters }: IncidentDashboardProps) {
     if (!selectedIncident) return;
     
     try {
-      const response = await fetch(`/api/incidents/${selectedIncident.id}/timeline`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(event)
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to add timeline event');
-      }
-
-      const updatedIncident = await response.json();
-      setSelectedIncident(updatedIncident);
+      const { api } = await import('@/lib/api');
+      const { data } = await api.post<Incident>(`/api/incidents/${selectedIncident.id}/timeline`, event);
+      setSelectedIncident(data);
     } catch (error) {
       console.error('Error adding timeline event:', error);
     }

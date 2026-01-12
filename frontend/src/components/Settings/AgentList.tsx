@@ -28,7 +28,7 @@ export function AgentList() {
 
   const handleToggleAgent = async (agentId: string, enabled: boolean) => {
     try {
-      await agentService.configureAgent(agentId, { enabled })
+      await agentService.configureAgent(agentId, { isEnabled: enabled, enabled: enabled })
       toast.success(`Agent ${enabled ? 'enabled' : 'disabled'} successfully`)
       fetchAgents() // Refresh list
     } catch (error) {
@@ -57,8 +57,11 @@ export function AgentList() {
       </div>
 
       <div className="grid gap-4">
-        {agents.map((agent) => (
-          <Card key={agent.id} className="p-4">
+        {agents.map((agent) => {
+          const agentId = agent.id || agent.agentId;
+          const isEnabled = agent.enabled !== undefined ? agent.enabled : agent.isEnabled;
+          return (
+          <Card key={agentId} className="p-4">
             <div className="flex justify-between items-start">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -78,8 +81,12 @@ export function AgentList() {
                 </div>
                 
                 <Switch
-                  checked={agent.enabled}
-                  onCheckedChange={(checked) => handleToggleAgent(agent.id, checked)}
+                  checked={isEnabled ?? false}
+                  onCheckedChange={(checked) => {
+                    if (agentId) {
+                      handleToggleAgent(agentId, checked);
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -91,7 +98,8 @@ export function AgentList() {
               </div>
             )}
           </Card>
-        ))}
+          );
+        })}
 
         {agents.length === 0 && (
           <Card className="p-4 text-center text-gray-500">

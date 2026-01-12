@@ -19,27 +19,33 @@ export interface NewAgentConfig {
 }
 
 export interface Agent {
-  agentId: string;
+  id: string; // Changed from agentId to match backend AgentDto.Id
   name: string;
   hostname: string;
-  ipAddress: string;
-  port: number;
-  os: string;
+  ipAddress: string; // Backend uses IpAddress (camelCase in JSON)
+  port?: number; // Not in backend DTO, kept for compatibility
+  os: string; // Maps to OperatingSystem in backend
+  operatingSystem?: string; // Backend field name
   type: string;
   status: AgentStatus;
-  lastHeartbeat: string;
-  createdAt: string;
-  createdById?: string;
-  apiKey?: string;
+  lastHeartbeat?: string; // Maps to LastConnected in backend
+  lastConnected?: string; // Backend field name
+  createdAt?: string; // Maps to InstallDate in backend
+  installDate?: string; // Backend field name
+  createdById?: string; // Not in backend DTO
+  apiKey?: string; // Not in backend DTO (security)
   isEnabled: boolean;
+  enabled?: boolean; // Backend field name
   configuration?: Record<string, string>;
   cpuUsage?: number;
   memoryUsage?: number;
   diskUsage?: number;
   collectEventLogs?: boolean;
   collectSystemMetrics?: boolean;
-  eventLogsToMonitor?: string;
+  eventLogsToMonitor?: string[]; // Backend uses List<string>
   version?: string;
+  healthStatus?: string; // Backend field
+  tags?: string[]; // Backend field
   osInfo?: {
     platform: string;
     version: string;

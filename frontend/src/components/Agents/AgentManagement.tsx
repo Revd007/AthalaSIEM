@@ -83,8 +83,11 @@ export function AgentManagement() {
   return (
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {agents?.map((agent) => (
-          <Card key={agent.agentId}>
+        {agents?.map((agent) => {
+          const agentId = agent.id || agent.agentId;
+          const lastSeen = agent.lastConnected || agent.lastHeartbeat;
+          return (
+          <Card key={agentId}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">
                 {agent.name}
@@ -100,7 +103,7 @@ export function AgentManagement() {
             <CardContent>
               <div className="text-2xl font-bold">{agent.status}</div>
               <div className="text-xs text-muted-foreground">
-                Last seen: {new Date(agent.lastHeartbeat).toLocaleString()}
+                Last seen: {lastSeen ? new Date(lastSeen).toLocaleString() : 'Never'}
               </div>
               <div className="mt-4 space-y-2">
                 <div className="flex items-center justify-between">

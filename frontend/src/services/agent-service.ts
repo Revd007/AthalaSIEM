@@ -65,7 +65,24 @@ export const agentService = {
 
   async getAgents(): Promise<Agent[]> {
     const response = await api.get<Agent[]>(endpoints.agents.list);
-    return response.data ?? [];
+    const agents = response.data ?? [];
+    // Map backend AgentDto to frontend Agent type
+    return agents.map(agent => ({
+      ...agent,
+      agentId: agent.id || agent.agentId, // Keep backward compatibility - use id from backend or fallback to agentId
+      id: agent.id, // Ensure id is set
+      os: agent.operatingSystem || agent.os || '',
+      operatingSystem: agent.operatingSystem || agent.os || '',
+      lastHeartbeat: agent.lastConnected || agent.lastHeartbeat,
+      lastConnected: agent.lastConnected || agent.lastHeartbeat,
+      createdAt: agent.installDate || agent.createdAt,
+      installDate: agent.installDate || agent.createdAt,
+      isEnabled: agent.enabled !== undefined ? agent.enabled : (agent.isEnabled !== undefined ? agent.isEnabled : true),
+      enabled: agent.enabled !== undefined ? agent.enabled : (agent.isEnabled !== undefined ? agent.isEnabled : true),
+      eventLogsToMonitor: Array.isArray(agent.eventLogsToMonitor) ? agent.eventLogsToMonitor : (agent.eventLogsToMonitor ? [agent.eventLogsToMonitor] : []),
+      tags: agent.tags || [],
+      healthStatus: agent.healthStatus || 'Unknown',
+    }));
   },
 
   async getAgentStatus(agentId: string): Promise<Agent> {

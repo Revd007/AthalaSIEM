@@ -178,21 +178,22 @@ export function DevicesList({
           <div className="space-y-2 pr-4">
             {filteredAgents.map(agent => {
               const StatusIcon = statusConfig[agent.status]?.icon || Server
+              const agentId = agent.id || agent.agentId;
               return (
                 <div
-                  key={agent.agentId}
-                  onClick={() => onDeviceSelect(agent.agentId)}
+                  key={agentId}
+                  onClick={() => onDeviceSelect(agentId)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault()
-                      onDeviceSelect(agent.agentId)
+                      onDeviceSelect(agentId)
                     }
                   }}
                   role="button"
                   tabIndex={0}
-                  aria-selected={selectedDevice === agent.agentId}
+                  aria-selected={selectedDevice === agentId}
                   className={`w-full p-4 rounded-lg border transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    selectedDevice === agent.agentId
+                    selectedDevice === agentId
                       ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                       : 'border-gray-200 hover:border-blue-500 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800'
                   }`}

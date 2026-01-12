@@ -109,7 +109,10 @@ export function AgentSettings() {
   useEffect(() => {
     if (agentsData && agentsData.length > 0) {
       setAgents(agentsData)
-      checkServiceStatus(agentsData[0].agentId);
+      const firstAgentId = agentsData[0].id || agentsData[0].agentId;
+      if (firstAgentId) {
+        checkServiceStatus(firstAgentId);
+      }
     }
   }, [agentsData]);
 
@@ -125,13 +128,16 @@ export function AgentSettings() {
 
   const handleServiceAction = async (action: 'start' | 'stop') => {
     try {
-      await agentService.configureAgent(agentsData?.[0]?.agentId || '', { 
+      const agentId = agentsData?.[0]?.id || agentsData?.[0]?.agentId;
+      if (!agentId) {
+        toast.error('No agent selected');
+        return;
+      }
+      await agentService.configureAgent(agentId, { 
         status: action === 'start' ? AgentStatus.Online : AgentStatus.Offline 
       })
       toast.success(`Service ${action}ed successfully`)
-      if (agentsData?.[0]?.agentId) {
-        await checkServiceStatus(agentsData[0].agentId)
-      }
+      await checkServiceStatus(agentId)
     } catch (error) {
       toast.error(`Failed to ${action} service`)
     }
@@ -219,8 +225,12 @@ export function AgentSettings() {
     if (window.confirm(`Are you sure you want to delete agent ${agent.name}?`)) {
       setIsLoading(true);
       try {
-        await agentService.deleteAgent(agent.agentId);
-        setAgents(agents.filter(a => a.agentId !== agent.agentId));
+        const agentId = agent.id || agent.agentId;
+        if (!agentId) {
+          throw new Error('Agent ID is required');
+        }
+        await agentService.deleteAgent(agentId);
+        setAgents(agents.filter(a => (a.id || a.agentId) !== agentId));
         toast.success(`Agent ${agent.name} deleted successfully`);
       } catch (error) {
         console.error('Error deleting agent:', error);
@@ -234,8 +244,13 @@ export function AgentSettings() {
   const handleToggleAgentStatus = async (agent: Agent) => {
     setIsLoading(true);
     try {
-      const updatedAgent = await agentService.configureAgent(agent.agentId, { isEnabled: !agent.isEnabled });
-      setAgents(agents.map(a => a.agentId === updatedAgent.agentId ? updatedAgent : a));
+      const agentId = agent.id || agent.agentId;
+      if (!agentId) {
+        throw new Error('Agent ID is required');
+      }
+      const updatedAgent = await agentService.configureAgent(agentId, { isEnabled: !agent.isEnabled });
+      const updatedAgentId = updatedAgent.id || updatedAgent.agentId;
+      setAgents(agents.map(a => (a.id || a.agentId) === updatedAgentId ? updatedAgent : a));
       toast.success(`Agent ${agent.name} ${updatedAgent.isEnabled ? 'enabled' : 'disabled'} successfully`);
     } catch (error) {
       console.error('Error toggling agent status:', error);
@@ -518,8 +533,11 @@ export function AgentSettings() {
         <CardContent>
           <div className="space-y-4">
             {Array.isArray(agentsData) && agentsData.length > 0 ? (
-              agentsData.map((agent) => (
-                <Card key={agent.agentId} className="p-4">
+              agentsData.map((agent) => {
+                const agentId = agent.id || agent.agentId;
+                const lastSeen = agent.lastConnected || agent.lastHeartbeat;
+                return (
+                <Card key={agentId} className="p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <h4 className="font-medium">{agent.name}</h4>
@@ -531,22 +549,31 @@ export function AgentSettings() {
                           {agent.status}
                         </Badge>
                         <span className="text-sm text-muted-foreground">
-                          Last seen: {new Date(agent.lastHeartbeat).toLocaleString()}
+                          Last seen: {lastSeen ? new Date(lastSeen).toLocaleString() : 'Never'}
                         </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
                       <Switch
                         checked={agent.status === 'Online'}
-                        onCheckedChange={(checked) => handleToggleAgent(agent.agentId, checked)}
+                        onCheckedChange={(checked) => {
+                          if (agentId) {
+                            handleToggleAgent(agentId, checked);
+                          }
+                        }}
                       />
-                      <Button variant="ghost" size="sm" onClick={() => checkServiceStatus(agent.agentId)}>
+                      <Button variant="ghost" size="sm" onClick={() => {
+                        if (agentId) {
+                          checkServiceStatus(agentId);
+                        }
+                      }}>
                         <RefreshCw className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
                 </Card>
-              ))
+                );
+              })
             ) : (
               <div className="text-center py-8 text-muted-foreground">
                 No agents registered yet. Add your first agent above.

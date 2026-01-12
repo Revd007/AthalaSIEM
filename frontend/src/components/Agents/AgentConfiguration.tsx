@@ -26,8 +26,8 @@ import {
 const agentConfigSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   hostname: z.string().min(1, 'Hostname is required'),
-  ipAddress: z.string().ip('Invalid IP address'),
-  port: z.number().min(1).max(65535),
+  ipAddress: z.string().min(1, 'IP address is required'),
+  port: z.number().min(1).max(65535).optional(),
   isEnabled: z.boolean(),
   collectEventLogs: z.boolean(),
   collectSystemMetrics: z.boolean(),
@@ -57,18 +57,24 @@ export function AgentConfiguration({ agent, onClose }: AgentConfigurationProps) 
       name: agent.name,
       hostname: agent.hostname,
       ipAddress: agent.ipAddress,
-      port: agent.port,
-      isEnabled: agent.isEnabled,
+      port: agent.port ?? 514,
+      isEnabled: agent.isEnabled ?? agent.enabled ?? true,
       collectEventLogs: agent.collectEventLogs ?? false,
       collectSystemMetrics: agent.collectSystemMetrics ?? false,
-      eventLogsToMonitor: agent.eventLogsToMonitor,
-      configuration: agent.configuration,
+      eventLogsToMonitor: Array.isArray(agent.eventLogsToMonitor) 
+        ? agent.eventLogsToMonitor.join(', ') 
+        : (typeof agent.eventLogsToMonitor === 'string' ? agent.eventLogsToMonitor : ''),
+      configuration: agent.configuration ?? {},
     },
   });
 
   const onSubmit = async (data: AgentConfigForm) => {
     try {
-      await agentService.configureAgent(agent.agentId, data);
+      const agentId = agent.id || agent.agentId;
+      if (!agentId) {
+        throw new Error('Agent ID is required');
+      }
+      await agentService.configureAgent(agentId, data);
       await queryClient.invalidateQueries({ queryKey: ['agents'] });
       toast({
         title: 'Success',
