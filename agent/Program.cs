@@ -678,6 +678,10 @@ namespace AthalaSIEM.Agent
 
                     // Register hosted service
                     services.AddHostedService<SiemAgentService>();
+                    
+                    // Register new pipeline architecture
+                    AthalaSIEM.Agent.Core.Pipeline.PipelineServiceRegistration.RegisterPipelineServices(
+                        services, hostContext.Configuration, agentSettings);
                 })
                 .ConfigureLogging((hostContext, logging) =>
                 {

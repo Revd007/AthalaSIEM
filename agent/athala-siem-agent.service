@@ -1,0 +1,18 @@
+[Unit]
+Description=AthalaSIEM Agent - SIEM Collector Agent
+After=network.target
+
+[Service]
+Type=simple
+User=athala-siem
+Group=athala-siem
+WorkingDirectory=/opt/athala-siem-agent
+ExecStart=/opt/athala-siem-agent/AthalaSIEM.Agent
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=athala-siem-agent
+
+[Install]
+WantedBy=multi-user.target

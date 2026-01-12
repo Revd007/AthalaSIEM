@@ -1,3 +1,5 @@
+using Backend.Domain.ValueObjects;
+
 namespace Backend.Domain.Entities;
 
 public class DetectionRule

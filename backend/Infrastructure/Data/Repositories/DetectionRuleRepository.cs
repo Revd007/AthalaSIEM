@@ -4,6 +4,7 @@ using Backend.Data;
 using Backend.Domain.Entities;
 using Backend.Domain.Interfaces;
 using System.Text.Json;
+using Backend.Domain.ValueObjects;
 
 namespace Backend.Infrastructure.Data.Repositories;
 

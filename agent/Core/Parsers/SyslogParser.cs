@@ -1,5 +1,8 @@
+using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using AthalaSIEM.Agent.Core.Pipeline;
 
 namespace AthalaSIEM.Agent.Core.Parsers;
 

@@ -1,4 +1,5 @@
 using Backend.Domain.Entities;
+using Backend.Domain.ValueObjects;
 
 namespace Backend.Infrastructure.Detection.RuleEngine;
 

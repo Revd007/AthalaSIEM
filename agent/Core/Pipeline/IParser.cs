@@ -1,3 +1,7 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
 namespace AthalaSIEM.Agent.Core.Pipeline;
 
 public interface IParser

@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+
 namespace AthalaSIEM.Agent.Core.Pipeline;
 
 public class ParsedEvent : IParsedEvent

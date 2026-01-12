@@ -7,6 +7,7 @@ using Backend.Domain.Events;
 using Backend.Domain.Interfaces;
 using Backend.Infrastructure.Detection;
 using MediatR;
+using Backend.Infrastructure.Detection.RuleEngine;
 
 namespace Backend.Workers;
 

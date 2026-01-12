@@ -1,3 +1,8 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using AthalaSIEM.Agent.Core.Pipeline;
+
 namespace AthalaSIEM.Agent.Core.Parsers;
 
 public abstract class BaseParser : IParser
