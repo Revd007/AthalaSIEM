@@ -54,46 +54,12 @@ function MetricCard({
   )
 }
 
-// Mock data - replace with actual API call
-const mockMetrics: DeviceHealth = {
-  cpu: {
-    usage: 45,
-    temperature: 65,
-    cores: 8
-  },
-  memory: {
-    total: 32768,
-    used: 16384,
-    free: 16384,
-    swap: {
-      total: 8192,
-      used: 1024,
-      free: 7168
-    }
-  },
-  disk: [
-    {
-      path: '/dev/sda1',
-      total: 512000,
-      used: 256000,
-      free: 256000,
-      mountPoint: '/'
-    }
-  ],
-  network: [
-    {
-      interface: 'eth0',
-      bytesIn: 1024000,
-      bytesOut: 512000,
-      packetsIn: 1000,
-      packetsOut: 500,
-      errors: 0,
-      drops: 0
-    }
-  ],
-  processes: [],
-  services: []
-}
+'use client'
+
+import { useQuery } from '@tanstack/react-query'
+import { agentService } from '@/services/agent-service'
+import { Skeleton } from '@/components/ui/skeleton'
+import type { Agent } from '@/types/agent'
 
 function formatBytes(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -103,11 +69,53 @@ function formatBytes(bytes: number): string {
 }
 
 export function DeviceMetrics({ deviceId }: DeviceMetricsProps) {
-  const metrics = mockMetrics // Replace with API call
+  const { data: agent, isLoading } = useQuery({
+    queryKey: ['agent', deviceId],
+    queryFn: () => agentService.getAgentStatus(deviceId),
+    enabled: !!deviceId,
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
 
-  const cpuUsagePercent = metrics.cpu.usage
-  const memoryUsagePercent = (metrics.memory.used / metrics.memory.total) * 100
-  const diskUsagePercent = (metrics.disk[0].used / metrics.disk[0].total) * 100
+  const { data: metricsData } = useQuery({
+    queryKey: ['agent-metrics', deviceId],
+    queryFn: () => {
+      const end = new Date();
+      const start = new Date();
+      start.setHours(start.getHours() - 1);
+      return agentService.getAgentMetrics(deviceId, { start, end });
+    },
+    enabled: !!deviceId && !!agent,
+    refetchInterval: 30000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold">Performance Metrics</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Skeleton key={i} className="h-32 w-full" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!agent) {
+    return (
+      <div className="text-center text-gray-500 py-4">
+        Agent not found
+      </div>
+    );
+  }
+
+  // Use agent metrics or fallback to defaults
+  const cpuUsagePercent = agent.cpuUsage ?? 0;
+  const memoryUsagePercent = agent.memoryUsage ?? 0;
+  const diskUsagePercent = agent.diskUsage ?? 0;
+  
+  // Get latest metrics from time series if available
+  const latestMetrics = metricsData && metricsData.length > 0 ? metricsData[metricsData.length - 1] : null;
 
   return (
     <div className="space-y-4">
@@ -116,48 +124,45 @@ export function DeviceMetrics({ deviceId }: DeviceMetricsProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <MetricCard
           title="CPU Usage"
-          value={`${cpuUsagePercent}%`}
+          value={`${cpuUsagePercent.toFixed(1)}%`}
           icon={Cpu}
-          secondaryValue={`${metrics.cpu.cores} Cores | ${metrics.cpu.temperature}°C`}
+          secondaryValue={latestMetrics?.cpuUsage ? `Current: ${latestMetrics.cpuUsage.toFixed(1)}%` : 'No recent data'}
           progress={cpuUsagePercent}
         />
         
         <MetricCard
           title="Memory Usage"
-          value={formatBytes(metrics.memory.used)}
+          value={`${memoryUsagePercent.toFixed(1)}%`}
           icon={CircuitBoard}
-          secondaryValue={`Total: ${formatBytes(metrics.memory.total)}`}
+          secondaryValue={latestMetrics?.memoryUsage ? `Current: ${latestMetrics.memoryUsage.toFixed(1)}%` : 'No recent data'}
           progress={memoryUsagePercent}
         />
         
         <MetricCard
           title="Disk Usage"
-          value={formatBytes(metrics.disk[0].used)}
+          value={`${diskUsagePercent.toFixed(1)}%`}
           icon={HardDrive}
-          secondaryValue={`Free: ${formatBytes(metrics.disk[0].free)}`}
+          secondaryValue={latestMetrics?.diskUsage ? `Current: ${latestMetrics.diskUsage.toFixed(1)}%` : 'No recent data'}
           progress={diskUsagePercent}
         />
         
-        <MetricCard
-          title="Network In"
-          value={formatBytes(metrics.network[0].bytesIn)}
-          icon={Network}
-          secondaryValue={`${metrics.network[0].packetsIn} packets`}
-        />
+        {latestMetrics?.networkIn !== undefined && (
+          <MetricCard
+            title="Network In"
+            value={formatBytes(latestMetrics.networkIn)}
+            icon={Network}
+            secondaryValue="Last hour"
+          />
+        )}
         
-        <MetricCard
-          title="Network Out"
-          value={formatBytes(metrics.network[0].bytesOut)}
-          icon={Activity}
-          secondaryValue={`${metrics.network[0].packetsOut} packets`}
-        />
-        
-        <MetricCard
-          title="Temperature"
-          value={`${metrics.cpu.temperature}°C`}
-          icon={Thermometer}
-          progress={metrics.cpu.temperature}
-        />
+        {latestMetrics?.networkOut !== undefined && (
+          <MetricCard
+            title="Network Out"
+            value={formatBytes(latestMetrics.networkOut)}
+            icon={Activity}
+            secondaryValue="Last hour"
+          />
+        )}
       </div>
     </div>
   )
