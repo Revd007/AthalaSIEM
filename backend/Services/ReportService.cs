@@ -16,7 +16,7 @@ namespace Backend.Services
         private readonly IReportRepository _reportRepository;
         private readonly Backend.Data.Repositories.ILegacyAgentRepository _agentRepository;
         private readonly Backend.Data.Repositories.ILegacyLogEntryRepository _logEntryRepository;
-        private readonly IAlertRepository _alertRepository;
+        private readonly Backend.Data.Repositories.IAlertRepository _alertRepository;
         private readonly ILogger<ReportService> _logger;
         
         /// <summary>
@@ -31,7 +31,7 @@ namespace Backend.Services
             IReportRepository reportRepository,
             Backend.Data.Repositories.ILegacyAgentRepository agentRepository,
             Backend.Data.Repositories.ILegacyLogEntryRepository logEntryRepository,
-            IAlertRepository alertRepository,
+            Backend.Data.Repositories.IAlertRepository alertRepository,
             ILogger<ReportService> logger)
         {
             _reportRepository = reportRepository ?? throw new ArgumentNullException(nameof(reportRepository));

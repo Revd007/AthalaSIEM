@@ -218,6 +218,7 @@ builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(Backe
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<Backend.Data.Repositories.ILegacyAgentRepository, Backend.Data.Repositories.AgentRepository>();
 builder.Services.AddScoped<Backend.Data.Repositories.ILegacyLogEntryRepository, Backend.Data.Repositories.LogEntryRepository>();
+builder.Services.AddScoped<Backend.Data.Repositories.IAlertRepository, Backend.Data.Repositories.AlertRepository>();
 builder.Services.AddScoped<IDashboardRepository, DashboardRepository>();
 builder.Services.AddScoped<IReportRepository, ReportRepository>();
 builder.Services.AddScoped<AthalaSIEM.Backend.Repositories.IAgentDeploymentTokenRepository, AthalaSIEM.Backend.Repositories.AgentDeploymentTokenRepository>();
