@@ -211,16 +211,25 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
     Console.WriteLine($"💡 Override via environment: ATHALA_Kestrel__Endpoints__Http__Url=http://0.0.0.0:YOUR_PORT");
 });
 
-// Register repositories
+// Register MediatR for CQRS
+builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(Backend.Application.Commands.IngestLogCommand).Assembly));
+
+// Register repositories (legacy)
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IAgentRepository, AgentRepository>();
-builder.Services.AddScoped<IAlertRepository, AlertRepository>();
 builder.Services.AddScoped<ILogEntryRepository, LogEntryRepository>();
 builder.Services.AddScoped<IDashboardRepository, DashboardRepository>();
 builder.Services.AddScoped<IReportRepository, ReportRepository>();
 builder.Services.AddScoped<AthalaSIEM.Backend.Repositories.IAgentDeploymentTokenRepository, AthalaSIEM.Backend.Repositories.AgentDeploymentTokenRepository>();
 
-// Register services
+// Register new domain repositories
+builder.Services.AddScoped<Backend.Domain.Interfaces.ILogRepository, Backend.Infrastructure.Data.Repositories.LogRepository>();
+builder.Services.AddScoped<Backend.Domain.Interfaces.IAlertRepository, Backend.Infrastructure.Data.Repositories.AlertRepository>();
+builder.Services.AddScoped<Backend.Domain.Interfaces.IDetectionRuleRepository, Backend.Infrastructure.Data.Repositories.DetectionRuleRepository>();
+builder.Services.AddScoped<Backend.Domain.Interfaces.IAgentRepository, Backend.Infrastructure.Data.Repositories.AgentRepository>();
+builder.Services.AddScoped<Backend.Infrastructure.Data.Repositories.INormalizedLogRepository, Backend.Infrastructure.Data.Repositories.NormalizedLogRepository>();
+
+// Register services (legacy - keep for backward compatibility)
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IAgentService, AgentService>();
@@ -235,13 +244,25 @@ builder.Services.AddScoped<IInstallerService, InstallerService>();
 builder.Services.AddScoped<IThreatIntelligenceService, ThreatIntelligenceService>();
 builder.Services.AddScoped<ILogArchivingService, LogArchivingService>();
 
-// Register background services
+// Register new infrastructure services
+builder.Services.AddScoped<Backend.Infrastructure.Normalizers.ILogNormalizer, Backend.Infrastructure.Normalizers.ECSLogNormalizer>();
+builder.Services.AddScoped<Backend.Infrastructure.Detection.RuleEngine.IRuleParser, Backend.Infrastructure.Detection.RuleEngine.YamlRuleParser>();
+builder.Services.AddScoped<Backend.Infrastructure.Detection.RuleEngine.IRuleExecutor, Backend.Infrastructure.Detection.RuleEngine.PatternMatchRuleExecutor>();
+builder.Services.AddScoped<Backend.Infrastructure.Detection.IDetectionEngine, Backend.Infrastructure.Detection.DetectionEngine>();
+builder.Services.AddScoped<Backend.Infrastructure.Correlation.ICorrelationEngine, Backend.Infrastructure.Correlation.TemporalCorrelator>();
+builder.Services.AddScoped<Backend.Infrastructure.AlertProcessing.IAlertDeduplicator, Backend.Infrastructure.AlertProcessing.AlertDeduplicator>();
+builder.Services.AddScoped<Backend.Infrastructure.AlertProcessing.IAlertSeverityScorer, Backend.Infrastructure.AlertProcessing.AlertSeverityScorer>();
+
+// Register background services (legacy)
 builder.Services.AddHostedService<Backend.Services.Background.AgentMonitoringService>();
 builder.Services.AddHostedService<Backend.Services.Background.LogCleanupService>();
 builder.Services.AddHostedService<Backend.Services.Background.AlertCleanupService>();
-
-// Register the new log archiving background service
 builder.Services.AddHostedService<LogArchivingService>();
+
+// Register new workers
+builder.Services.AddSingleton<Backend.Workers.LogNormalizationWorker>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<Backend.Workers.LogNormalizationWorker>());
+builder.Services.AddHostedService<Backend.Workers.DetectionWorker>();
 
 var app = builder.Build();
 

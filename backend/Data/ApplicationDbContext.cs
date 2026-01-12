@@ -191,6 +191,11 @@ namespace Backend.Data
         public DbSet<AlertRuleModels> AlertRulesNew { get; set; } = null!;
 
         /// <summary>
+        /// Gets or sets the normalized logs
+        /// </summary>
+        public DbSet<Backend.Domain.Entities.NormalizedLog> NormalizedLogs { get; set; } = null!;
+
+        /// <summary>
         /// Gets or sets the collector configurations
         /// </summary>
         public DbSet<CollectorConfigurationModels> CollectorConfigurations { get; set; } = null!;

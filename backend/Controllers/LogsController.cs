@@ -10,6 +10,8 @@ using Backend.Services;
 using Backend.Models;
 using System.Text.Json;
 using System.Security.Claims;
+using MediatR;
+using Backend.Application.Commands;
 
 namespace Backend.Controllers
 {
@@ -24,6 +26,7 @@ namespace Backend.Controllers
         private readonly ILogService _logService;
         private readonly ILogAnalysisService _logAnalysisService;
         private readonly IAgentService _agentService;
+        private readonly IMediator _mediator;
         private readonly ILogger<LogsController> _logger;
         
         /// <summary>
@@ -32,16 +35,19 @@ namespace Backend.Controllers
         /// <param name="logService">The log service</param>
         /// <param name="logAnalysisService">The log analysis service</param>
         /// <param name="agentService">The agent service</param>
+        /// <param name="mediator">The mediator for CQRS</param>
         /// <param name="logger">The logger</param>
         public LogsController(
             ILogService logService,
             ILogAnalysisService logAnalysisService,
             IAgentService agentService,
+            IMediator mediator,
             ILogger<LogsController> logger)
         {
             _logService = logService ?? throw new ArgumentNullException(nameof(logService));
             _logAnalysisService = logAnalysisService ?? throw new ArgumentNullException(nameof(logAnalysisService));
             _agentService = agentService ?? throw new ArgumentNullException(nameof(agentService));
+            _mediator = mediator ?? throw new ArgumentNullException(nameof(mediator));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
         
@@ -96,7 +102,43 @@ namespace Backend.Controllers
                     return Unauthorized(new { Error = "Invalid API key for agent" });
                 }
 
-                // Process the log batch
+                // Process the log batch using new CQRS architecture
+                var processedCount = 0;
+                var failedCount = 0;
+                
+                foreach (var logDto in logBatch.Logs)
+                {
+                    try
+                    {
+                        var command = new IngestLogCommand
+                        {
+                            AgentId = agentId,
+                            Message = logDto.Message ?? string.Empty,
+                            Source = logDto.Source ?? string.Empty,
+                            Category = logDto.Category,
+                            EventId = logDto.EventId,
+                            Timestamp = logDto.Timestamp,
+                            Properties = logDto.Properties
+                        };
+                        
+                        var ingestResult = await _mediator.Send(command);
+                        if (ingestResult.Success)
+                        {
+                            processedCount++;
+                        }
+                        else
+                        {
+                            failedCount++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        failedCount++;
+                        _logger.LogWarning(ex, "Failed to ingest log from agent {AgentId}", agentId);
+                    }
+                }
+                
+                // Also process via legacy service for backward compatibility
                 var result = await _logService.ProcessLogBatchAsync(agentId, logBatch);
                 
                 _logger.LogInformation("Successfully processed {LogCount} logs from agent {AgentId}", 

@@ -563,32 +563,30 @@ namespace Backend.Controllers
                     return Unauthorized(new { Error = "API key is required in the headers" });
                 }
 
-                // Convert StringValues to string to avoid null reference warnings
                 string apiKeyStr = apiKey.ToString();
 
-                var isValidApiKey = await _agentService.ValidateApiKeyAsync(Guid.Parse(agentId), apiKeyStr);
-                if (!isValidApiKey)
+                // Use new CQRS command
+                var command = new Backend.Application.Commands.SendHeartbeatCommand
                 {
-                    return Unauthorized(new { Error = "Invalid API key" });
+                    AgentId = agentId,
+                    ApiKey = apiKeyStr,
+                    HealthMetrics = new Dictionary<string, object>
+                    {
+                        ["cpu_usage"] = heartbeatDto.CpuUsage ?? 0.0,
+                        ["memory_usage"] = heartbeatDto.MemoryUsage ?? 0.0,
+                        ["logs_sent_count"] = heartbeatDto.LogsSentCount ?? 0
+                    }
+                };
+
+                var mediator = HttpContext.RequestServices.GetRequiredService<MediatR.IMediator>();
+                var result = await mediator.Send(command);
+
+                if (!result.Success)
+                {
+                    return Unauthorized(new { Error = result.ErrorMessage ?? "Invalid API key" });
                 }
 
-                var agent = await _agentService.RecordHeartbeatAsync(agentId, heartbeatDto);
-                if (agent == null)
-                {
-                    return NotFound(new { Error = "Agent not found" });
-                }
-
-                return Ok(new { Message = "Heartbeat received successfully" });
-            }
-            catch (FormatException ex)
-            {
-                _logger.LogError(ex, "Invalid agent ID format: {AgentId}", agentId);
-                return BadRequest(new { Error = "Invalid agent ID format" });
-            }
-            catch (KeyNotFoundException ex)
-            {
-                _logger.LogWarning(ex, "Agent not found: {AgentId}", agentId);
-                return NotFound(new { Error = ex.Message });
+                return Ok(new { Message = "Heartbeat received successfully", Configuration = result.Configuration });
             }
             catch (Exception ex)
             {

@@ -8,6 +8,10 @@ using Grpc.Core;
 using Microsoft.Extensions.Logging;
 using AthalaSIEM.Backend.Repositories;
 using AthalaSIEM.Backend.Models;
+using MediatR;
+using Backend.Application.Commands;
+using Backend.Domain.Interfaces;
+using Backend.Domain.Entities;
 
 namespace AthalaSIEM.Backend.Services
 {
@@ -17,17 +21,26 @@ namespace AthalaSIEM.Backend.Services
         private readonly IAgentRepository _agentRepository;
         private readonly ILogEntryRepository _logRepository;
         private readonly IAgentDeploymentTokenRepository _tokenRepository;
+        private readonly IMediator _mediator;
+        private readonly Backend.Domain.Interfaces.IAgentRepository _domainAgentRepository;
+        private readonly Backend.Domain.Interfaces.ILogRepository _domainLogRepository;
 
         public SiemService(
             ILogger<SiemService> logger,
             IAgentRepository agentRepository,
             ILogEntryRepository logRepository,
-            IAgentDeploymentTokenRepository tokenRepository)
+            IAgentDeploymentTokenRepository tokenRepository,
+            IMediator mediator,
+            Backend.Domain.Interfaces.IAgentRepository domainAgentRepository,
+            Backend.Domain.Interfaces.ILogRepository domainLogRepository)
         {
             _logger = logger;
             _agentRepository = agentRepository;
             _logRepository = logRepository;
             _tokenRepository = tokenRepository;
+            _mediator = mediator;
+            _domainAgentRepository = domainAgentRepository;
+            _domainLogRepository = domainLogRepository;
         }
 
         public override async Task<RegisterAgentResponse> RegisterAgent(RegisterAgentRequest request, ServerCallContext context)
@@ -36,49 +49,33 @@ namespace AthalaSIEM.Backend.Services
             {
                 _logger.LogInformation("Agent registration request received from {Hostname}", request.Hostname);
                 
-                // Check if deployment token was provided
-                if (!string.IsNullOrEmpty(request.DeploymentToken))
+                // Use CQRS command for registration
+                var command = new RegisterAgentCommand
                 {
-                    // Validate deployment token
-                    var token = await _tokenRepository.GetTokenAsync(request.DeploymentToken);
-                    if (token == null)
-                    {
-                        _logger.LogWarning("Invalid deployment token provided by {Hostname}", request.Hostname);
-                        return new RegisterAgentResponse
-                        {
-                            Success = false,
-                            Message = "Invalid deployment token"
-                        };
-                    }
-                    
-                    // Use token data for registration
-                    var agentId = Guid.NewGuid().ToString();
-                    var apiKey = Guid.NewGuid().ToString();
-                    
-                    // TODO: Create the agent with the pre-configured settings from the token
-                    // Use token.ServerUrl, token.Port, token.UseSSL, etc.
-                    
-                    // Mark token as used
-                    await _tokenRepository.MarkTokenAsUsedAsync(request.DeploymentToken, agentId);
-                    
+                    Name = request.Hostname,
+                    Hostname = request.Hostname,
+                    IpAddress = request.IpAddress,
+                    OperatingSystem = request.OperatingSystem,
+                    AgentVersion = request.AgentVersion,
+                    Metadata = request.Metadata?.ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value)
+                };
+                
+                var result = await _mediator.Send(command);
+                
+                if (!result.Success)
+                {
                     return new RegisterAgentResponse
                     {
-                        Success = true,
-                        AgentId = agentId,
-                        ApiKey = apiKey,
-                        Message = "Agent registered successfully using deployment token"
+                        Success = false,
+                        Message = result.ErrorMessage ?? "Registration failed"
                     };
                 }
                 
-                // Standard registration without token
-                var newAgentId = Guid.NewGuid().ToString();
-                var newApiKey = Guid.NewGuid().ToString();
-                
-                // Add agent to database
-                var agent = new AgentModels
+                // Also register in legacy repository for backward compatibility
+                var legacyAgent = new AgentModels
                 {
-                    Id = newAgentId,
-                    ApiKey = newApiKey,
+                    Id = result.AgentId,
+                    ApiKey = result.ApiKey,
                     Hostname = request.Hostname,
                     IPAddress = request.IpAddress,
                     OperatingSystem = request.OperatingSystem,
@@ -90,15 +87,15 @@ namespace AthalaSIEM.Backend.Services
                     CreatedAt = DateTime.UtcNow
                 };
                 
-                await _agentRepository.AddAgentAsync(agent);
+                await _agentRepository.AddAgentAsync(legacyAgent);
                 
-                _logger.LogInformation("Agent {AgentId} registered successfully", newAgentId);
+                _logger.LogInformation("Agent {AgentId} registered successfully", result.AgentId);
                 
                 return new RegisterAgentResponse
                 {
                     Success = true,
-                    AgentId = newAgentId,
-                    ApiKey = newApiKey,
+                    AgentId = result.AgentId,
+                    ApiKey = result.ApiKey,
                     Message = "Agent registered successfully"
                 };
             }
@@ -219,8 +216,8 @@ namespace AthalaSIEM.Backend.Services
                 _logger.LogDebug("Received log batch from agent {AgentId} with {Count} logs", 
                     request.AgentId, request.Logs.Count);
                 
-                // Validate agent and API key
-                var agent = await _agentRepository.GetByIdAsync(request.AgentId);
+                // Validate agent and API key using domain repository
+                var agent = await _domainAgentRepository.GetByIdAsync(request.AgentId);
                 if (agent == null || agent.ApiKey != request.ApiKey)
                 {
                     _logger.LogWarning("Invalid agent ID or API key for log batch");
@@ -231,7 +228,7 @@ namespace AthalaSIEM.Backend.Services
                     };
                 }
                 
-                // Process logs
+                // Process logs through new architecture
                 var acceptedCount = 0;
                 var rejectedCount = 0;
                 
@@ -239,19 +236,30 @@ namespace AthalaSIEM.Backend.Services
                 {
                     try
                     {
-                        var logEntry = new LogEntryModels
+                        // Create domain log entry
+                        var logEntry = new LogEntry
                         {
-                            Id = log.Id,
+                            Id = log.Id ?? Guid.NewGuid().ToString(),
                             AgentId = request.AgentId,
-                            Timestamp = DateTime.Parse(log.Timestamp),
-                            Source = log.Source + " - " + log.SourceType, // Combine source and sourceType
-                            Level = log.LogLevel,
-                            Message = log.Message,
-                            // Map metadata as needed
-                            CreatedAt = DateTime.UtcNow
+                            Timestamp = DateTime.TryParse(log.Timestamp, out var ts) ? ts : DateTime.UtcNow,
+                            ReceivedAt = DateTime.UtcNow,
+                            RawMessage = log.Message,
+                            Source = log.SourceType ?? log.Source,
+                            Category = log.SourceType,
+                            RawProperties = log.Metadata != null ? System.Text.Json.JsonSerializer.Serialize(log.Metadata) : null,
+                            Processed = false,
+                            IsNormalized = false
                         };
                         
-                        await _logRepository.AddAsync(logEntry);
+                        // Store raw log entry
+                        await _domainLogRepository.AddAsync(logEntry);
+                        
+                        // Publish ingestion event to trigger normalization and detection
+                        await _mediator.Publish(new Backend.Domain.Events.LogIngestedEvent
+                        {
+                            LogEntry = logEntry
+                        });
+                        
                         acceptedCount++;
                     }
                     catch (Exception ex)
@@ -262,8 +270,17 @@ namespace AthalaSIEM.Backend.Services
                 }
                 
                 // Update agent's last seen time
-                agent.LastConnected = DateTime.UtcNow;
-                await _agentRepository.UpdateAsync(agent);
+                agent.LastHeartbeat = DateTime.UtcNow;
+                agent.Status = Backend.Domain.Entities.AgentStatus.Online;
+                await _domainAgentRepository.UpdateAsync(agent);
+                
+                // Also update legacy agent for backward compatibility
+                var legacyAgent = await _agentRepository.GetByIdAsync(request.AgentId);
+                if (legacyAgent != null)
+                {
+                    legacyAgent.LastConnected = DateTime.UtcNow;
+                    await _agentRepository.UpdateAsync(legacyAgent);
+                }
                 
                 _logger.LogInformation("Processed log batch from agent {AgentId}: {Accepted} accepted, {Rejected} rejected", 
                     request.AgentId, acceptedCount, rejectedCount);
@@ -293,24 +310,33 @@ namespace AthalaSIEM.Backend.Services
             {
                 _logger.LogDebug("Heartbeat received from agent {AgentId}", request.AgentId);
                 
-                var agent = await _agentRepository.GetByIdAsync(request.AgentId);
-                if (agent == null || agent.ApiKey != request.ApiKey)
+                // Use CQRS command for heartbeat
+                var command = new SendHeartbeatCommand
                 {
-                    _logger.LogWarning("Invalid agent ID or API key for heartbeat");
+                    AgentId = request.AgentId,
+                    ApiKey = request.ApiKey,
+                    HealthMetrics = new Dictionary<string, object>
+                    {
+                        ["cpu_usage"] = request.CpuUsage,
+                        ["memory_usage"] = request.MemoryUsage,
+                        ["uptime_hours"] = request.UptimeHours,
+                        ["status"] = request.Status,
+                        ["active_collectors"] = request.ActiveCollectors,
+                        ["logs_collected"] = request.LogsCollected,
+                        ["logs_forwarded"] = request.LogsForwarded
+                    }
+                };
+                
+                var result = await _mediator.Send(command);
+                
+                if (!result.Success)
+                {
                     return new HeartbeatResponse
                     {
                         Success = false,
-                        Message = "Invalid agent ID or API key"
+                        Message = result.ErrorMessage ?? "Heartbeat processing failed"
                     };
                 }
-                
-                // Update agent status
-                agent.LastConnected = DateTime.UtcNow;
-                agent.Status = Enum.TryParse<AgentStatus>(request.Status, true, out var status) ? 
-                    status : AgentStatus.Active;
-                // Store other heartbeat metrics as needed
-                
-                await _agentRepository.UpdateAsync(agent);
                 
                 _logger.LogDebug("Heartbeat processed for agent {AgentId}", request.AgentId);
                 
@@ -318,7 +344,7 @@ namespace AthalaSIEM.Backend.Services
                 {
                     Success = true,
                     Message = "Heartbeat received",
-                    ConfigurationChanged = false // Set to true if agent should refresh config
+                    ConfigurationChanged = result.Configuration != null && result.Configuration.Any()
                 };
             }
             catch (Exception ex)
