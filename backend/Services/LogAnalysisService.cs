@@ -17,7 +17,7 @@ namespace Backend.Services
     /// </summary>
     public class LogAnalysisService : ILogAnalysisService
     {
-        private readonly ILogEntryRepository _logEntryRepository;
+        private readonly Backend.Data.Repositories.ILegacyLogEntryRepository _logEntryRepository;
         private readonly ApplicationDbContext _context;
         private readonly ILogger<LogAnalysisService> _logger;
         
@@ -28,7 +28,7 @@ namespace Backend.Services
         /// <param name="context">The database context</param>
         /// <param name="logger">The logger</param>
         public LogAnalysisService(
-            ILogEntryRepository logEntryRepository,
+            Backend.Data.Repositories.ILegacyLogEntryRepository logEntryRepository,
             ApplicationDbContext context,
             ILogger<LogAnalysisService> logger)
         {

@@ -6,9 +6,9 @@ using Backend.Models;
 namespace Backend.Data.Repositories
 {
     /// <summary>
-    /// Interface for agent repository
+    /// Legacy interface for agent repository (uses AgentModels)
     /// </summary>
-    public interface IAgentRepository : IRepository<AgentModels, string>
+    public interface ILegacyAgentRepository : IRepository<AgentModels, string>
     {
         /// <summary>
         /// Gets an agent by API key

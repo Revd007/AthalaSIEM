@@ -7,9 +7,9 @@ using Microsoft.Extensions.Logging;
 namespace Backend.Data.Repositories
 {
     /// <summary>
-    /// Repository interface for log entry operations
+    /// Legacy repository interface for log entry operations (uses LogEntryModels)
     /// </summary>
-    public interface ILogEntryRepository : IRepository<LogEntryModels, string>
+    public interface ILegacyLogEntryRepository : IRepository<LogEntryModels, string>
     {
         /// <summary>
         /// Gets log entries by agent ID

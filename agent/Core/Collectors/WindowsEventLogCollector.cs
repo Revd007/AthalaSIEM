@@ -57,65 +57,68 @@ public class WindowsEventLogCollector : ICollector
         return Task.CompletedTask;
     }
 
-    private async void WatchEventLog(string logName, CancellationToken cancellationToken)
+    private void WatchEventLog(string logName, CancellationToken cancellationToken)
     {
-        try
+        _ = Task.Run(async () =>
         {
-            var query = new EventLogQuery(logName, PathType.LogName);
-            var reader = new EventLogReader(query);
-
-            EventRecord? lastEvent = null;
-            while (!cancellationToken.IsCancellationRequested)
+            try
             {
-                try
+                var query = new EventLogQuery(logName, PathType.LogName);
+                using var reader = new EventLogReader(query);
+
+                EventRecord? lastEvent = null;
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    var evt = reader.ReadEvent();
-                    if (evt == null)
+                    try
                     {
-                        await Task.Delay(1000, cancellationToken);
-                        continue;
-                    }
-
-                    if (lastEvent != null && evt.RecordId <= lastEvent.RecordId)
-                    {
-                        evt.Dispose();
-                        await Task.Delay(1000, cancellationToken);
-                        continue;
-                    }
-
-                    lastEvent = evt;
-
-                    var rawEvent = new RawEvent
-                    {
-                        Id = Guid.NewGuid().ToString(),
-                        Timestamp = evt.TimeCreated ?? DateTime.UtcNow,
-                        CollectorName = Name,
-                        SourceType = SourceType,
-                        RawData = System.Text.Encoding.UTF8.GetBytes(evt.ToXml()),
-                        Metadata = new Dictionary<string, string>
+                        var evt = reader.ReadEvent();
+                        if (evt == null)
                         {
-                            ["log_name"] = logName,
-                            ["event_id"] = evt.Id.ToString(),
-                            ["level"] = evt.LevelDisplayName ?? evt.Level.ToString(),
-                            ["machine_name"] = evt.MachineName ?? string.Empty
+                            await Task.Delay(1000, cancellationToken);
+                            continue;
                         }
-                    };
 
-                    EventCollected?.Invoke(this, rawEvent);
-                    evt.Dispose();
-                    
-                    await Task.Delay(10, cancellationToken);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error reading from event log {LogName}", logName);
-                    await Task.Delay(5000, cancellationToken);
+                        if (lastEvent != null && evt.RecordId <= lastEvent.RecordId)
+                        {
+                            evt.Dispose();
+                            await Task.Delay(1000, cancellationToken);
+                            continue;
+                        }
+
+                        lastEvent = evt;
+
+                        var rawEvent = new RawEvent
+                        {
+                            Id = Guid.NewGuid().ToString(),
+                            Timestamp = evt.TimeCreated ?? DateTime.UtcNow,
+                            CollectorName = Name,
+                            SourceType = SourceType,
+                            RawData = System.Text.Encoding.UTF8.GetBytes(evt.ToXml()),
+                            Metadata = new Dictionary<string, string>
+                            {
+                                ["log_name"] = logName,
+                                ["event_id"] = evt.Id.ToString(),
+                                ["level"] = evt.LevelDisplayName ?? evt.Level.ToString() ?? "Unknown",
+                                ["machine_name"] = evt.MachineName ?? string.Empty
+                            }
+                        };
+
+                        EventCollected?.Invoke(this, rawEvent);
+                        evt.Dispose();
+                        
+                        await Task.Delay(10, cancellationToken);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error reading from event log {LogName}", logName);
+                        await Task.Delay(5000, cancellationToken);
+                    }
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to watch event log {LogName}", logName);
-        }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to watch event log {LogName}", logName);
+            }
+        }, cancellationToken);
     }
 }

@@ -6,41 +6,43 @@ using Backend.Data.Repositories;
 using Backend.Models;
 using Grpc.Core;
 using Microsoft.Extensions.Logging;
-using AthalaSIEM.Backend.Repositories;
-using AthalaSIEM.Backend.Models;
 using MediatR;
 using Backend.Application.Commands;
 using Backend.Domain.Interfaces;
 using Backend.Domain.Entities;
+using Backend.Domain.Events;
+using AthalaSIEM.Backend.Repositories;
+using LegacyAgentRepository = Backend.Data.Repositories.ILegacyAgentRepository;
+using LegacyLogRepository = Backend.Data.Repositories.ILegacyLogEntryRepository;
 
-namespace AthalaSIEM.Backend.Services
+namespace Backend.Services
 {
-    public class SiemService : Agent.SiemService.SiemServiceBase
+    public class SiemService : AthalaSIEM.Agent.SiemService.SiemServiceBase
     {
         private readonly ILogger<SiemService> _logger;
-        private readonly IAgentRepository _agentRepository;
-        private readonly ILogEntryRepository _logRepository;
+        private readonly LegacyAgentRepository _legacyAgentRepository;
+        private readonly LegacyLogRepository _legacyLogRepository;
         private readonly IAgentDeploymentTokenRepository _tokenRepository;
         private readonly IMediator _mediator;
-        private readonly Backend.Domain.Interfaces.IAgentRepository _domainAgentRepository;
-        private readonly Backend.Domain.Interfaces.ILogRepository _domainLogRepository;
+        private readonly IAgentRepository _agentRepository;
+        private readonly ILogRepository _logRepository;
 
         public SiemService(
             ILogger<SiemService> logger,
-            IAgentRepository agentRepository,
-            ILogEntryRepository logRepository,
+            LegacyAgentRepository legacyAgentRepository,
+            LegacyLogRepository legacyLogRepository,
             IAgentDeploymentTokenRepository tokenRepository,
             IMediator mediator,
-            Backend.Domain.Interfaces.IAgentRepository domainAgentRepository,
-            Backend.Domain.Interfaces.ILogRepository domainLogRepository)
+            IAgentRepository agentRepository,
+            ILogRepository logRepository)
         {
             _logger = logger;
-            _agentRepository = agentRepository;
-            _logRepository = logRepository;
+            _legacyAgentRepository = legacyAgentRepository;
+            _legacyLogRepository = legacyLogRepository;
             _tokenRepository = tokenRepository;
             _mediator = mediator;
-            _domainAgentRepository = domainAgentRepository;
-            _domainLogRepository = domainLogRepository;
+            _agentRepository = agentRepository;
+            _logRepository = logRepository;
         }
 
         public override async Task<RegisterAgentResponse> RegisterAgent(RegisterAgentRequest request, ServerCallContext context)
@@ -83,11 +85,11 @@ namespace AthalaSIEM.Backend.Services
                     Type = request.AgentType == "Windows" ? AgentType.Windows : 
                            request.AgentType == "Linux" ? AgentType.Linux : AgentType.Custom,
                     LastConnected = DateTime.UtcNow,
-                    Status = AgentStatus.Active,
+                    Status = Backend.Models.AgentStatus.Active,
                     CreatedAt = DateTime.UtcNow
                 };
                 
-                await _agentRepository.AddAgentAsync(legacyAgent);
+                await _legacyAgentRepository.AddAgentAsync(legacyAgent);
                 
                 _logger.LogInformation("Agent {AgentId} registered successfully", result.AgentId);
                 
@@ -116,7 +118,7 @@ namespace AthalaSIEM.Backend.Services
             {
                 _logger.LogDebug("API key validation request for agent {AgentId}", request.AgentId);
                 
-                var agent = await _agentRepository.GetByIdAsync(request.AgentId);
+                var agent = await _legacyAgentRepository.GetByIdAsync(request.AgentId);
                 if (agent == null)
                 {
                     _logger.LogWarning("Agent {AgentId} not found during API key validation", request.AgentId);
@@ -163,7 +165,7 @@ namespace AthalaSIEM.Backend.Services
             {
                 _logger.LogInformation("API key rotation request for agent {AgentId}", request.AgentId);
                 
-                var agent = await _agentRepository.GetByIdAsync(request.AgentId);
+                var agent = await _legacyAgentRepository.GetByIdAsync(request.AgentId);
                 if (agent == null)
                 {
                     _logger.LogWarning("Agent {AgentId} not found during API key rotation", request.AgentId);
@@ -188,7 +190,7 @@ namespace AthalaSIEM.Backend.Services
                 agent.ApiKey = newApiKey;
                 agent.LastConnected = DateTime.UtcNow;
                 
-                await _agentRepository.UpdateAsync(agent);
+                await _legacyAgentRepository.UpdateAsync(agent);
                 
                 _logger.LogInformation("API key rotated successfully for agent {AgentId}", request.AgentId);
                 return new RotateApiKeyResponse
@@ -217,7 +219,7 @@ namespace AthalaSIEM.Backend.Services
                     request.AgentId, request.Logs.Count);
                 
                 // Validate agent and API key using domain repository
-                var agent = await _domainAgentRepository.GetByIdAsync(request.AgentId);
+                var agent = await _agentRepository.GetByIdAsync(request.AgentId);
                 if (agent == null || agent.ApiKey != request.ApiKey)
                 {
                     _logger.LogWarning("Invalid agent ID or API key for log batch");
@@ -237,7 +239,7 @@ namespace AthalaSIEM.Backend.Services
                     try
                     {
                         // Create domain log entry
-                        var logEntry = new LogEntry
+                        var logEntry = new Backend.Domain.Entities.LogEntry
                         {
                             Id = log.Id ?? Guid.NewGuid().ToString(),
                             AgentId = request.AgentId,
@@ -252,10 +254,10 @@ namespace AthalaSIEM.Backend.Services
                         };
                         
                         // Store raw log entry
-                        await _domainLogRepository.AddAsync(logEntry);
+                        await _logRepository.AddAsync(logEntry);
                         
                         // Publish ingestion event to trigger normalization and detection
-                        await _mediator.Publish(new Backend.Domain.Events.LogIngestedEvent
+                        await _mediator.Publish(new LogIngestedEvent
                         {
                             LogEntry = logEntry
                         });
@@ -272,14 +274,14 @@ namespace AthalaSIEM.Backend.Services
                 // Update agent's last seen time
                 agent.LastHeartbeat = DateTime.UtcNow;
                 agent.Status = Backend.Domain.Entities.AgentStatus.Online;
-                await _domainAgentRepository.UpdateAsync(agent);
+                await _agentRepository.UpdateAsync(agent);
                 
                 // Also update legacy agent for backward compatibility
-                var legacyAgent = await _agentRepository.GetByIdAsync(request.AgentId);
+                var legacyAgent = await _legacyAgentRepository.GetByIdAsync(request.AgentId);
                 if (legacyAgent != null)
                 {
                     legacyAgent.LastConnected = DateTime.UtcNow;
-                    await _agentRepository.UpdateAsync(legacyAgent);
+                    await _legacyAgentRepository.UpdateAsync(legacyAgent);
                 }
                 
                 _logger.LogInformation("Processed log batch from agent {AgentId}: {Accepted} accepted, {Rejected} rejected", 

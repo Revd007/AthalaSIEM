@@ -67,12 +67,6 @@ public class GrpcExporter : IExporter
     private Models.NormalizedLogEntry ConvertToNormalizedLogEntry(INormalizedEvent evt)
     {
         var ecs = evt.Ecs;
-        var metadata = new Dictionary<string, string>();
-
-        foreach (var kvp in evt.RawEvent)
-        {
-            metadata[kvp.Key] = kvp.Value?.ToString() ?? string.Empty;
-        }
 
         var message = evt.RawEvent.GetValueOrDefault("message")?.ToString() 
             ?? evt.RawEvent.GetValueOrDefault("raw_message")?.ToString() 
@@ -86,11 +80,15 @@ public class GrpcExporter : IExporter
             SourceType = evt.Extensions.GetValueOrDefault("athala.source_type")?.ToString() ?? "Unknown",
             Level = ecs.LogLevel ?? "Information",
             Message = message,
-            Metadata = metadata,
             AgentId = ecs.AgentId ?? string.Empty,
             Hostname = ecs.HostName ?? string.Empty,
             AdditionalFields = new Dictionary<string, string>()
         };
+
+        foreach (var kvp in evt.RawEvent)
+        {
+            result.AdditionalFields[kvp.Key] = kvp.Value?.ToString() ?? string.Empty;
+        }
         
         if (!string.IsNullOrEmpty(ecs.UserName))
             result.AdditionalFields["user_name"] = ecs.UserName;

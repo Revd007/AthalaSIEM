@@ -86,10 +86,17 @@ public class JournalctlCollector : ICollector
         using var reader = _journalctlProcess.StandardOutput;
         string? line;
 
-        while (!cancellationToken.IsCancellationRequested && (line = await reader.ReadLineAsync()) != null)
+        while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
+                line = await reader.ReadLineAsync(cancellationToken);
+                if (line == null)
+                {
+                    await Task.Delay(100, cancellationToken);
+                    continue;
+                }
+
                 var rawEvent = new RawEvent
                 {
                     Id = Guid.NewGuid().ToString(),
@@ -102,9 +109,14 @@ public class JournalctlCollector : ICollector
 
                 EventCollected?.Invoke(this, rawEvent);
             }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing journalctl line");
+                await Task.Delay(1000, cancellationToken);
             }
         }
     }

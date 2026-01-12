@@ -24,7 +24,6 @@ public static class PipelineServiceRegistration
         IConfiguration configuration,
         AgentSettings? agentSettings)
     {
-        var agentId = agentSettings?.AgentId ?? Guid.NewGuid().ToString();
         var agentName = agentSettings?.AgentName ?? "AthalaSIEM Agent";
         var hostName = Environment.MachineName;
 
@@ -33,12 +32,31 @@ public static class PipelineServiceRegistration
         services.AddSingleton<IParser, WindowsEventLogParser>();
         services.AddSingleton<IParser, SyslogParser>();
 
-        // Register normalizer
-        services.AddSingleton<INormalizer>(sp => new AthalaEcsNormalizer(
-            sp.GetRequiredService<ILogger<AthalaEcsNormalizer>>(),
-            agentId,
-            agentName,
-            hostName));
+        // Register normalizer - gets agent ID from identity service when available
+        services.AddSingleton<INormalizer>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<AthalaEcsNormalizer>>();
+            var identityService = sp.GetService<IAgentIdentityService>();
+            
+            string agentId;
+            if (identityService != null)
+            {
+                try
+                {
+                    agentId = identityService.GetAgentIdAsync().GetAwaiter().GetResult() ?? Guid.NewGuid().ToString();
+                }
+                catch
+                {
+                    agentId = Guid.NewGuid().ToString();
+                }
+            }
+            else
+            {
+                agentId = Guid.NewGuid().ToString();
+            }
+            
+            return new AthalaEcsNormalizer(logger, agentId, agentName, hostName);
+        });
 
         // Register buffer
         var bufferPath = Path.Combine(

@@ -14,8 +14,8 @@ namespace Backend.Services
     public class ReportService : IReportService
     {
         private readonly IReportRepository _reportRepository;
-        private readonly IAgentRepository _agentRepository;
-        private readonly ILogEntryRepository _logEntryRepository;
+        private readonly Backend.Data.Repositories.ILegacyAgentRepository _agentRepository;
+        private readonly Backend.Data.Repositories.ILegacyLogEntryRepository _logEntryRepository;
         private readonly IAlertRepository _alertRepository;
         private readonly ILogger<ReportService> _logger;
         
@@ -29,8 +29,8 @@ namespace Backend.Services
         /// <param name="logger">The logger</param>
         public ReportService(
             IReportRepository reportRepository,
-            IAgentRepository agentRepository,
-            ILogEntryRepository logEntryRepository,
+            Backend.Data.Repositories.ILegacyAgentRepository agentRepository,
+            Backend.Data.Repositories.ILegacyLogEntryRepository logEntryRepository,
             IAlertRepository alertRepository,
             ILogger<ReportService> logger)
         {

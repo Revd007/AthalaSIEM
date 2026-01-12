@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using AthalaSIEM.Agent.Core.Pipeline;
+using System.Collections.Generic;
 
 namespace AthalaSIEM.Agent.Core.Collectors;
 

@@ -572,9 +572,9 @@ namespace Backend.Controllers
                     ApiKey = apiKeyStr,
                     HealthMetrics = new Dictionary<string, object>
                     {
-                        ["cpu_usage"] = heartbeatDto.CpuUsage ?? 0.0,
-                        ["memory_usage"] = heartbeatDto.MemoryUsage ?? 0.0,
-                        ["logs_sent_count"] = heartbeatDto.LogsSentCount ?? 0
+                        ["cpu_usage"] = heartbeatDto.CpuUsage,
+                        ["memory_usage"] = heartbeatDto.MemoryUsage,
+                        ["disk_usage"] = heartbeatDto.DiskUsage
                     }
                 };
 

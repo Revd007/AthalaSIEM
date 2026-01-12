@@ -11,7 +11,7 @@ namespace Backend.Data.Repositories
     /// <summary>
     /// Repository for agent operations
     /// </summary>
-    public class AgentRepository : Repository<AgentModels, string>, IAgentRepository
+    public class AgentRepository : Repository<AgentModels, string>, ILegacyAgentRepository
     {
         private readonly ILogger<AgentRepository> _logger;
         

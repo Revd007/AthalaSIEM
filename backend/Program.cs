@@ -214,10 +214,10 @@ builder.WebHost.ConfigureKestrel(serverOptions =>
 // Register MediatR for CQRS
 builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(Backend.Application.Commands.IngestLogCommand).Assembly));
 
-// Register repositories (legacy)
+// Register repositories (legacy - using renamed interfaces to avoid conflicts)
 builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<IAgentRepository, AgentRepository>();
-builder.Services.AddScoped<ILogEntryRepository, LogEntryRepository>();
+builder.Services.AddScoped<Backend.Data.Repositories.ILegacyAgentRepository, Backend.Data.Repositories.AgentRepository>();
+builder.Services.AddScoped<Backend.Data.Repositories.ILegacyLogEntryRepository, Backend.Data.Repositories.LogEntryRepository>();
 builder.Services.AddScoped<IDashboardRepository, DashboardRepository>();
 builder.Services.AddScoped<IReportRepository, ReportRepository>();
 builder.Services.AddScoped<AthalaSIEM.Backend.Repositories.IAgentDeploymentTokenRepository, AthalaSIEM.Backend.Repositories.AgentDeploymentTokenRepository>();
@@ -311,7 +311,7 @@ app.UseAuthorization();
 app.MapControllers();
 
 // Map gRPC services
-app.MapGrpcService<AthalaSIEM.Backend.Services.SiemService>().RequireCors("AllowAll");
+app.MapGrpcService<Backend.Services.SiemService>().RequireCors("AllowAll");
 app.MapGet("/proto/siem.proto", async context =>
 {
     await context.Response.WriteAsync(File.ReadAllText("Protos/siem.proto"));

@@ -11,7 +11,7 @@ namespace Backend.Data.Repositories
     /// <summary>
     /// Repository for log entry operations
     /// </summary>
-    public class LogEntryRepository : Repository<LogEntryModels, string>, ILogEntryRepository
+    public class LogEntryRepository : Repository<LogEntryModels, string>, ILegacyLogEntryRepository
     {
         private readonly ILogger<LogEntryRepository> _logger;
         

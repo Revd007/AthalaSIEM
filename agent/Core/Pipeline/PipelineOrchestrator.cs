@@ -73,6 +73,9 @@ public class PipelineOrchestrator : IHostedService
 
     private void OnEventCollected(object? sender, IRawEvent rawEvent)
     {
+        if (rawEvent == null)
+            return;
+
         _ = Task.Run(async () =>
         {
             try

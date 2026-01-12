@@ -76,9 +76,9 @@ public class DetectionRuleRepository : IDetectionRuleRepository
             Name = model.Name,
             Description = model.Description ?? string.Empty,
             RuleDefinition = model.Condition,
-            Enabled = model.Enabled ?? true,
+            Enabled = model.Enabled,
             CreatedAt = model.CreatedAt,
-            UpdatedAt = model.UpdatedAt ?? model.CreatedAt,
+            UpdatedAt = model.UpdatedAt,
             CreatedBy = model.CreatedBy
         };
 

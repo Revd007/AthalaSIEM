@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using AthalaSIEM.Agent.Core.Pipeline;
+using System.Collections.Generic;
 
 namespace AthalaSIEM.Agent.Core.Collectors;
 
@@ -64,10 +65,17 @@ public class DockerEventCollector : ICollector
                 using var reader = new StreamReader(response);
 
                 string? line;
-                while (!cancellationToken.IsCancellationRequested && (line = await reader.ReadLineAsync()) != null)
+                while (!cancellationToken.IsCancellationRequested)
                 {
                     try
                     {
+                        line = await reader.ReadLineAsync();
+                        if (line == null)
+                        {
+                            await Task.Delay(100, cancellationToken);
+                            continue;
+                        }
+
                         var rawEvent = new RawEvent
                         {
                             Id = Guid.NewGuid().ToString(),
@@ -80,11 +88,20 @@ public class DockerEventCollector : ICollector
 
                         EventCollected?.Invoke(this, rawEvent);
                     }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error processing Docker event");
+                        await Task.Delay(1000, cancellationToken);
                     }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                break;
             }
             catch (Exception ex)
             {

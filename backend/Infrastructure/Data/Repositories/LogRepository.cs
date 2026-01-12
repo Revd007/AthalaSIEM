@@ -40,7 +40,7 @@ public class LogRepository : ILogRepository
     public async Task<IEnumerable<LogEntry>> GetUnprocessedAsync(int limit = 1000, CancellationToken cancellationToken = default)
     {
         var models = await _context.LogEntries
-            .Where(l => !l.Processed && l.IsNormalized)
+            .Where(l => !l.Processed)
             .OrderBy(l => l.Timestamp)
             .Take(limit)
             .ToListAsync(cancellationToken);
@@ -50,8 +50,10 @@ public class LogRepository : ILogRepository
 
     public async Task<IEnumerable<LogEntry>> GetUnnormalizedAsync(int limit = 1000, CancellationToken cancellationToken = default)
     {
+        // Check if log entry has been normalized by checking if it has normalized fields in Properties
+        // For now, we'll return unprocessed logs as unnormalized
         var models = await _context.LogEntries
-            .Where(l => !l.IsNormalized)
+            .Where(l => !l.Processed)
             .OrderBy(l => l.Timestamp)
             .Take(limit)
             .ToListAsync(cancellationToken);

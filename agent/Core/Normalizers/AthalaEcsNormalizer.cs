@@ -55,7 +55,10 @@ public class AthalaEcsNormalizer : INormalizer
 
         foreach (var kvp in parsedEvent.StructuredData)
         {
-            rawEvent[kvp.Key] = kvp.Value;
+            if (kvp.Value != null)
+            {
+                rawEvent[kvp.Key] = kvp.Value;
+            }
 
             var key = kvp.Key.ToLowerInvariant();
             var value = kvp.Value?.ToString() ?? string.Empty;
@@ -151,7 +154,11 @@ public class AthalaEcsNormalizer : INormalizer
                 break;
             default:
                 if (!ecs.AdditionalFields.ContainsKey(key))
-                    ecs.AdditionalFields[key] = originalValue ?? value;
+                {
+                    var fieldValue = originalValue ?? value;
+                    if (fieldValue != null)
+                        ecs.AdditionalFields[key] = fieldValue;
+                }
                 break;
         }
     }

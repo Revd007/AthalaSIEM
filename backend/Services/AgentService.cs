@@ -19,7 +19,7 @@ namespace Backend.Services
     /// </summary>
     public class AgentService : IAgentService
     {
-        private readonly IAgentRepository _agentRepository;
+        private readonly Backend.Data.Repositories.ILegacyAgentRepository _agentRepository;
         private readonly ILogger<AgentService> _logger;
         private readonly ApplicationDbContext _dbContext;
         private readonly IAgentDeploymentTokenRepository _tokenRepository;
@@ -32,7 +32,7 @@ namespace Backend.Services
         /// <param name="dbContext">The database context</param>
         /// <param name="tokenRepository">The deployment token repository</param>
         public AgentService(
-            IAgentRepository agentRepository, 
+            Backend.Data.Repositories.ILegacyAgentRepository agentRepository, 
             ILogger<AgentService> logger, 
             ApplicationDbContext dbContext,
             IAgentDeploymentTokenRepository tokenRepository)
