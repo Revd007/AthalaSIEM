@@ -2,6 +2,9 @@
 
 import { Card } from '@/components/ui/card'
 import { CheckCircle, AlertTriangle, Calendar } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { complianceService, type ComplianceAudit } from '@/services/compliance-service'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { ComplianceFramework } from '@/types/compliance'
 
 interface ComplianceAuditsListProps {
@@ -10,39 +13,6 @@ interface ComplianceAuditsListProps {
 
 type AuditStatus = 'completed' | 'in-progress' | 'scheduled'
 
-interface Audit {
-  id: string
-  title: string
-  status: AuditStatus
-  startDate: string
-  endDate: string
-  auditor: string
-  score?: number
-  findings: number
-}
-
-const mockAudits: Audit[] = [
-  {
-    id: '1',
-    title: 'Annual ISO 27001 Certification',
-    status: 'completed',
-    startDate: '2024-01-15',
-    endDate: '2024-02-15',
-    auditor: 'External Auditor Inc.',
-    score: 92,
-    findings: 3
-  },
-  {
-    id: '2',
-    title: 'Q1 Internal Audit',
-    status: 'in-progress',
-    startDate: '2024-03-01',
-    endDate: '2024-03-31',
-    auditor: 'Internal Audit Team',
-    findings: 5
-  }
-]
-
 const statusConfig: Record<AuditStatus, { icon: any; color: string; bg: string }> = {
   completed: { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50' },
   'in-progress': { icon: AlertTriangle, color: 'text-yellow-500', bg: 'bg-yellow-50' },
@@ -50,9 +20,33 @@ const statusConfig: Record<AuditStatus, { icon: any; color: string; bg: string }
 }
 
 export function ComplianceAuditsList({ framework }: ComplianceAuditsListProps) {
+  const { data: audits, isLoading } = useQuery({
+    queryKey: ['compliance-audits', framework],
+    queryFn: () => complianceService.getAudits(framework),
+    refetchInterval: 300000, // 5 minutes
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-32 w-full" />
+        ))}
+      </div>
+    );
+  }
+
+  if (!audits || audits.length === 0) {
+    return (
+      <div className="text-center text-gray-500 py-8">
+        No audits found for {framework}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {mockAudits.map((audit) => {
+      {audits.map((audit) => {
         const StatusIcon = statusConfig[audit.status].icon
         return (
           <Card key={audit.id} className="p-6">

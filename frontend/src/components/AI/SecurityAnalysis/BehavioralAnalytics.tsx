@@ -78,34 +78,34 @@ export function BehavioralAnalytics() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatsCard
           title="Users Monitored"
-          value="1,245"
-          change="+23"
+          value={usersMonitored.toString()}
+          change="+0"
           trend="up"
           icon={Users}
         />
         <StatsCard
           title="Anomalies Today"
-          value="47"
-          change="+12"
+          value={anomaliesToday.toString()}
+          change="+0"
           trend="up"
           icon={AlertTriangle}
           color="red"
         />
         <StatsCard
           title="Avg Risk Score"
-          value="62.5"
-          change="+5.2"
+          value={avgRiskScore.toString()}
+          change="+0"
           trend="up"
           icon={Activity}
           color="yellow"
         />
         <StatsCard
-          title="Model Accuracy"
-          value="95.8%"
-          change="+0.6%"
+          title="High Risk Users"
+          value={users.filter(u => u.riskScore >= 70).length.toString()}
+          change="+0"
           trend="up"
           icon={Brain}
-          color="green"
+          color="red"
         />
       </div>
 
@@ -130,8 +130,11 @@ export function BehavioralAnalytics() {
 
               {/* Activity Chart */}
               <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={mockTimelineData}>
+                {logsLoading ? (
+                  <Skeleton className="h-full w-full" />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={timelineData}>
                     <defs>
                       <linearGradient id="normalActivity" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
@@ -184,6 +187,7 @@ export function BehavioralAnalytics() {
                     />
                   </AreaChart>
                 </ResponsiveContainer>
+                )}
               </div>
             </div>
           </DashboardCard>
@@ -262,7 +266,7 @@ export function BehavioralAnalytics() {
                     </div>
                   )}
                 </div>
-              ))}
+              )))}
             </div>
           </DashboardCard>
         </div>

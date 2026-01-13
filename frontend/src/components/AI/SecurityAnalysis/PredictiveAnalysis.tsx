@@ -1,10 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { DashboardCard } from '@/components/ui/DashboardCard'
 import { LineChart as LineChartIcon, Brain, AlertTriangle, Target, Clock } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { StatsCard } from '@/components/ui/StatsCard'
+import { useQuery } from '@tanstack/react-query'
+import { useAlerts } from '@/services/alert-service'
+import { logService } from '@/services/log-service'
+import { Skeleton } from '@/components/ui/skeleton'
+import { format } from 'date-fns'
 
 interface Prediction {
   id: string
@@ -17,53 +22,147 @@ interface Prediction {
   mitigation: string[]
 }
 
-const mockTimeSeriesData = Array.from({ length: 24 }, (_, i) => ({
-  time: `${i}:00`,
-  predictedThreats: Math.floor(Math.random() * 50),
-  confidence: 75 + Math.random() * 20
-}))
-
-const mockPredictions: Prediction[] = [
-  {
-    id: '1',
-    type: 'Data Breach',
-    probability: 78.5,
-    impact: 'critical',
-    timeframe: '24-48 hours',
-    details: 'Potential data exfiltration based on unusual access patterns',
-    indicators: [
-      'Increased failed login attempts',
-      'Unusual data transfer volumes',
-      'Access from new locations'
-    ],
-    mitigation: [
-      'Enable additional authentication factors',
-      'Review access permissions',
-      'Monitor sensitive data access'
-    ]
-  },
-  {
-    id: '2',
-    type: 'DDoS Attack',
-    probability: 65.2,
-    impact: 'high',
-    timeframe: '12-24 hours',
-    details: 'Possible volumetric attack based on traffic analysis',
-    indicators: [
-      'Increased bandwidth usage',
-      'Pattern matching previous attacks',
-      'Suspicious source IPs'
-    ],
-    mitigation: [
-      'Scale infrastructure',
-      'Update firewall rules',
-      'Enable DDoS protection'
-    ]
-  }
-]
-
 export function PredictiveAnalysis() {
   const [selectedPrediction, setSelectedPrediction] = useState<Prediction | null>(null)
+
+  // Fetch alerts for prediction analysis
+  const { data: alertsData } = useAlerts({ 
+    limit: 100,
+    sortField: 'Timestamp',
+    sortDirection: 'desc'
+  });
+
+  // Fetch logs for pattern analysis
+  const { data: logsData } = useQuery({
+    queryKey: ['predictive-logs'],
+    queryFn: async () => {
+      const end = new Date();
+      const start = new Date();
+      start.setHours(start.getHours() - 24);
+      return await logService.getLogs({
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        limit: 1000
+      });
+    },
+    refetchInterval: 60000,
+  });
+
+  // Generate predictions based on alert patterns
+  const predictions = useMemo(() => {
+    if (!alertsData?.items || alertsData.items.length === 0) return [];
+
+    const predictions: Prediction[] = [];
+    const alerts = alertsData.items;
+
+    // Analyze failed login patterns
+    const failedLogins = alerts.filter(a => 
+      a.message?.toLowerCase().includes('failed login') || 
+      a.message?.toLowerCase().includes('authentication failed')
+    );
+    if (failedLogins.length >= 5) {
+      predictions.push({
+        id: '1',
+        type: 'Brute Force Attack',
+        probability: Math.min(90, 50 + failedLogins.length * 5),
+        impact: 'high',
+        timeframe: '12-24 hours',
+        details: `Detected ${failedLogins.length} failed login attempts. Potential brute force attack in progress.`,
+        indicators: [
+          `${failedLogins.length} failed login attempts detected`,
+          'Multiple source IPs observed',
+          'Unusual authentication patterns'
+        ],
+        mitigation: [
+          'Enable account lockout policies',
+          'Review authentication logs',
+          'Implement rate limiting',
+          'Enable MFA for affected accounts'
+        ]
+      });
+    }
+
+    // Analyze critical alerts
+    const criticalAlerts = alerts.filter(a => a.severity?.toLowerCase() === 'critical');
+    if (criticalAlerts.length >= 3) {
+      predictions.push({
+        id: '2',
+        type: 'Critical Security Event',
+        probability: 85,
+        impact: 'critical',
+        timeframe: 'Immediate',
+        details: `Multiple critical alerts detected. Immediate investigation required.`,
+        indicators: [
+          `${criticalAlerts.length} critical alerts in recent timeframe`,
+          'Potential security breach indicators',
+          'High severity events detected'
+        ],
+        mitigation: [
+          'Immediately review all critical alerts',
+          'Isolate affected systems if necessary',
+          'Engage security team',
+          'Review incident response procedures'
+        ]
+      });
+    }
+
+    // Analyze network anomalies from logs
+    if (logsData?.items) {
+      const networkLogs = logsData.items.filter(l => 
+        l.message?.toLowerCase().includes('network') ||
+        l.message?.toLowerCase().includes('connection') ||
+        l.message?.toLowerCase().includes('traffic')
+      );
+      if (networkLogs.length > 100) {
+        predictions.push({
+          id: '3',
+          type: 'Network Anomaly',
+          probability: 70,
+          impact: 'medium',
+          timeframe: '24-48 hours',
+          details: `Unusual network activity detected. ${networkLogs.length} network-related events in last 24 hours.`,
+          indicators: [
+            'Increased network traffic volume',
+            'Unusual connection patterns',
+            'Multiple network events detected'
+          ],
+          mitigation: [
+            'Review network traffic patterns',
+            'Check firewall rules',
+            'Monitor for DDoS indicators',
+            'Review network access logs'
+          ]
+        });
+      }
+    }
+
+    return predictions;
+  }, [alertsData, logsData]);
+
+  // Generate time series data from alerts
+  const timeSeriesData = useMemo(() => {
+    if (!alertsData?.items) {
+      return Array.from({ length: 24 }, (_, i) => ({
+        time: `${i}:00`,
+        predictedThreats: 0,
+        confidence: 0
+      }));
+    }
+
+    const hourlyData: Record<number, number> = {};
+    alertsData.items.forEach(alert => {
+      if (alert.timestamp) {
+        const hour = new Date(alert.timestamp).getHours();
+        hourlyData[hour] = (hourlyData[hour] || 0) + 1;
+      }
+    });
+
+    return Array.from({ length: 24 }, (_, i) => ({
+      time: `${i}:00`,
+      predictedThreats: hourlyData[i] || 0,
+      confidence: hourlyData[i] ? Math.min(95, 75 + hourlyData[i] * 2) : 0
+    }));
+  }, [alertsData]);
 
   return (
     <div className="space-y-6">
@@ -71,32 +170,32 @@ export function PredictiveAnalysis() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatsCard
           title="Active Predictions"
-          value="8"
-          change="+2"
+          value={predictions.length.toString()}
+          change="+0"
           trend="up"
           icon={Brain}
           color="blue"
         />
         <StatsCard
-          title="Prediction Accuracy"
-          value="92.4%"
-          change="+1.2%"
+          title="Critical Alerts"
+          value={(alertsData?.items?.filter(a => a.severity?.toLowerCase() === 'critical').length || 0).toString()}
+          change="+0"
           trend="up"
           icon={Target}
-          color="green"
+          color="red"
         />
         <StatsCard
-          title="Time to Detection"
-          value="1.8h"
-          change="-0.3h"
-          trend="down"
+          title="Total Alerts (24h)"
+          value={(alertsData?.totalCount || 0).toString()}
+          change="+0"
+          trend="up"
           icon={Clock}
           color="yellow"
         />
         <StatsCard
-          title="Critical Threats"
-          value="3"
-          change="+1"
+          title="High Risk Predictions"
+          value={predictions.filter(p => p.impact === 'critical' || p.impact === 'high').length.toString()}
+          change="+0"
           trend="up"
           icon={AlertTriangle}
           color="red"
@@ -164,7 +263,12 @@ export function PredictiveAnalysis() {
       {/* Active Predictions */}
       <DashboardCard title="Active Predictions" icon={AlertTriangle}>
         <div className="space-y-4">
-          {mockPredictions.map((prediction) => (
+          {predictions.length === 0 ? (
+            <div className="text-center text-gray-500 py-8">
+              No active predictions. System is operating normally.
+            </div>
+          ) : (
+            predictions.map((prediction) => (
             <div
               key={prediction.id}
               className={`p-4 rounded-lg border cursor-pointer transition-colors
@@ -229,7 +333,7 @@ export function PredictiveAnalysis() {
                 </div>
               )}
             </div>
-          ))}
+          )))}
         </div>
       </DashboardCard>
     </div>

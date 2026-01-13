@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import { AlertTriangle, Clock, User, Shield } from 'lucide-react'
-import type { Incident } from '@/types/incident'
+import { useQuery } from '@tanstack/react-query'
+import { incidentService, type Incident } from '@/services/incident-service'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface IncidentListProps {
   filters: {
@@ -20,35 +22,40 @@ export function IncidentList({
   onSelectIncident, 
   selectedIncidentId 
 }: IncidentListProps) {
-  // Mock data - replace with API call
-  const incidents: Incident[] = [
-    {
-      id: '1',
-      title: 'Ransomware Attack Attempt',
-      description: 'Multiple ransomware indicators detected',
-      status: 'investigating',
-      priority: 'critical',
-      category: 'security',
-      assignee: 'Sarah Chen',
-      reporter: 'System',
-      createdAt: '2024-03-15T10:30:00Z',
-      updatedAt: '2024-03-15T10:35:00Z',
-      timeline: [],
-      affectedSystems: ['WS-001', 'WS-002'],
-      tags: ['ransomware', 'malware'],
-      metrics: {
-        mttd: 2.5,
-        mtta: 5
-      }
-    }
-    // Add more mock incidents
-  ]
+  const { data, isLoading } = useQuery({
+    queryKey: ['incidents', filters],
+    queryFn: () => incidentService.getIncidents({
+      status: filters.status,
+      priority: filters.priority,
+      category: filters.category,
+      assignee: filters.assignee,
+      limit: 100
+    }),
+    refetchInterval: 30000,
+  });
+
+  const incidents = data?.items ?? []
 
   const priorityColors = {
     critical: 'text-red-600 bg-red-50',
     high: 'text-orange-600 bg-orange-50',
     medium: 'text-yellow-600 bg-yellow-50',
     low: 'text-blue-600 bg-blue-50'
+  }
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium">Active Incidents</h3>
+        </div>
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -60,8 +67,13 @@ export function IncidentList({
         </div>
       </div>
 
-      <div className="space-y-2">
-        {incidents.map((incident) => (
+      {incidents.length === 0 ? (
+        <div className="text-center text-gray-500 py-8">
+          No incidents found
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {incidents.map((incident) => (
           <div
             key={incident.id}
             className={`
@@ -111,7 +123,8 @@ export function IncidentList({
             </div>
           </div>
         ))}
-      </div>
+        </div>
+      )}
     </div>
   )
 } 

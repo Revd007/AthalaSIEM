@@ -1,10 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { DashboardCard } from '@/components/ui/DashboardCard'
 import { Activity, AlertTriangle, Brain, LineChart, Settings, RefreshCw } from 'lucide-react'
 import { LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts'
 import { StatsCard } from '@/components/ui/StatsCard'
+import { useQuery } from '@tanstack/react-query'
+import { useAlerts } from '@/services/alert-service'
+import { logService } from '@/services/log-service'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface AnomalyScore {
   timestamp: string
@@ -13,52 +17,122 @@ interface AnomalyScore {
   category: string
 }
 
-const mockTimeSeriesData = Array.from({ length: 24 }, (_, i) => ({
-  timestamp: new Date(Date.now() - i * 3600000).toISOString(),
-  score: Math.random() * 100,
-  threshold: 75,
-  category: Math.random() > 0.8 ? 'anomaly' : 'normal'
-})).reverse()
-
-const mockAnomalies = [
-  {
-    id: '1',
-    type: 'Network',
-    description: 'Unusual outbound data transfer pattern detected',
-    severity: 'high',
-    timestamp: new Date().toISOString(),
-    score: 89,
-    details: {
-      source_ip: '192.168.1.100',
-      destination: 'unknown-domain.com',
-      data_volume: '1.2GB'
-    }
-  },
-  {
-    id: '2',
-    type: 'Authentication',
-    description: 'Multiple failed login attempts from new location',
-    severity: 'medium',
-    timestamp: new Date(Date.now() - 1000000).toISOString(),
-    score: 76,
-    details: {
-      username: 'admin',
-      location: 'Unknown',
-      attempts: 5
-    }
-  }
-]
-
 export function AnomalyDetection() {
   const [selectedTimeRange, setSelectedTimeRange] = useState('24h')
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [selectedAnomaly, setSelectedAnomaly] = useState<any>(null)
 
+  // Calculate time range
+  const getTimeRange = () => {
+    const end = new Date();
+    const start = new Date();
+    switch (selectedTimeRange) {
+      case '1h': start.setHours(start.getHours() - 1); break;
+      case '24h': start.setHours(start.getHours() - 24); break;
+      case '7d': start.setDate(start.getDate() - 7); break;
+      case '30d': start.setDate(start.getDate() - 30); break;
+    }
+    return { start, end };
+  };
+
+  const { start, end } = getTimeRange();
+
+  // Fetch alerts as anomalies
+  const { data: alertsData, isLoading: alertsLoading, refetch: refetchAlerts } = useAlerts({
+    limit: 100,
+    sortField: 'Timestamp',
+    sortDirection: 'desc'
+  });
+
+  // Fetch logs for anomaly scoring
+  const { data: logsData, isLoading: logsLoading } = useQuery({
+    queryKey: ['anomaly-logs', selectedTimeRange],
+    queryFn: async () => {
+      return await logService.getLogs({
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        limit: 1000
+      });
+    },
+    refetchInterval: 30000,
+  });
+
   const handleRefresh = async () => {
     setIsRefreshing(true)
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    await refetchAlerts()
     setIsRefreshing(false)
   }
+
+  // Convert high-severity alerts to anomalies
+  const anomalies = useMemo(() => {
+    if (!alertsData?.items) return [];
+    
+    return alertsData.items
+      .filter(a => a.severity?.toLowerCase() === 'high' || a.severity?.toLowerCase() === 'critical')
+      .slice(0, 10)
+      .map((alert, index) => ({
+        id: alert.id,
+        type: alert.source || 'Security',
+        description: alert.message || alert.title || 'Anomaly detected',
+        severity: (alert.severity?.toLowerCase() || 'medium') as 'high' | 'medium',
+        timestamp: alert.timestamp || new Date().toISOString(),
+        score: alert.severity?.toLowerCase() === 'critical' ? 95 : 75,
+        details: {
+          alert_id: alert.id,
+          source: alert.source,
+          agent: alert.agentName || 'Unknown',
+          ...alert.details
+        }
+      }));
+  }, [alertsData]);
+
+  // Generate time series data from logs
+  const timeSeriesData = useMemo(() => {
+    if (!logsData?.items) {
+      return Array.from({ length: 24 }, (_, i) => ({
+        timestamp: new Date(Date.now() - (23 - i) * 3600000).toISOString(),
+        score: 0,
+        threshold: 75,
+        category: 'normal'
+      }));
+    }
+
+    const hourlyData: Record<string, { count: number; highSeverity: number }> = {};
+    
+    logsData.items.forEach(log => {
+      if (log.timestamp) {
+        const date = new Date(log.timestamp);
+        const hourKey = date.toISOString().substring(0, 13) + ':00:00';
+        if (!hourlyData[hourKey]) {
+          hourlyData[hourKey] = { count: 0, highSeverity: 0 };
+        }
+        hourlyData[hourKey].count++;
+        if (log.severity === 'High' || log.severity === 'Critical') {
+          hourlyData[hourKey].highSeverity++;
+        }
+      }
+    });
+
+    // Calculate anomaly scores based on log volume and severity
+    return Object.entries(hourlyData)
+      .map(([timestamp, data]) => {
+        const score = Math.min(100, (data.highSeverity * 20) + (data.count > 50 ? 30 : data.count * 0.6));
+        return {
+          timestamp,
+          score: Math.round(score),
+          threshold: 75,
+          category: score > 75 ? 'anomaly' : 'normal'
+        };
+      })
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      .slice(-24); // Last 24 hours
+  }, [logsData]);
+
+  const isLoading = alertsLoading || logsLoading;
+  const anomalyScore = anomalies.length > 0 
+    ? Math.round(anomalies.reduce((sum, a) => sum + a.score, 0) / anomalies.length)
+    : 0;
+  const detectedToday = anomalies.length;
 
   return (
     <div className="space-y-6">
@@ -66,32 +140,32 @@ export function AnomalyDetection() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatsCard
           title="Anomaly Score"
-          value="78.5"
-          change="+12.3"
+          value={anomalyScore.toString()}
+          change="+0"
           trend="up"
           icon={Activity}
           color="blue"
         />
         <StatsCard
           title="Detected Today"
-          value="24"
-          change="+5"
+          value={detectedToday.toString()}
+          change="+0"
           trend="up"
           icon={AlertTriangle}
           color="red"
         />
         <StatsCard
-          title="False Positives"
-          value="3.2%"
-          change="-0.5%"
-          trend="down"
+          title="High Severity Alerts"
+          value={(alertsData?.items?.filter(a => a.severity?.toLowerCase() === 'high' || a.severity?.toLowerCase() === 'critical').length || 0).toString()}
+          change="+0"
+          trend="up"
           icon={Brain}
-          color="green"
+          color="red"
         />
         <StatsCard
-          title="Model Accuracy"
-          value="96.8%"
-          change="+0.3%"
+          title="Total Logs Analyzed"
+          value={(logsData?.totalCount || 0).toString()}
+          change="+0"
           trend="up"
           icon={LineChart}
           color="blue"
@@ -125,8 +199,11 @@ export function AnomalyDetection() {
 
               {/* Chart */}
               <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={mockTimeSeriesData}>
+                {isLoading ? (
+                  <Skeleton className="h-full w-full" />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={timeSeriesData}>
                     <defs>
                       <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
@@ -171,6 +248,7 @@ export function AnomalyDetection() {
                     />
                   </AreaChart>
                 </ResponsiveContainer>
+                )}
               </div>
             </div>
           </DashboardCard>
@@ -180,7 +258,18 @@ export function AnomalyDetection() {
         <div className="lg:col-span-1">
           <DashboardCard title="Detected Anomalies" icon={AlertTriangle}>
             <div className="space-y-4">
-              {mockAnomalies.map((anomaly) => (
+              {isLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                  ))}
+                </div>
+              ) : anomalies.length === 0 ? (
+                <div className="text-center text-gray-500 py-8">
+                  No anomalies detected
+                </div>
+              ) : (
+                anomalies.map((anomaly) => (
                 <div
                   key={anomaly.id}
                   onClick={() => setSelectedAnomaly(anomaly)}
@@ -221,7 +310,7 @@ export function AnomalyDetection() {
                     {new Date(anomaly.timestamp).toLocaleString()}
                   </div>
                 </div>
-              ))}
+              )))}
             </div>
           </DashboardCard>
         </div>

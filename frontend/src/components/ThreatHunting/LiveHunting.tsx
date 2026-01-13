@@ -1,10 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { DashboardCard } from '@/components/ui/DashboardCard'
 import { Search, Play, Save, Filter, Clock, AlertTriangle, Activity, Database } from 'lucide-react'
 import { Editor } from '@monaco-editor/react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { useQuery } from '@tanstack/react-query'
+import { logService } from '@/services/log-service'
+import { useAlerts } from '@/services/alert-service'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface QueryResult {
   timestamp: string
@@ -15,46 +19,119 @@ interface QueryResult {
   details: Record<string, any>
 }
 
-const mockTimelineData = Array.from({ length: 20 }, (_, i) => ({
-  time: new Date(Date.now() - i * 60000).toISOString(),
-  events: Math.floor(Math.random() * 100),
-  matches: Math.floor(Math.random() * 20)
-})).reverse()
-
-const mockResults: QueryResult[] = [
-  {
-    timestamp: new Date().toISOString(),
-    source: 'windows-dc1',
-    event_type: 'process_creation',
-    severity: 'high',
-    message: 'Suspicious PowerShell execution detected',
-    details: {
-      process_name: 'powershell.exe',
-      command_line: 'powershell.exe -enc YWxlcnQoImhlbGxvIik=',
-      user: 'SYSTEM',
-      pid: 4528
-    }
-  },
-  {
-    timestamp: new Date(Date.now() - 5000).toISOString(),
-    source: 'linux-web1',
-    event_type: 'authentication',
-    severity: 'critical',
-    message: 'Multiple failed login attempts',
-    details: {
-      user: 'admin',
-      source_ip: '192.168.1.100',
-      attempts: 5
-    }
-  }
-]
-
 export function LiveHunting() {
-  const [query, setQuery] = useState('source=* | search severity=high')
+  const [query, setQuery] = useState('severity=high OR severity=critical')
   const [isRunning, setIsRunning] = useState(false)
-  const [results, setResults] = useState<QueryResult[]>(mockResults)
   const [selectedResult, setSelectedResult] = useState<QueryResult | null>(null)
   const [timeRange, setTimeRange] = useState('15m')
+
+  // Calculate time range
+  const getTimeRange = () => {
+    const end = new Date();
+    const start = new Date();
+    switch (timeRange) {
+      case '15m': start.setMinutes(start.getMinutes() - 15); break;
+      case '1h': start.setHours(start.getHours() - 1); break;
+      case '4h': start.setHours(start.getHours() - 4); break;
+      case '24h': start.setHours(start.getHours() - 24); break;
+    }
+    return { start, end };
+  };
+
+  const { start, end } = getTimeRange();
+
+  // Fetch logs based on query
+  const { data: logsData, isLoading: logsLoading, refetch: refetchLogs } = useQuery({
+    queryKey: ['live-hunting', query, timeRange],
+    queryFn: async () => {
+      // Simple query parsing - in production, use proper query parser
+      let severity: string | undefined;
+      if (query.toLowerCase().includes('severity=high') || query.toLowerCase().includes('severity=critical')) {
+        severity = query.toLowerCase().includes('critical') ? 'critical' : 'high';
+      }
+      
+      return await logService.getLogs({
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        severity,
+        limit: 100,
+        sortField: 'timestamp',
+        sortDirection: 'desc'
+      });
+    },
+    enabled: !isRunning,
+    refetchInterval: 30000,
+  });
+
+  // Fetch alerts for high severity events
+  const { data: alertsData } = useAlerts({
+    limit: 50,
+    severity: 'high',
+    sortField: 'Timestamp',
+    sortDirection: 'desc'
+  });
+
+  const handleRunQuery = async () => {
+    setIsRunning(true)
+    await refetchLogs()
+    setIsRunning(false)
+  }
+
+  // Convert logs to query results
+  const results = useMemo(() => {
+    if (!logsData?.items) return [];
+    
+    return logsData.items.map((log): QueryResult => ({
+      timestamp: log.timestamp,
+      source: log.source || 'Unknown',
+      event_type: log.category || log.level || 'log',
+      severity: (log.severity?.toLowerCase() || 'low') as 'critical' | 'high' | 'medium' | 'low',
+      message: log.message || 'No message',
+      details: {
+        agentId: log.agentId,
+        processName: log.processName,
+        ipAddress: log.ipAddress,
+        username: log.username,
+        eventId: log.eventId,
+        ...log
+      }
+    }));
+  }, [logsData]);
+
+  // Generate timeline data from logs
+  const timelineData = useMemo(() => {
+    if (!logsData?.items) {
+      return Array.from({ length: 20 }, (_, i) => ({
+        time: new Date(Date.now() - i * 60000).toISOString(),
+        events: 0,
+        matches: 0
+      })).reverse();
+    }
+
+    const minuteData: Record<string, { events: number; matches: number }> = {};
+    
+    logsData.items.forEach(log => {
+      if (log.timestamp) {
+        const date = new Date(log.timestamp);
+        const minuteKey = date.toISOString().substring(0, 16) + ':00';
+        if (!minuteData[minuteKey]) {
+          minuteData[minuteKey] = { events: 0, matches: 0 };
+        }
+        minuteData[minuteKey].events++;
+        if (log.severity === 'High' || log.severity === 'Critical') {
+          minuteData[minuteKey].matches++;
+        }
+      }
+    });
+
+    return Object.entries(minuteData)
+      .map(([time, data]) => ({ time, ...data }))
+      .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+      .slice(-20);
+  }, [logsData]);
+
+  const totalEvents = logsData?.totalCount || 0;
+  const matches = results.filter(r => r.severity === 'high' || r.severity === 'critical').length;
 
   const handleRunQuery = async () => {
     setIsRunning(true)
@@ -69,31 +146,31 @@ export function LiveHunting() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatsCard
           title="Events Processed"
-          value="1.2M"
-          change="+24.5k"
+          value={totalEvents > 1000 ? `${(totalEvents / 1000).toFixed(1)}K` : totalEvents.toString()}
+          change="+0"
           trend="up"
           icon={Activity}
         />
         <StatsCard
           title="Query Time"
-          value="1.8s"
-          change="-0.3s"
+          value={logsLoading ? '...' : '<1s'}
+          change="+0"
           trend="down"
           icon={Clock}
           color="green"
         />
         <StatsCard
           title="Matches Found"
-          value="247"
-          change="+18"
+          value={matches.toString()}
+          change="+0"
           trend="up"
           icon={AlertTriangle}
           color="red"
         />
         <StatsCard
           title="Data Sources"
-          value="15"
-          change="+2"
+          value={(new Set(results.map(r => r.source)).size || 1).toString()}
+          change="+0"
           trend="up"
           icon={Database}
           color="blue"
@@ -155,8 +232,11 @@ export function LiveHunting() {
 
               {/* Results Timeline */}
               <div className="h-[200px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={mockTimelineData}>
+                {logsLoading ? (
+                  <Skeleton className="h-full w-full" />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={timelineData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="time"
@@ -180,6 +260,7 @@ export function LiveHunting() {
                     />
                   </LineChart>
                 </ResponsiveContainer>
+                )}
               </div>
             </div>
           </DashboardCard>
@@ -205,8 +286,19 @@ export function LiveHunting() {
               </div>
 
               {/* Results List */}
-              <div className="space-y-2">
-                {results.map((result, index) => (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {logsLoading ? (
+                  <div className="space-y-2">
+                    {[1, 2, 3].map((i) => (
+                      <Skeleton key={i} className="h-20 w-full" />
+                    ))}
+                  </div>
+                ) : results.length === 0 ? (
+                  <div className="text-center text-gray-500 py-4">
+                    No results found
+                  </div>
+                ) : (
+                  results.map((result, index) => (
                   <div
                     key={index}
                     onClick={() => setSelectedResult(result)}
@@ -240,7 +332,8 @@ export function LiveHunting() {
                       <span>{new Date(result.timestamp).toLocaleString()}</span>
                     </div>
                   </div>
-                ))}
+                  ))
+                )}
               </div>
 
               {/* Selected Result Details */}

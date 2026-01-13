@@ -3,6 +3,9 @@
 import { Card } from '@/components/ui/card'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { ChevronRight, CheckCircle, AlertTriangle, XCircle } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { complianceService, type ComplianceControl } from '@/services/compliance-service'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { ComplianceFramework } from '@/types/compliance'
 
 interface ComplianceControlsListProps {
@@ -11,43 +14,6 @@ interface ComplianceControlsListProps {
 
 type ControlStatus = 'compliant' | 'non-compliant' | 'in-progress'
 
-interface Control {
-  id: string
-  title: string
-  status: ControlStatus
-  lastAssessed: string
-  nextAssessment: string
-  evidence: string[]
-  assignee: string
-}
-
-const mockControls = [
-  {
-    section: 'A.5 Information Security Policies',
-    controls: [
-      {
-        id: 'A.5.1.1',
-        title: 'Policies for information security',
-        status: 'compliant',
-        lastAssessed: '2024-02-15',
-        nextAssessment: '2024-05-15',
-        evidence: ['policy.pdf', 'review.doc'],
-        assignee: 'John Doe'
-      },
-      {
-        id: 'A.5.1.2',
-        title: 'Review of the policies for information security',
-        status: 'non-compliant',
-        lastAssessed: '2024-02-15',
-        nextAssessment: '2024-05-15',
-        evidence: [],
-        assignee: 'Jane Smith'
-      }
-    ]
-  },
-  // Add more sections...
-]
-
 const statusConfig: Record<ControlStatus, { icon: any; color: string; bg: string }> = {
   compliant: { icon: CheckCircle, color: 'text-green-500', bg: 'bg-green-50' },
   'non-compliant': { icon: XCircle, color: 'text-red-500', bg: 'bg-red-50' },
@@ -55,9 +21,43 @@ const statusConfig: Record<ControlStatus, { icon: any; color: string; bg: string
 }
 
 export function ComplianceControlsList({ framework }: ComplianceControlsListProps) {
+  const { data: controls, isLoading } = useQuery({
+    queryKey: ['compliance-controls', framework],
+    queryFn: () => complianceService.getControls(framework),
+    refetchInterval: 300000, // 5 minutes
+  });
+
+  // Group controls by section
+  const controlsBySection = controls?.reduce((acc, control) => {
+    const section = control.section || 'Other';
+    if (!acc[section]) {
+      acc[section] = [];
+    }
+    acc[section].push(control);
+    return acc;
+  }, {} as Record<string, ComplianceControl[]>) ?? {};
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-32 w-full" />
+        ))}
+      </div>
+    );
+  }
+
+  if (Object.keys(controlsBySection).length === 0) {
+    return (
+      <div className="text-center text-gray-500 py-8">
+        No compliance controls configured for {framework}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
-      {mockControls.map((section) => (
+      {Object.entries(controlsBySection).map(([section, sectionControls]) => (
         <Collapsible key={section.section}>
           <Card>
             <CollapsibleTrigger className="w-full">
@@ -68,7 +68,7 @@ export function ComplianceControlsList({ framework }: ComplianceControlsListProp
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div className="p-4 pt-0 space-y-4">
-                {section.controls.map((control) => {
+                {sectionControls.map((control) => {
                   const StatusIcon = statusConfig[control.status].icon
                   return (
                     <div
@@ -92,8 +92,8 @@ export function ComplianceControlsList({ framework }: ComplianceControlsListProp
                             {control.title}
                           </p>
                           <div className="flex items-center space-x-4 text-sm text-gray-500">
-                            <span>Assignee: {control.assignee}</span>
-                            <span>Last Assessed: {new Date(control.lastAssessed).toLocaleDateString()}</span>
+                            <span>Assignee: {control.assignee || 'Unassigned'}</span>
+                            <span>Last Assessed: {control.lastAssessed ? new Date(control.lastAssessed).toLocaleDateString() : 'Never'}</span>
                           </div>
                         </div>
                       </div>
