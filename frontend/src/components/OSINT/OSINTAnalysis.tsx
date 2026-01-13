@@ -441,27 +441,27 @@ function DomainIntelligence() {
 function DarkWebMonitor() {
   const [searchTerm, setSearchTerm] = useState('')
   const [monitoringResults, setMonitoringResults] = useState<any[]>([])
+  const [isSearching, setIsSearching] = useState(false)
 
-  const mockResults = [
-    {
-      id: '1',
-      type: 'credentials',
-      source: 'Dark Web Forum',
-      severity: 'critical',
-      description: 'Employee credentials found in data breach',
-      dateFound: new Date().toISOString(),
-      status: 'new'
-    },
-    {
-      id: '2',
-      type: 'source_code',
-      source: 'Paste Site',
-      severity: 'high',
-      description: 'Source code fragments exposed',
-      dateFound: new Date().toISOString(),
-      status: 'investigating'
-    }
-  ]
+  const handleSearch = async () => {
+    if (!searchTerm) return;
+    setIsSearching(true);
+    // Simulate search - in production, this would call a dark web monitoring API
+    setTimeout(() => {
+      setMonitoringResults([
+        {
+          id: Date.now().toString(),
+          type: 'search_result',
+          source: 'Dark Web Search',
+          severity: 'medium',
+          description: `Search results for "${searchTerm}"`,
+          dateFound: new Date().toISOString(),
+          status: 'new'
+        }
+      ]);
+      setIsSearching(false);
+    }, 1500);
+  };
 
   return (
     <div className="space-y-6">
@@ -471,52 +471,62 @@ function DarkWebMonitor() {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
-        <Button>Monitor</Button>
+        <Button onClick={handleSearch} disabled={isSearching || !searchTerm}>
+          {isSearching ? 'Searching...' : 'Monitor'}
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="p-4 border rounded-lg">
           <h3 className="text-sm font-medium mb-2">Active Monitors</h3>
-          <div className="text-2xl font-bold text-blue-500">5</div>
+          <div className="text-2xl font-bold text-blue-500">{monitoringResults.length}</div>
         </div>
         <div className="p-4 border rounded-lg">
           <h3 className="text-sm font-medium mb-2">New Findings</h3>
-          <div className="text-2xl font-bold text-red-500">3</div>
+          <div className="text-2xl font-bold text-red-500">
+            {monitoringResults.filter(r => r.status === 'new').length}
+          </div>
         </div>
         <div className="p-4 border rounded-lg">
           <h3 className="text-sm font-medium mb-2">Total Mentions</h3>
-          <div className="text-2xl font-bold text-orange-500">12</div>
+          <div className="text-2xl font-bold text-orange-500">{monitoringResults.length}</div>
         </div>
       </div>
 
       <DashboardCard title="Dark Web Findings" icon={Eye}>
         <div className="space-y-4">
-          {mockResults.map((result) => (
-            <div key={result.id} className="p-4 border rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                {result.severity === 'critical' ? (
-                  <AlertTriangle className="w-5 h-5 text-red-500" />
-                ) : (
-                  <Shield className="w-5 h-5 text-orange-500" />
-                )}
-                <span className="font-medium">{result.type}</span>
-                <span className={`px-2 py-1 text-xs rounded-full ${
-                  result.severity === 'critical'
-                    ? 'bg-red-100 text-red-800'
-                    : 'bg-orange-100 text-orange-800'
-                }`}>
-                  {result.severity}
-                </span>
-              </div>
-              <p className="text-sm text-gray-500 mb-2">{result.description}</p>
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-500">
-                  Found on: {new Date(result.dateFound).toLocaleDateString()}
-                </span>
-                <span className="text-blue-500">{result.source}</span>
-              </div>
+          {monitoringResults.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              No findings yet. Enter a search term and click Monitor to begin.
             </div>
-          ))}
+          ) : (
+            monitoringResults.map((result) => (
+              <div key={result.id} className="p-4 border rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  {result.severity === 'critical' ? (
+                    <AlertTriangle className="w-5 h-5 text-red-500" />
+                  ) : (
+                    <Shield className="w-5 h-5 text-orange-500" />
+                  )}
+                  <span className="font-medium">{result.type}</span>
+                  <span className={`px-2 py-1 text-xs rounded-full ${
+                    result.severity === 'critical'
+                      ? 'bg-red-100 text-red-800'
+                      : 'bg-orange-100 text-orange-800'
+                  }`}>
+                    {result.severity}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500 mb-2">{result.description}</p>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-500">
+                    Found on: {new Date(result.dateFound).toLocaleDateString()}
+                  </span>
+                  <span className="text-blue-500">{result.source}</span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </DashboardCard>
     </div>
@@ -525,31 +535,37 @@ function DarkWebMonitor() {
 
 function SocialAnalysis() {
   const [target, setTarget] = useState('')
-  const [socialData, setSocialData] = useState<any>(null)
+  const [socialData, setSocialData] = useState<{
+    platforms: { name: string; mentions: number; sentiment: number }[];
+    recentMentions: { id: string; platform: string; content: string; date: string; sentiment: string }[];
+  } | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
 
-  const mockSocialData = {
-    platforms: [
-      { name: 'Twitter', mentions: 145, sentiment: 0.6 },
-      { name: 'LinkedIn', mentions: 89, sentiment: 0.8 },
-      { name: 'Reddit', mentions: 234, sentiment: 0.4 }
-    ],
-    recentMentions: [
-      {
-        id: '1',
-        platform: 'Twitter',
-        content: 'Discussing security implications...',
-        date: new Date().toISOString(),
-        sentiment: 'positive'
-      },
-      {
-        id: '2',
-        platform: 'Reddit',
-        content: 'Potential vulnerability found...',
-        date: new Date().toISOString(),
-        sentiment: 'negative'
-      }
-    ]
-  }
+  const handleAnalyze = async () => {
+    if (!target) return;
+    setIsAnalyzing(true);
+    
+    // Simulate analysis - in production, this would call social media APIs
+    setTimeout(() => {
+      setSocialData({
+        platforms: [
+          { name: 'Twitter', mentions: Math.floor(Math.random() * 200), sentiment: Math.random() * 0.5 + 0.4 },
+          { name: 'LinkedIn', mentions: Math.floor(Math.random() * 100), sentiment: Math.random() * 0.5 + 0.4 },
+          { name: 'Reddit', mentions: Math.floor(Math.random() * 300), sentiment: Math.random() * 0.5 + 0.3 }
+        ],
+        recentMentions: [
+          {
+            id: '1',
+            platform: 'Analysis',
+            content: `Social media analysis for "${target}" completed`,
+            date: new Date().toISOString(),
+            sentiment: 'neutral'
+          }
+        ]
+      });
+      setIsAnalyzing(false);
+    }, 2000);
+  };
 
   return (
     <div className="space-y-6">
@@ -559,49 +575,61 @@ function SocialAnalysis() {
           value={target}
           onChange={(e) => setTarget(e.target.value)}
         />
-        <Button>Analyze</Button>
+        <Button onClick={handleAnalyze} disabled={isAnalyzing || !target}>
+          {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {mockSocialData.platforms.map((platform) => (
-          <div key={platform.name} className="p-4 border rounded-lg">
-            <h3 className="text-sm font-medium mb-2">{platform.name}</h3>
-            <div className="text-2xl font-bold text-blue-500">
-              {platform.mentions}
-            </div>
-            <div className="mt-2">
-              <div className="flex justify-between text-sm mb-1">
-                <span>Sentiment</span>
-                <span>{(platform.sentiment * 100).toFixed(0)}%</span>
+      {socialData ? (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {socialData.platforms.map((platform) => (
+              <div key={platform.name} className="p-4 border rounded-lg">
+                <h3 className="text-sm font-medium mb-2">{platform.name}</h3>
+                <div className="text-2xl font-bold text-blue-500">
+                  {platform.mentions}
+                </div>
+                <div className="mt-2">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Sentiment</span>
+                    <span>{(platform.sentiment * 100).toFixed(0)}%</span>
+                  </div>
+                  <Progress value={platform.sentiment * 100} className="h-2" />
+                </div>
               </div>
-              <Progress value={platform.sentiment * 100} className="h-2" />
-            </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      <DashboardCard title="Recent Social Mentions" icon={Users}>
-        <div className="space-y-4">
-          {mockSocialData.recentMentions.map((mention) => (
-            <div key={mention.id} className="p-4 border rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="font-medium">{mention.platform}</span>
-                <span className={`px-2 py-1 text-xs rounded-full ${
-                  mention.sentiment === 'positive'
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-red-100 text-red-800'
-                }`}>
-                  {mention.sentiment}
-                </span>
-              </div>
-              <p className="text-sm text-gray-500 mb-2">{mention.content}</p>
-              <span className="text-sm text-gray-400">
-                {new Date(mention.date).toLocaleString()}
-              </span>
+          <DashboardCard title="Recent Social Mentions" icon={Users}>
+            <div className="space-y-4">
+              {socialData.recentMentions.map((mention) => (
+                <div key={mention.id} className="p-4 border rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="font-medium">{mention.platform}</span>
+                    <span className={`px-2 py-1 text-xs rounded-full ${
+                      mention.sentiment === 'positive'
+                        ? 'bg-green-100 text-green-800'
+                        : mention.sentiment === 'negative'
+                        ? 'bg-red-100 text-red-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {mention.sentiment}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-500 mb-2">{mention.content}</p>
+                  <span className="text-sm text-gray-400">
+                    {new Date(mention.date).toLocaleString()}
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
+          </DashboardCard>
+        </>
+      ) : (
+        <div className="text-center py-8 text-gray-500">
+          Enter a company or person name and click Analyze to begin social media analysis.
         </div>
-      </DashboardCard>
+      )}
     </div>
   )
 }
@@ -609,29 +637,23 @@ function SocialAnalysis() {
 function EmailIntelligenceAnalyzer() {
   const [email, setEmail] = useState('')
   const [results, setResults] = useState<EmailIntelligence | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
 
-  const handleAnalyze = () => {
-    // Simulasi analisis email
-    const mockResults: EmailIntelligence = {
-      email,
-      breaches: [
-        {
-          source: 'CompanyX Database',
-          date: '2023-06-15',
-          exposedData: ['password', 'phone', 'address']
-        }
-      ],
-      socialProfiles: [
-        {
-          platform: 'LinkedIn',
-          username: 'john.doe',
-          url: 'https://linkedin.com/in/john.doe'
-        }
-      ],
-      disposableCheck: false,
-      reputationScore: 85
-    }
-    setResults(mockResults)
+  const handleAnalyze = async () => {
+    if (!email) return;
+    setIsAnalyzing(true);
+    
+    // Simulate email intelligence analysis - in production, this would call breach detection APIs
+    setTimeout(() => {
+      setResults({
+        email,
+        breaches: [], // No breaches found by default
+        socialProfiles: [],
+        disposableCheck: email.includes('temp') || email.includes('disposable'),
+        reputationScore: Math.floor(Math.random() * 30) + 70 // 70-100
+      });
+      setIsAnalyzing(false);
+    }, 1500);
   }
 
   return (
@@ -642,22 +664,66 @@ function EmailIntelligenceAnalyzer() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        <Button onClick={handleAnalyze}>Analyze Email</Button>
+        <Button onClick={handleAnalyze} disabled={isAnalyzing || !email}>
+          {isAnalyzing ? 'Analyzing...' : 'Analyze Email'}
+        </Button>
       </div>
 
-      {results && (
+      {results ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <DashboardCard title="Breach Information" icon={ShieldAlert}>
-            {/* Implementasi detail breach */}
-          </DashboardCard>
-
-          <DashboardCard title="Social Profiles" icon={Users}>
-            {/* Implementasi social profiles */}
+            <div className="space-y-2">
+              {results.breaches.length === 0 ? (
+                <p className="text-sm text-green-600">No breaches found for this email</p>
+              ) : (
+                results.breaches.map((breach, idx) => (
+                  <div key={idx} className="p-2 bg-red-50 rounded">
+                    <p className="font-medium">{breach.source}</p>
+                    <p className="text-sm text-gray-500">Date: {breach.date}</p>
+                    <p className="text-sm text-gray-500">Exposed: {breach.exposedData.join(', ')}</p>
+                  </div>
+                ))
+              )}
+            </div>
           </DashboardCard>
 
           <DashboardCard title="Email Analysis" icon={Mail}>
-            {/* Implementasi analisis email */}
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm">Email</span>
+                <span className="text-sm font-medium">{results.email}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm">Disposable</span>
+                <span className={`text-sm font-medium ${results.disposableCheck ? 'text-red-500' : 'text-green-500'}`}>
+                  {results.disposableCheck ? 'Yes' : 'No'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm">Reputation Score</span>
+                <span className="text-sm font-medium">{results.reputationScore}/100</span>
+              </div>
+            </div>
           </DashboardCard>
+
+          <DashboardCard title="Social Profiles" icon={Users}>
+            <div className="space-y-2">
+              {results.socialProfiles.length === 0 ? (
+                <p className="text-sm text-gray-500">No social profiles found</p>
+              ) : (
+                results.socialProfiles.map((profile, idx) => (
+                  <div key={idx} className="flex justify-between">
+                    <span className="text-sm">{profile.platform}</span>
+                    <span className="text-sm text-blue-500">{profile.username}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </DashboardCard>
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-500">
+          Enter an email address and click Analyze to start email intelligence analysis.
         </div>
       )}
     </div>
@@ -667,6 +733,40 @@ function EmailIntelligenceAnalyzer() {
 function NetworkIntelligenceAnalyzer() {
   const [ip, setIp] = useState('')
   const [results, setResults] = useState<NetworkIntelligence | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+
+  const handleAnalyze = async () => {
+    if (!ip) return;
+    setIsAnalyzing(true);
+
+    // Simulate network analysis - in production, this would call network scanning APIs
+    setTimeout(() => {
+      const isPrivateIP = ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.');
+      
+      setResults({
+        ipAddress: ip,
+        isVPN: Math.random() > 0.7,
+        isTor: Math.random() > 0.9,
+        isProxy: Math.random() > 0.8,
+        location: {
+          latitude: 35.6895 + (Math.random() * 10 - 5),
+          longitude: 139.6917 + (Math.random() * 10 - 5),
+          city: isPrivateIP ? 'Private Network' : 'Tokyo',
+          country: isPrivateIP ? 'Internal' : 'Japan',
+          isp: isPrivateIP ? 'Internal' : 'Example ISP',
+          asn: 'AS15169',
+          organization: isPrivateIP ? 'Private' : 'Example Org'
+        },
+        threatLevel: Math.random() > 0.7 ? 'high' : Math.random() > 0.5 ? 'medium' : 'low',
+        portScan: [
+          { port: 80, status: 'open' as const, service: 'HTTP' },
+          { port: 443, status: 'open' as const, service: 'HTTPS' },
+          { port: 22, status: 'closed' as const, service: 'SSH' }
+        ]
+      });
+      setIsAnalyzing(false);
+    }, 2000);
+  }
 
   return (
     <div className="space-y-6">
@@ -676,22 +776,81 @@ function NetworkIntelligenceAnalyzer() {
           value={ip}
           onChange={(e) => setIp(e.target.value)}
         />
-        <Button>Analyze Network</Button>
+        <Button onClick={handleAnalyze} disabled={isAnalyzing || !ip}>
+          {isAnalyzing ? 'Analyzing...' : 'Analyze Network'}
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <DashboardCard title="Geolocation" icon={MapPin}>
-          {/* Implementasi geolocation */}
-        </DashboardCard>
+      {results ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <DashboardCard title="Geolocation" icon={MapPin}>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm">City</span>
+                <span className="text-sm font-medium">{results.location?.city || 'Unknown'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm">Country</span>
+                <span className="text-sm font-medium">{results.location?.country || 'Unknown'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm">ISP</span>
+                <span className="text-sm font-medium">{results.location?.isp || 'Unknown'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm">Organization</span>
+                <span className="text-sm font-medium">{results.location?.organization || 'Unknown'}</span>
+              </div>
+            </div>
+          </DashboardCard>
 
-        <DashboardCard title="Port Scan" icon={Radio}>
-          {/* Implementasi port scan */}
-        </DashboardCard>
+          <DashboardCard title="Port Scan" icon={Radio}>
+            <div className="space-y-2">
+              {results.portScan?.map((port, idx) => (
+                <div key={idx} className="flex justify-between items-center">
+                  <span className="text-sm">{port.service} (:{port.port})</span>
+                  <Badge variant={port.status === 'open' ? 'destructive' : 'secondary'}>
+                    {port.status}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </DashboardCard>
 
-        <DashboardCard title="Threat Intelligence" icon={ShieldAlert}>
-          {/* Implementasi threat intelligence */}
-        </DashboardCard>
-      </div>
+          <DashboardCard title="Threat Intelligence" icon={ShieldAlert}>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm">Threat Level</span>
+                <Badge variant={results.threatLevel === 'high' ? 'destructive' : results.threatLevel === 'medium' ? 'default' : 'secondary'}>
+                  {results.threatLevel || 'low'}
+                </Badge>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm">VPN Detected</span>
+                <Badge variant={results.isVPN ? 'destructive' : 'secondary'}>
+                  {results.isVPN ? 'Yes' : 'No'}
+                </Badge>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm">Tor Exit Node</span>
+                <Badge variant={results.isTor ? 'destructive' : 'secondary'}>
+                  {results.isTor ? 'Yes' : 'No'}
+                </Badge>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm">Proxy</span>
+                <Badge variant={results.isProxy ? 'destructive' : 'secondary'}>
+                  {results.isProxy ? 'Yes' : 'No'}
+                </Badge>
+              </div>
+            </div>
+          </DashboardCard>
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-500">
+          Enter an IP address and click Analyze to start network intelligence analysis.
+        </div>
+      )}
     </div>
   )
 }
@@ -699,6 +858,26 @@ function NetworkIntelligenceAnalyzer() {
 function CryptoTracker() {
   const [address, setAddress] = useState('')
   const [results, setResults] = useState<CryptoIntelligence | null>(null)
+  const [isTracking, setIsTracking] = useState(false)
+
+  const handleTrack = async () => {
+    if (!address) return;
+    setIsTracking(true);
+
+    // Simulate crypto tracking - in production, this would call blockchain APIs
+    setTimeout(() => {
+      setResults({
+        address,
+        blockchain: address.startsWith('0x') ? 'Ethereum' : address.startsWith('bc1') || address.startsWith('1') || address.startsWith('3') ? 'Bitcoin' : 'Unknown',
+        balance: Math.random() * 10,
+        transactionCount: Math.floor(Math.random() * 100),
+        riskScore: Math.floor(Math.random() * 100),
+        associatedAddresses: [],
+        tags: []
+      });
+      setIsTracking(false);
+    }, 1500);
+  }
 
   return (
     <div className="space-y-6">
@@ -708,25 +887,77 @@ function CryptoTracker() {
           value={address}
           onChange={(e) => setAddress(e.target.value)}
         />
-        <Button>Track Address</Button>
+        <Button onClick={handleTrack} disabled={isTracking || !address}>
+          {isTracking ? 'Tracking...' : 'Track Address'}
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <DashboardCard title="Transaction History" icon={Hash}>
-          {/* Implementasi transaction history */}
-        </DashboardCard>
+      {results ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <DashboardCard title="Transaction History" icon={Hash}>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm">Blockchain</span>
+                <span className="text-sm font-medium">{results.blockchain}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm">Balance</span>
+                <span className="text-sm font-medium">{results.balance?.toFixed(4) || '0'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm">Transactions</span>
+                <span className="text-sm font-medium">{results.transactionCount || 0}</span>
+              </div>
+            </div>
+          </DashboardCard>
 
-        <DashboardCard title="Risk Analysis" icon={ShieldAlert}>
-          {/* Implementasi risk analysis */}
-        </DashboardCard>
-      </div>
+          <DashboardCard title="Risk Analysis" icon={ShieldAlert}>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm">Risk Score</span>
+                <Badge variant={(results.riskScore || 0) > 70 ? 'destructive' : (results.riskScore || 0) > 40 ? 'default' : 'secondary'}>
+                  {results.riskScore || 0}/100
+                </Badge>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm">Associated Addresses</span>
+                <span className="text-sm font-medium">{results.associatedAddresses?.length || 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm">Tags</span>
+                <span className="text-sm font-medium">{results.tags?.length || 0} tags</span>
+              </div>
+            </div>
+          </DashboardCard>
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-500">
+          Enter a crypto address and click Track to analyze blockchain activity.
+        </div>
+      )}
     </div>
   )
 }
 
 function CodeLeakAnalyzer() {
   const [query, setQuery] = useState('')
+  const [results, setResults] = useState<{ repos: Array<{ name: string; url: string; severity: string }>; pastes: Array<{ title: string; date: string; severity: string }> } | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
   
+  const handleSearch = async () => {
+    if (!query) return;
+    setIsSearching(true);
+
+    // Simulate code leak search - in production, this would call code search APIs
+    setTimeout(() => {
+      setResults({
+        repos: [], // No leaks found by default
+        pastes: []
+      });
+      setIsSearching(false);
+    }, 1500);
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex gap-2">
@@ -735,18 +966,48 @@ function CodeLeakAnalyzer() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <Button>Search Leaks</Button>
+        <Button onClick={handleSearch} disabled={isSearching || !query}>
+          {isSearching ? 'Searching...' : 'Search Leaks'}
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
-        <DashboardCard title="Code Repositories" icon={GitBranch}>
-          {/* Implementasi code leak findings */}
-        </DashboardCard>
+      {results ? (
+        <div className="grid grid-cols-1 gap-4">
+          <DashboardCard title="Code Repositories" icon={GitBranch}>
+            {results.repos.length === 0 ? (
+              <p className="text-sm text-green-600">No code leaks found in repositories</p>
+            ) : (
+              <div className="space-y-2">
+                {results.repos.map((repo, idx) => (
+                  <div key={idx} className="flex justify-between items-center p-2 bg-red-50 rounded">
+                    <span className="text-sm">{repo.name}</span>
+                    <Badge variant="destructive">{repo.severity}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </DashboardCard>
 
-        <DashboardCard title="Paste Sites" icon={FileText}>
-          {/* Implementasi paste site findings */}
-        </DashboardCard>
-      </div>
+          <DashboardCard title="Paste Sites" icon={FileText}>
+            {results.pastes.length === 0 ? (
+              <p className="text-sm text-green-600">No code leaks found on paste sites</p>
+            ) : (
+              <div className="space-y-2">
+                {results.pastes.map((paste, idx) => (
+                  <div key={idx} className="flex justify-between items-center p-2 bg-red-50 rounded">
+                    <span className="text-sm">{paste.title}</span>
+                    <Badge variant="destructive">{paste.severity}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </DashboardCard>
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-500">
+          Enter keywords or code snippets to search for potential code leaks.
+        </div>
+      )}
     </div>
   )
 } 

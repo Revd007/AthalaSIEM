@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Backend.Models;
+using Backend.DTOs;
 using Backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -378,16 +379,5 @@ namespace Backend.Controllers
                 return StatusCode(500, "An error occurred while deleting the report");
             }
         }
-    }
-    
-    /// <summary>
-    /// Update report schedule request
-    /// </summary>
-    public class UpdateReportScheduleRequest
-    {
-        /// <summary>
-        /// Gets or sets the schedule
-        /// </summary>
-        public string Schedule { get; set; } = string.Empty;
     }
 } 

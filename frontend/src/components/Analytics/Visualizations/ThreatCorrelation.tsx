@@ -1,18 +1,92 @@
-import React from 'react';
+'use client'
+
+import React, { useMemo } from 'react';
 import { Network } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-
-const correlationData = [
-  { time: '00:00', malware: 20, network: 15, auth: 10 },
-  { time: '04:00', malware: 35, network: 25, auth: 30 },
-  { time: '08:00', malware: 25, network: 20, auth: 15 },
-  { time: '12:00', malware: 40, network: 30, auth: 25 },
-  { time: '16:00', malware: 30, network: 35, auth: 20 },
-  { time: '20:00', malware: 45, network: 40, auth: 35 },
-];
+import { useQuery } from '@tanstack/react-query';
+import { logService } from '@/services/log-service';
 
 export function ThreatCorrelation() {
+  // Fetch logs for correlation analysis
+  const { data: logsData, isLoading } = useQuery({
+    queryKey: ['threat-correlation-logs'],
+    queryFn: async () => {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - 1);
+      return await logService.getLogs({
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        limit: 5000
+      });
+    },
+    enabled: typeof window !== 'undefined' && !!localStorage.getItem('token'),
+    refetchInterval: 60000,
+  });
+
+  // Generate correlation data from logs
+  const correlationData = useMemo(() => {
+    if (!logsData?.items) {
+      return Array.from({ length: 6 }, (_, i) => ({
+        time: `${String(i * 4).padStart(2, '0')}:00`,
+        malware: 0,
+        network: 0,
+        auth: 0
+      }));
+    }
+
+    const hourlyData: Record<string, { malware: number; network: number; auth: number }> = {};
+    
+    logsData.items.forEach(log => {
+      const hour = new Date(log.timestamp).getHours();
+      const timeSlot = `${String(Math.floor(hour / 4) * 4).padStart(2, '0')}:00`;
+      
+      if (!hourlyData[timeSlot]) {
+        hourlyData[timeSlot] = { malware: 0, network: 0, auth: 0 };
+      }
+
+      const category = log.category?.toLowerCase() || '';
+      const level = log.level?.toLowerCase() || '';
+      
+      if (category.includes('malware') || category.includes('threat')) {
+        hourlyData[timeSlot].malware++;
+      } else if (category.includes('network') || category.includes('firewall')) {
+        hourlyData[timeSlot].network++;
+      } else if (category.includes('auth') || category.includes('login') || level.includes('security')) {
+        hourlyData[timeSlot].auth++;
+      }
+    });
+
+    return ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'].map(time => ({
+      time,
+      malware: hourlyData[time]?.malware || 0,
+      network: hourlyData[time]?.network || 0,
+      auth: hourlyData[time]?.auth || 0
+    }));
+  }, [logsData]);
+
+  if (isLoading) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm"
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-2">
+            <Network className="h-6 w-6 text-blue-500" />
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Threat Correlation</h2>
+          </div>
+        </div>
+        <div className="h-80 flex items-center justify-center">
+          <div className="animate-pulse text-gray-500">Loading correlation data...</div>
+        </div>
+      </motion.div>
+    );
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}

@@ -3,9 +3,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Backend.Data;
 using Backend.Models;
+using Backend.DTOs;
 using System.Text.Json;
 using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Extensions.Logging;
 
 namespace Backend.Controllers
@@ -94,7 +94,7 @@ namespace Backend.Controllers
                     Name = token.Name,
                     Description = token.Description,
                     PlatformType = token.PlatformType,
-                    Token = token.Token, // Include token only in creation response
+                    Token = token.Token,
                     ExpiresAt = token.ExpiresAt,
                     IsActive = token.IsActive,
                     UsageCount = token.UsageCount,
@@ -127,7 +127,7 @@ namespace Backend.Controllers
                     Name = request.Name,
                     Description = request.Description,
                     PlatformType = request.PlatformType,
-                    Token = "athala-siem-agent-registration-2025", // Fixed token for testing
+                    Token = "athala-siem-agent-registration-2025",
                     ExpiresAt = DateTime.UtcNow.AddDays(30),
                     MaxUsage = request.MaxUsage,
                     IsActive = true,
@@ -136,7 +136,6 @@ namespace Backend.Controllers
                     CreatedAt = DateTime.UtcNow
                 };
 
-                // Check if token already exists
                 var existingToken = await _context.AgentDeploymentTokens
                     .FirstOrDefaultAsync(t => t.Token == token.Token);
                 
@@ -231,7 +230,6 @@ namespace Backend.Controllers
             }
         }
 
-
         /// <summary>
         /// Register new agent using deployment token
         /// </summary>
@@ -241,12 +239,10 @@ namespace Backend.Controllers
         {
             try
             {
-                // Handle default development token (enterprise testing standard)
                 AthalaSIEM.Backend.Models.AgentDeploymentToken? token = null;
                 
                 if (request.DeploymentToken == "athala-siem-agent-registration-2025")
                 {
-                    // Create virtual token for standard testing (enterprise practice)
                     token = new AthalaSIEM.Backend.Models.AgentDeploymentToken
                     {
                         Id = Guid.NewGuid().ToString(),
@@ -254,15 +250,14 @@ namespace Backend.Controllers
                         Token = request.DeploymentToken,
                         PlatformType = "Windows",
                         IsActive = true,
-                        ExpiresAt = DateTime.UtcNow.AddYears(10), // Never expires for testing
-                        MaxUsage = null, // Unlimited usage
+                        ExpiresAt = DateTime.UtcNow.AddYears(10),
+                        MaxUsage = null,
                         UsageCount = 0,
                         Configuration = "{\"platform\":\"windows\",\"collectors\":[\"WindowsEventLog\",\"Registry\",\"FileIntegrity\"],\"batch_size\":100}"
                     };
                 }
                 else
                 {
-                    // Regular database token lookup
                     token = await _context.AgentDeploymentTokens
                         .FirstOrDefaultAsync(t => t.Token == request.DeploymentToken && t.IsActive);
                 }
@@ -282,13 +277,11 @@ namespace Backend.Controllers
                     return BadRequest("Deployment token usage limit exceeded");
                 }
 
-                // Check if agent already exists - UPDATE instead of error (enterprise standard)
                 var existingAgent = await _context.Agents
                     .FirstOrDefaultAsync(a => a.Hostname == request.Hostname && a.IPAddress == request.IpAddress);
 
                 if (existingAgent != null)
                 {
-                    // Update existing agent (enterprise behavior)
                     existingAgent.Status = AgentStatus.Online;
                     existingAgent.LastSeen = DateTime.UtcNow;
                     existingAgent.AgentVersion = request.AgentVersion;
@@ -310,7 +303,6 @@ namespace Backend.Controllers
                     });
                 }
 
-                // Create new agent
                 var agent = new AgentModels
                 {
                     Name = $"{request.Hostname}_{request.Platform}",
@@ -327,7 +319,6 @@ namespace Backend.Controllers
                     DeploymentTokenId = token.Id
                 };
 
-                // Create agent configuration
                 var config = new AgentConfigModels
                 {
                     AgentId = agent.Id,
@@ -338,7 +329,6 @@ namespace Backend.Controllers
                 _context.Agents.Add(agent);
                 _context.AgentConfigs.Add(config);
 
-                // Update token usage
                 token.UsageCount++;
                 token.LastUsed = DateTime.UtcNow;
 
@@ -465,7 +455,7 @@ namespace Backend.Controllers
                         .Select(g => new DeploymentTrend { Date = g.Key, Count = g.Count() })
                         .OrderBy(d => d.Date)
                         .ToListAsync()
-                } ?? throw new InvalidOperationException("Value cannot be null");
+                };
 
                 return Ok(stats);
             }
@@ -512,7 +502,7 @@ namespace Backend.Controllers
             try
             {
                 var token = await _context.AgentDeploymentTokens
-                    .FirstOrDefaultAsync(t => t.Id == request.TokenId && t.IsActive) ?? throw new InvalidOperationException("Value cannot be null");
+                    .FirstOrDefaultAsync(t => t.Id == request.TokenId && t.IsActive);
 
                 if (token == null)
                 {
@@ -537,7 +527,7 @@ namespace Backend.Controllers
             }
         }
 
-        // Private helper methods
+        #region Private Helper Methods
 
         private string GenerateSecureToken()
         {
@@ -1025,13 +1015,11 @@ Manual Installation Steps:
         {
             var config = new Dictionary<string, object>();
             
-            // If token is provided, use its configuration
             if (token != null && !string.IsNullOrEmpty(token.Configuration))
             {
                 config = JsonSerializer.Deserialize<Dictionary<string, object>>(token.Configuration) ?? new Dictionary<string, object>();
             }
             
-            // Add/override default values
             config["platform"] = platform;
             config["deployment_token"] = token?.Token ?? "dev-mode-no-token";
             config["backend_url"] = GetBackendUrl();
@@ -1049,13 +1037,11 @@ Manual Installation Steps:
             return $"{request.Scheme}://{request.Host}";
         }
 
-        private (string Url, string Checksum) GenerateInstallerPackage(string platform, AthalaSIEM.Backend.Models.AgentDeploymentToken token, object? customConfig)
+        private (string Url, string Checksum) GenerateInstallerPackage(string platform, AthalaSIEM.Backend.Models.AgentDeploymentToken token, Dictionary<string, object>? customConfig)
         {
-            // In a real implementation, this would generate or customize an installer package
-            // For now, return placeholder URLs
             var baseUrl = GetBackendUrl();
             var url = $"{baseUrl}/downloads/agent/{platform}/athala-siem-agent-{Guid.NewGuid()}.{GetInstallerExtension(platform)}";
-            var checksum = GenerateSecureToken().Substring(0, 64); // Mock checksum
+            var checksum = GenerateSecureToken().Substring(0, 64);
             
             return (url, checksum);
         }
@@ -1099,115 +1085,7 @@ Manual Installation Steps:
                 }
             };
         }
-    }
 
-    // Request/Response DTOs
-    public class CreateAgentDeploymentTokenRequest
-    {
-        public string Name { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-        public string PlatformType { get; set; } = string.Empty;
-        public DateTime? ExpiresAt { get; set; }
-        public int? MaxUsage { get; set; }
-        public Dictionary<string, object> Configuration { get; set; } = new();
+        #endregion
     }
-
-    public class AgentDeploymentTokenDto
-    {
-        public string Id { get; set; } = string.Empty;
-        public string Name { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-        public string PlatformType { get; set; } = string.Empty;
-        public string? Token { get; set; } // Only included in creation response
-        public DateTime? ExpiresAt { get; set; }
-        public bool IsActive { get; set; }
-        public int UsageCount { get; set; }
-        public int? MaxUsage { get; set; }
-        public DateTime CreatedAt { get; set; }
-        public string? CreatedBy { get; set; }
-        public DateTime? LastUsed { get; set; }
-    }
-
-    public class AgentDeploymentScriptResponse
-    {
-        public string Platform { get; set; } = string.Empty;
-        public string Script { get; set; } = string.Empty;
-        public List<string> Instructions { get; set; } = new();
-        public object ConfigurationTemplate { get; set; } = new();
-        public List<string> Prerequisites { get; set; } = new();
-    }
-
-    public class AgentRegistrationRequest
-    {
-        public string DeploymentToken { get; set; } = string.Empty;
-        public string Hostname { get; set; } = string.Empty;
-        public string IpAddress { get; set; } = string.Empty;
-        public string Platform { get; set; } = string.Empty;
-        public string OsVersion { get; set; } = string.Empty;
-        public string AgentVersion { get; set; } = string.Empty;
-        public Dictionary<string, string> SystemInfo { get; set; } = new();
-    }
-
-    public class AgentRegistrationResponse
-    {
-        public string AgentId { get; set; } = string.Empty;
-        public string ApiKey { get; set; } = string.Empty;
-        public string BackendUrl { get; set; } = string.Empty;
-        public string Configuration { get; set; } = string.Empty;
-        public int UpdateIntervalSeconds { get; set; }
-        public int HeartbeatIntervalSeconds { get; set; }
-    }
-
-    public class AgentConfigurationResponse
-    {
-        public string AgentId { get; set; } = string.Empty;
-        public string Configuration { get; set; } = string.Empty;
-        public DateTime LastUpdated { get; set; }
-        public bool RequiresRestart { get; set; }
-    }
-
-    public class UpdateAgentConfigurationRequest
-    {
-        public Dictionary<string, object> Configuration { get; set; } = new();
-        public bool RequiresRestart { get; set; } = false;
-    }
-
-    public class DeploymentStatistics
-    {
-        public int TotalTokens { get; set; }
-        public int ActiveTokens { get; set; }
-        public int TotalDeployments { get; set; }
-        public int OnlineAgents { get; set; }
-        public int OfflineAgents { get; set; }
-        public List<PlatformCount> PlatformDistribution { get; set; } = new();
-        public List<DeploymentTrend> RecentDeployments { get; set; } = new();
-    }
-
-    public class PlatformCount
-    {
-        public string Platform { get; set; } = string.Empty;
-        public int Count { get; set; }
-    }
-
-    public class DeploymentTrend
-    {
-        public DateTime Date { get; set; }
-        public int Count { get; set; }
-    }
-
-    public class GenerateInstallerRequest
-    {
-        public string TokenId { get; set; } = string.Empty;
-        public string Platform { get; set; } = string.Empty;
-        public Dictionary<string, object>? CustomConfiguration { get; set; }
-    }
-
-    public class AgentInstallerResponse
-    {
-        public string Platform { get; set; } = string.Empty;
-        public string InstallerUrl { get; set; } = string.Empty;
-        public string ChecksumSha256 { get; set; } = string.Empty;
-        public DateTime ExpiresAt { get; set; }
-        public List<string> Instructions { get; set; } = new();
-    }
-} 
+}

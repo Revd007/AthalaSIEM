@@ -5,106 +5,72 @@ import { DashboardCard } from '@/components/ui/DashboardCard'
 import { Zap, Check, AlertTriangle, Clock, Settings, Shield, Activity, RefreshCw } from 'lucide-react'
 import { StatsCard } from '@/components/ui/StatsCard'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-
-interface AutomatedAction {
-  id: string
-  type: 'block' | 'isolate' | 'scan' | 'alert'
-  trigger: string
-  status: 'success' | 'failed' | 'in-progress'
-  timestamp: string
-  target: string
-  details: string
-  result?: string
-}
-
-const mockActions: AutomatedAction[] = [
-  {
-    id: '1',
-    type: 'block',
-    trigger: 'Malicious IP Detection',
-    status: 'success',
-    timestamp: new Date().toISOString(),
-    target: '192.168.1.100',
-    details: 'Blocked malicious IP after multiple failed login attempts',
-    result: 'IP blocked for 24 hours'
-  },
-  {
-    id: '2',
-    type: 'isolate',
-    trigger: 'Ransomware Behavior',
-    status: 'success',
-    timestamp: new Date(Date.now() - 1800000).toISOString(),
-    target: 'WORKSTATION-01',
-    details: 'Isolated endpoint showing ransomware indicators',
-    result: 'Endpoint isolated from network'
-  }
-]
-
-const mockMetrics = Array.from({ length: 24 }, (_, i) => ({
-  time: `${i}:00`,
-  actions: Math.floor(Math.random() * 30),
-  responseTime: Math.random() * 2
-}))
-
-const mockRules = [
-  {
-    id: '1',
-    name: 'Suspicious Login Block',
-    description: 'Block IPs after multiple failed logins',
-    status: 'active',
-    triggers: 5,
-    lastTriggered: new Date().toISOString()
-  },
-  {
-    id: '2',
-    name: 'Endpoint Isolation',
-    description: 'Isolate endpoints showing malware indicators',
-    status: 'active',
-    triggers: 2,
-    lastTriggered: new Date(Date.now() - 3600000).toISOString()
-  }
-]
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts'
+import { 
+  useAutomatedActions, 
+  useAutomatedRules, 
+  useAutomatedResponseStats,
+  useAutomatedResponseMetrics,
+  type AutomatedAction 
+} from '@/services/automated-response-service'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export function AutomatedResponse() {
   const [selectedAction, setSelectedAction] = useState<AutomatedAction | null>(null)
+
+  const { data: actionsData, isLoading: actionsLoading } = useAutomatedActions({ pageSize: 20 })
+  const { data: rules, isLoading: rulesLoading } = useAutomatedRules('active')
+  const { data: stats, isLoading: statsLoading } = useAutomatedResponseStats()
+  const { data: metrics, isLoading: metricsLoading } = useAutomatedResponseMetrics(24)
+
+  const actions = actionsData?.items || []
 
   return (
     <div className="space-y-6">
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatsCard
-          title="Actions Today"
-          value="24"
-          change="+5"
-          trend="up"
-          icon={Zap}
-          color="blue"
-        />
-        <StatsCard
-          title="Success Rate"
-          value="94.2%"
-          change="+2.1%"
-          trend="up"
-          icon={Check}
-          color="green"
-        />
-        <StatsCard
-          title="Avg Response Time"
-          value="1.2s"
-          change="-0.3s"
-          trend="down"
-          icon={Clock}
-          color="yellow"
-        />
-        <StatsCard
-          title="Active Rules"
-          value="15"
-          change="+2"
-          trend="up"
-          icon={Settings}
-          color="blue"
-        />
+        {statsLoading ? (
+          <>
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-28 w-full" />
+            ))}
+          </>
+        ) : (
+          <>
+            <StatsCard
+              title="Actions Today"
+              value={stats?.actionsToday?.toString() || '0'}
+              change="+0"
+              trend="up"
+              icon={Zap}
+              color="blue"
+            />
+            <StatsCard
+              title="Success Rate"
+              value={`${stats?.successRate?.toFixed(1) || 0}%`}
+              change="+0%"
+              trend="up"
+              icon={Check}
+              color="green"
+            />
+            <StatsCard
+              title="Avg Response Time"
+              value={`${stats?.averageResponseTime?.toFixed(1) || 0}s`}
+              change="-0s"
+              trend="down"
+              icon={Clock}
+              color="yellow"
+            />
+            <StatsCard
+              title="Active Rules"
+              value={stats?.activeRules?.toString() || '0'}
+              change="+0"
+              trend="up"
+              icon={Settings}
+              color="blue"
+            />
+          </>
+        )}
       </div>
 
       {/* Main Content */}
@@ -115,7 +81,7 @@ export function AutomatedResponse() {
             Recent Actions
           </TabsTrigger>
           <TabsTrigger value="metrics">
-            <LineChart className="w-4 h-4 mr-2" />
+            <RefreshCw className="w-4 h-4 mr-2" />
             Performance Metrics
           </TabsTrigger>
           <TabsTrigger value="rules">
@@ -128,7 +94,18 @@ export function AutomatedResponse() {
         <TabsContent value="actions">
           <DashboardCard title="Recent Automated Actions" icon={Zap}>
             <div className="space-y-4">
-              {mockActions.map((action) => (
+              {actionsLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-24 w-full" />
+                  ))}
+                </div>
+              ) : actions.length === 0 ? (
+                <div className="text-center text-gray-500 py-8">
+                  No automated actions recorded yet
+                </div>
+              ) : (
+                actions.map((action) => (
                 <div
                   key={action.id}
                   className={`p-4 rounded-lg border cursor-pointer ${
@@ -175,14 +152,14 @@ export function AutomatedResponse() {
                         <div>
                           <span className="text-sm text-gray-500 dark:text-gray-400">Result</span>
                           <p className="text-sm font-medium text-gray-900 dark:text-white">
-                            {action.result}
+                            {action.result || 'Pending'}
                           </p>
                         </div>
                       </div>
                     </div>
                   )}
                 </div>
-              ))}
+              )))}
             </div>
           </DashboardCard>
         </TabsContent>
@@ -191,29 +168,35 @@ export function AutomatedResponse() {
         <TabsContent value="metrics">
           <DashboardCard title="Response Performance" icon={Activity}>
             <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={mockMetrics}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" />
-                  <YAxis yAxisId="left" />
-                  <YAxis yAxisId="right" orientation="right" />
-                  <Tooltip />
-                  <Line
-                    yAxisId="left"
-                    type="monotone"
-                    dataKey="actions"
-                    stroke="#3b82f6"
-                    name="Actions"
-                  />
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="responseTime"
-                    stroke="#10b981"
-                    name="Response Time (s)"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {metricsLoading ? (
+                <Skeleton className="h-full w-full" />
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={metrics || []}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="time" />
+                    <YAxis yAxisId="left" />
+                    <YAxis yAxisId="right" orientation="right" />
+                    <Tooltip />
+                    <Area
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="actions"
+                      stroke="#3b82f6"
+                      fill="#3b82f6"
+                      fillOpacity={0.3}
+                      name="Actions"
+                    />
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="responseTime"
+                      stroke="#10b981"
+                      name="Response Time (s)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </DashboardCard>
         </TabsContent>
@@ -222,7 +205,18 @@ export function AutomatedResponse() {
         <TabsContent value="rules">
           <DashboardCard title="Automated Response Rules" icon={Shield}>
             <div className="space-y-4">
-              {mockRules.map((rule) => (
+              {rulesLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-28 w-full" />
+                  ))}
+                </div>
+              ) : !rules || rules.length === 0 ? (
+                <div className="text-center text-gray-500 py-8">
+                  No active rules configured
+                </div>
+              ) : (
+                rules.map((rule) => (
                 <div
                   key={rule.id}
                   className="p-4 rounded-lg border border-gray-200 dark:border-gray-700"
@@ -254,16 +248,18 @@ export function AutomatedResponse() {
                         Last Triggered
                       </span>
                       <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        {new Date(rule.lastTriggered).toLocaleString()}
+                        {rule.lastTriggered 
+                          ? new Date(rule.lastTriggered).toLocaleString()
+                          : 'Never'}
                       </p>
                     </div>
                   </div>
                 </div>
-              ))}
+              )))}
             </div>
           </DashboardCard>
         </TabsContent>
       </Tabs>
     </div>
   )
-} 
+}

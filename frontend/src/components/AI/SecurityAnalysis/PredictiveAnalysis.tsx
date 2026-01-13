@@ -206,7 +206,7 @@ export function PredictiveAnalysis() {
       <DashboardCard title="Prediction Timeline" icon={LineChartIcon}>
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={mockTimeSeriesData}>
+            <LineChart data={timeSeriesData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis 
                 dataKey="time"

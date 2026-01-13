@@ -263,7 +263,7 @@ namespace Backend.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during registration for user {Username}", userDto.Username);
+                _logger.LogError(ex, "Error during registration for user {Username}", userDto?.Username ?? "Unknown");
                 return StatusCode(500, new { message = "An error occurred during registration", error = ex.Message });
             }
         }
@@ -478,7 +478,7 @@ namespace Backend.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during login for user {Username}", loginDto.Username);
+                _logger.LogError(ex, "Error during login for user {Username}", loginDto?.Username ?? "Unknown");
                 return StatusCode(500, new { message = "An error occurred during login", error = ex.Message });
             }
         }

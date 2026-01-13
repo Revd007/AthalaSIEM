@@ -198,7 +198,7 @@ export function AIInsights() {
       <DashboardCard title="Insights Trend" icon={Brain}>
         <div className="h-[300px]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={mockTrendData}>
+            <LineChart data={trendData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="date" />
               <YAxis yAxisId="left" />

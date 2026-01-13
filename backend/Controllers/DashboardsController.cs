@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Backend.Models;
+using Backend.DTOs;
 using Backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -320,16 +321,5 @@ namespace Backend.Controllers
                 return StatusCode(500, "An error occurred while deleting the dashboard");
             }
         }
-    }
-    
-    /// <summary>
-    /// Update dashboard layout request
-    /// </summary>
-    public class UpdateDashboardLayoutRequest
-    {
-        /// <summary>
-        /// Gets or sets the layout
-        /// </summary>
-        public string Layout { get; set; } = string.Empty;
     }
 } 

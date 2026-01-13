@@ -1,32 +1,41 @@
-import React from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { Monitor, Server, Cloud } from 'lucide-react';
+'use client'
 
-const deviceData = [
-  { name: 'Windows Servers', value: 45, type: 'windows' },
-  { name: 'Linux Servers', value: 30, type: 'linux' },
-  { name: 'Cloud Collectors', value: 25, type: 'cloud' },
-];
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts'
+import { useDeviceAnalytics } from '@/services/analytics-service'
+import { Skeleton } from '@/components/ui/skeleton'
 
-const severityData = [
-  { name: 'Critical', value: 15, color: '#ef4444' },
-  { name: 'High', value: 25, color: '#f97316' },
-  { name: 'Medium', value: 35, color: '#eab308' },
-  { name: 'Low', value: 25, color: '#3b82f6' },
-];
-
-const COLORS = ['#3b82f6', '#10b981', '#8b5cf6'];
+const DEVICE_COLORS = ['#3b82f6', '#10b981', '#8b5cf6']
 
 export function DeviceAnalytics() {
+  const { data, isLoading } = useDeviceAnalytics()
+
+  if (isLoading) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-2 gap-4">
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      </div>
+    )
+  }
+
+  const deviceData = data?.deviceData || []
+  const severityData = data?.severityData || []
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Device Analytics</h2>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        Device Analytics
+      </h3>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Device Distribution */}
         <div>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Device Distribution</h3>
+          <h4 className="text-md font-medium text-gray-700 dark:text-gray-300 mb-3">
+            Device Distribution
+          </h4>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -34,13 +43,13 @@ export function DeviceAnalytics() {
                   data={deviceData}
                   cx="50%"
                   cy="50%"
-                  innerRadius={60}
                   outerRadius={80}
-                  paddingAngle={5}
+                  fill="#8884d8"
                   dataKey="value"
+                  label={({ name, value }) => `${name}: ${value}`}
                 >
                   {deviceData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    <Cell key={`cell-${index}`} fill={DEVICE_COLORS[index % DEVICE_COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip />
@@ -50,8 +59,11 @@ export function DeviceAnalytics() {
           </div>
         </div>
 
+        {/* Severity Distribution */}
         <div>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Alert Severity by Device Type</h3>
+          <h4 className="text-md font-medium text-gray-700 dark:text-gray-300 mb-3">
+            Alert Severity
+          </h4>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -59,10 +71,11 @@ export function DeviceAnalytics() {
                   data={severityData}
                   cx="50%"
                   cy="50%"
-                  innerRadius={60}
+                  innerRadius={40}
                   outerRadius={80}
-                  paddingAngle={5}
+                  fill="#8884d8"
                   dataKey="value"
+                  label={({ name, value }) => `${name}: ${value}`}
                 >
                   {severityData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
@@ -76,21 +89,28 @@ export function DeviceAnalytics() {
         </div>
       </div>
 
-      <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-        {deviceData.map((device, index) => (
-          <div key={device.type} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <div className="flex items-center space-x-2">
-              {device.type === 'windows' && <Monitor className="h-5 w-5 text-blue-500" />}
-              {device.type === 'linux' && <Server className="h-5 w-5 text-green-500" />}
-              {device.type === 'cloud' && <Cloud className="h-5 w-5 text-purple-500" />}
-              <span className="font-medium text-gray-900 dark:text-white">{device.name}</span>
-            </div>
-            <div className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-              {device.value}% of total devices
-            </div>
-          </div>
-        ))}
+      {/* Summary Stats */}
+      <div className="mt-6 grid grid-cols-3 gap-4">
+        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-center">
+          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+            {deviceData.reduce((acc, curr) => acc + curr.value, 0)}
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Total Devices</p>
+        </div>
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg text-center">
+          <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+            {severityData.find(s => s.name === 'Critical')?.value || 0}
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Critical Alerts</p>
+        </div>
+        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg text-center">
+          <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+            {Math.round(((severityData.find(s => s.name === 'Low')?.value || 0) / 
+              severityData.reduce((acc, curr) => acc + curr.value, 1)) * 100)}%
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Low Severity Rate</p>
+        </div>
       </div>
     </div>
-  );
+  )
 }

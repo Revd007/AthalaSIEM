@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Backend.Data;
 using Backend.Models;
+using Backend.DTOs;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 
@@ -720,17 +721,5 @@ namespace Backend.Controllers
         }
 
         #endregion
-    }
-
-    /// <summary>
-    /// Request DTO for creating configuration from template
-    /// </summary>
-    public class CreateFromTemplateRequest
-    {
-        public string ConfigurationName { get; set; } = "";
-        
-        public List<string> TargetAgents { get; set; } = new();
-        
-        public Dictionary<string, string> Variables { get; set; } = new();
     }
 } 

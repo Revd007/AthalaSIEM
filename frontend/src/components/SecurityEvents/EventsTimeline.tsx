@@ -121,16 +121,16 @@ export function EventsTimeline() {
         <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
           <div className="text-sm text-gray-500 dark:text-gray-400">Peak Events</div>
           <div className="text-2xl font-semibold text-gray-900 dark:text-white mt-1">
-            {Math.max(...mockData.map(d => d.events))}
+            {timelineData.length > 0 ? Math.max(...timelineData.map(d => d.events)) : 0}
           </div>
           <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            at {mockData[mockData.findIndex(d => d.events === Math.max(...mockData.map(d => d.events)))].time}
+            at {timelineData.length > 0 ? timelineData[timelineData.findIndex(d => d.events === Math.max(...timelineData.map(d => d.events)))]?.time || 'N/A' : 'N/A'}
           </div>
         </div>
         <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
           <div className="text-sm text-gray-500 dark:text-gray-400">Total Anomalies</div>
           <div className="text-2xl font-semibold text-gray-900 dark:text-white mt-1">
-            {mockData.reduce((acc, curr) => acc + curr.anomalies, 0)}
+            {timelineData.reduce((acc, curr) => acc + curr.anomalies, 0)}
           </div>
           <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             in last 24 hours

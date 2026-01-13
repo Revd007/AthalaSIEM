@@ -1,81 +1,121 @@
-import React from 'react';
-import { MessageSquare, Users, Bell, Share2 } from 'lucide-react';
+'use client'
 
-const collaborationItems = [
-  {
-    id: 1,
-    type: 'comment',
-    user: 'Sarah Chen',
-    content: 'Investigating unusual network patterns in sector 3',
-    time: '2 min ago',
-    avatar: 'https://i.pravatar.cc/40?img=1',
-  },
-  {
-    id: 2,
-    type: 'action',
-    user: 'Mike Johnson',
-    content: 'Initiated incident response for potential data breach',
-    time: '5 min ago',
-    avatar: 'https://i.pravatar.cc/40?img=2',
-  },
-  {
-    id: 3,
-    type: 'notification',
-    user: 'System',
-    content: 'Automated playbook "Ransomware Response" triggered',
-    time: '10 min ago',
-  },
-];
+import { Users, MessageSquare, Clock, Activity } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import { Skeleton } from '@/components/ui/skeleton'
+
+interface CollaborationItem {
+  id: number
+  user: string
+  action: string
+  target: string
+  timestamp: string
+  type: 'investigation' | 'alert' | 'comment' | 'update'
+}
 
 export function RealTimeCollaboration() {
+  // Fetch real-time collaboration data from alerts/audit logs
+  const { data, isLoading } = useQuery({
+    queryKey: ['collaboration-activity'],
+    queryFn: async () => {
+      // Fetch recent alert updates as collaboration items
+      const response = await api.get<{items: any[]}>('/api/alerts?limit=10&sortField=Timestamp&sortDirection=desc')
+      
+      // Transform alerts into collaboration items
+      return response.data.items?.map((alert, index) => ({
+        id: index + 1,
+        user: alert.assignedTo || 'System',
+        action: alert.status === 'new' ? 'created alert' : `updated to ${alert.status}`,
+        target: alert.message?.substring(0, 50) || `Alert #${alert.id}`,
+        timestamp: alert.timestamp || new Date().toISOString(),
+        type: 'alert' as const
+      })) || []
+    },
+    staleTime: 10000,
+    refetchInterval: 30000,
+  })
+
+  const collaborationItems = data || []
+
+  if (isLoading) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <div className="space-y-3">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'investigation': return Users
+      case 'comment': return MessageSquare
+      default: return Activity
+    }
+  }
+
+  const getTypeColor = (type: string) => {
+    switch (type) {
+      case 'investigation': return 'text-blue-500'
+      case 'alert': return 'text-red-500'
+      case 'comment': return 'text-green-500'
+      default: return 'text-gray-500'
+    }
+  }
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-2">
-          <Users className="h-6 w-6 text-indigo-500" />
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Team Collaboration</h2>
+          <Users className="h-6 w-6 text-blue-500" />
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Real-Time Collaboration
+          </h3>
         </div>
-        <div className="flex space-x-2">
-          <button className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">
-            <Share2 className="h-5 w-5" />
-          </button>
-          <button className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300">
-            <Bell className="h-5 w-5" />
-          </button>
+        <div className="flex items-center space-x-2">
+          <Activity className="h-4 w-4 text-green-500 animate-pulse" />
+          <span className="text-sm text-gray-500">Live</span>
         </div>
       </div>
 
-      <div className="space-y-4 mb-6">
-        {collaborationItems.map((item) => (
-          <div key={item.id} className="flex items-start space-x-3">
-            {item.avatar ? (
-              <img src={item.avatar} alt={item.user} className="w-8 h-8 rounded-full" />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                <Bell className="h-4 w-4 text-gray-500 dark:text-gray-400" />
+      {collaborationItems.length === 0 ? (
+        <div className="text-center text-gray-500 py-8">
+          <Users className="h-12 w-12 mx-auto mb-3 text-gray-400" />
+          <p>No recent collaboration activity</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {collaborationItems.map((item) => {
+            const TypeIcon = getTypeIcon(item.type)
+            return (
+              <div 
+                key={item.id}
+                className="flex items-start space-x-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg"
+              >
+                <div className={`p-2 rounded-full bg-white dark:bg-gray-600 ${getTypeColor(item.type)}`}>
+                  <TypeIcon className="h-4 w-4" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-gray-900 dark:text-white">
+                    <span className="font-medium">{item.user}</span>{' '}
+                    <span className="text-gray-500 dark:text-gray-400">{item.action}</span>{' '}
+                    <span className="font-medium">{item.target}</span>
+                  </p>
+                  <div className="flex items-center mt-1 text-xs text-gray-400">
+                    <Clock className="h-3 w-3 mr-1" />
+                    {new Date(item.timestamp).toLocaleString()}
+                  </div>
+                </div>
               </div>
-            )}
-            <div className="flex-1">
-              <div className="flex items-center space-x-2">
-                <span className="font-medium text-gray-900 dark:text-white">{item.user}</span>
-                <span className="text-xs text-gray-500">{item.time}</span>
-              </div>
-              <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">{item.content}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="relative">
-        <input
-          type="text"
-          placeholder="Type your message..."
-          className="w-full pl-4 pr-12 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600"
-        />
-        <button className="absolute right-2 top-2 text-blue-500 hover:text-blue-600">
-          <MessageSquare className="h-5 w-5" />
-        </button>
-      </div>
+            )
+          })}
+        </div>
+      )}
     </div>
-  );
+  )
 }

@@ -1,81 +1,86 @@
-import React from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { FileText, TrendingUp, Shield } from 'lucide-react';
+'use client'
 
-const securityMetrics = [
-  { month: 'Jan', incidents: 45, resolved: 42, mttr: 2.5 },
-  { month: 'Feb', incidents: 38, resolved: 35, mttr: 2.8 },
-  { month: 'Mar', incidents: 52, resolved: 48, mttr: 2.2 },
-  { month: 'Apr', incidents: 41, resolved: 39, mttr: 2.4 },
-  { month: 'May', incidents: 35, resolved: 33, mttr: 2.1 },
-  { month: 'Jun', incidents: 48, resolved: 45, mttr: 2.3 },
-];
-
-const kpis = [
-  {
-    title: 'Mean Time to Detect',
-    value: '1.8 hours',
-    change: '-12%',
-    trend: 'positive',
-  },
-  {
-    title: 'Mean Time to Respond',
-    value: '2.4 hours',
-    change: '-8%',
-    trend: 'positive',
-  },
-  {
-    title: 'Resolution Rate',
-    value: '94.5%',
-    change: '+2.5%',
-    trend: 'positive',
-  },
-];
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { useSecurityMetrics } from '@/services/analytics-service'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export function SecurityMetricsReport() {
+  const { data, isLoading } = useSecurityMetrics()
+
+  if (isLoading) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-64 w-full" />
+      </div>
+    )
+  }
+
+  const securityMetrics = data?.monthlyData || []
+  const kpis = data?.kpis || []
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-2">
-          <FileText className="h-6 w-6 text-blue-500" />
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Security Metrics Report</h2>
-        </div>
-        <button className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">
-          Export Report
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        Security Metrics Report
+      </h3>
+      
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {kpis.map((kpi, index) => (
-          <div key={index} className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
-            <h3 className="text-sm text-gray-600 dark:text-gray-300">{kpi.title}</h3>
-            <div className="mt-2 flex items-center justify-between">
-              <span className="text-2xl font-semibold text-gray-900 dark:text-white">
-                {kpi.value}
-              </span>
-              <div className={`flex items-center text-sm ${
-                kpi.trend === 'positive' ? 'text-green-500' : 'text-red-500'
-              }`}>
-                <TrendingUp className="h-4 w-4 mr-1" />
-                {kpi.change}
-              </div>
-            </div>
+          <div 
+            key={index}
+            className="p-4 bg-gray-50 dark:bg-gray-700 rounded-lg"
+          >
+            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+              {kpi.title}
+            </p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
+              {kpi.value}
+            </p>
+            <span className={`text-sm ${
+              kpi.trend === 'up' ? 'text-green-500' : 'text-red-500'
+            }`}>
+              {kpi.change}
+            </span>
           </div>
         ))}
       </div>
 
-      <div className="h-80">
+      {/* Chart */}
+      <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={securityMetrics}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="month" />
             <YAxis />
             <Tooltip />
-            <Bar dataKey="incidents" name="Total Incidents" fill="#ef4444" />
-            <Bar dataKey="resolved" name="Resolved" fill="#10b981" />
+            <Legend />
+            <Bar dataKey="incidents" fill="#ef4444" name="Incidents" />
+            <Bar dataKey="resolved" fill="#10b981" name="Resolved" />
           </BarChart>
         </ResponsiveContainer>
       </div>
+
+      {/* MTTR Trend */}
+      <div className="mt-6">
+        <h4 className="text-md font-medium text-gray-900 dark:text-white mb-3">
+          Mean Time to Resolve (Hours)
+        </h4>
+        <div className="flex items-center space-x-4">
+          {securityMetrics.slice(-6).map((metric, index) => (
+            <div key={index} className="text-center">
+              <p className="text-lg font-bold text-blue-500">{metric.mttr}h</p>
+              <p className="text-xs text-gray-500">{metric.month}</p>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
-  );
+  )
 }
