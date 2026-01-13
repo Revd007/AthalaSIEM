@@ -1376,7 +1376,7 @@ namespace Backend.Services
                 Level = archivedLog.Level,
                 Source = archivedLog.Source ?? "",
                 Message = archivedLog.Message,
-                AgentId = archivedLog.AgentId,
+                AgentId = archivedLog.AgentId ?? string.Empty,
                 Details = archivedLog.Details,
                 Category = archivedLog.Category,
                 ProcessId = 0 // Not available in archived format

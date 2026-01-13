@@ -88,12 +88,8 @@ public class DetectionRuleRepository : IDetectionRuleRepository
         // Parse technique IDs from condition or metadata
         rule.TechniqueIds = ExtractTechniqueIds(model.Condition);
 
-        // Parse default severity - try to get from model, fallback to Medium
-        var severityStr = "Medium";
-        if (model.Severity != null)
-        {
-            severityStr = model.Severity.ToString() ?? "Medium";
-        }
+        // Parse default severity - enum is non-nullable, so just convert to string
+        var severityStr = model.Severity.ToString() ?? "Medium";
         rule.DefaultSeverity = ParseSeverity(severityStr);
 
         return rule;

@@ -19,7 +19,7 @@ public class ECSLogNormalizer : ILogNormalizer
         _normalizedLogRepository = normalizedLogRepository;
     }
 
-    public async Task<ECSLogFields?> NormalizeAsync(LogEntry logEntry, CancellationToken cancellationToken = default)
+    public Task<ECSLogFields?> NormalizeAsync(LogEntry logEntry, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -53,12 +53,12 @@ public class ECSLogNormalizer : ILogNormalizer
             // Source-specific parsing
             ParseBySource(logEntry, ecsFields);
 
-            return ecsFields;
+            return Task.FromResult<ECSLogFields?>(ecsFields);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error normalizing log {LogId}", logEntry.Id);
-            return null;
+            return Task.FromResult<ECSLogFields?>(null);
         }
     }
 

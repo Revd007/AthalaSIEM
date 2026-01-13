@@ -113,8 +113,8 @@ public class AgentRepository : IAgentRepository
             Name = agent.Name,
             Hostname = agent.Hostname,
             IpAddress = agent.IpAddress,
-            OperatingSystem = agent.OperatingSystem,
-            Version = agent.AgentVersion,
+            OperatingSystem = agent.OperatingSystem ?? string.Empty,
+            Version = agent.AgentVersion ?? string.Empty,
             ApiKey = agent.ApiKey,
             Status = MapStatus(agent.Status),
             LastHeartbeat = agent.LastHeartbeat,
@@ -128,8 +128,8 @@ public class AgentRepository : IAgentRepository
         model.Name = agent.Name;
         model.Hostname = agent.Hostname;
         model.IpAddress = agent.IpAddress;
-        model.OperatingSystem = agent.OperatingSystem;
-        model.Version = agent.AgentVersion;
+        model.OperatingSystem = agent.OperatingSystem ?? string.Empty;
+        model.Version = agent.AgentVersion ?? string.Empty;
         model.Status = MapStatus(agent.Status);
         model.LastHeartbeat = agent.LastHeartbeat;
         model.UpdatedAt = agent.UpdatedAt;

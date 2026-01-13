@@ -610,6 +610,23 @@ namespace Backend.Data
                 entity.HasIndex(e => e.IsActive);
                 entity.HasIndex(e => e.CreatedAt);
             });
+
+            // NormalizedLog entity configuration
+            modelBuilder.Entity<Backend.Domain.Entities.NormalizedLog>(entity =>
+            {
+                entity.ToTable("normalized_logs");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.LogEntryId).IsRequired();
+                entity.Property(e => e.Timestamp).IsRequired();
+                entity.Property(e => e.CreatedAt).IsRequired();
+                
+                // Ignore navigation property to domain LogEntry since we use LogEntryModels
+                entity.Ignore(e => e.LogEntry);
+                
+                // Configure JSON properties
+                entity.Property(e => e.MetadataJson)
+                    .HasColumnName("metadata_json");
+            });
         }
     }
 }
