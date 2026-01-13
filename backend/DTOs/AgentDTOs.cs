@@ -484,4 +484,33 @@ namespace Backend.DTOs
         /// </summary>
         public bool EnableNetworkMonitoring { get; set; } = false;
     }
+
+    /// <summary>
+    /// DTO for updating agent basic information
+    /// </summary>
+    public class UpdateAgentDto
+    {
+        /// <summary>
+        /// Gets or sets the agent name
+        /// </summary>
+        [MaxLength(255)]
+        public string? Name { get; set; }
+
+        /// <summary>
+        /// Gets or sets the agent hostname
+        /// </summary>
+        [MaxLength(255)]
+        public string? Hostname { get; set; }
+
+        /// <summary>
+        /// Gets or sets the agent IP address
+        /// </summary>
+        [MaxLength(45)]
+        public string? IpAddress { get; set; }
+
+        /// <summary>
+        /// Gets or sets whether the agent is enabled
+        /// </summary>
+        public bool? IsEnabled { get; set; }
+    }
 } 

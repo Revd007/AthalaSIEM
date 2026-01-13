@@ -89,5 +89,13 @@ namespace Backend.Services
         /// <param name="id">The user ID</param>
         /// <returns>True if successful, false otherwise</returns>
         Task<bool> DeleteUserAsync(string id);
+        
+        /// <summary>
+        /// Resets a user's password (admin function)
+        /// </summary>
+        /// <param name="userId">The user ID</param>
+        /// <param name="newPassword">The new password</param>
+        /// <returns>True if successful, false otherwise</returns>
+        Task<bool> AdminResetPasswordAsync(string userId, string newPassword);
     }
 } 

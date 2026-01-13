@@ -51,4 +51,9 @@ public class UserDto
     /// Gets or sets the user roles
     /// </summary>
     public List<string>? Roles { get; set; }
+    
+    /// <summary>
+    /// Gets or sets a value indicating whether two-factor authentication is enabled
+    /// </summary>
+    public bool TwoFactorEnabled { get; set; }
 }

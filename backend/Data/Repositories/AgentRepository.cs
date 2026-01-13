@@ -25,11 +25,54 @@ namespace Backend.Data.Repositories
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
+
+        /// <summary>
+        /// Gets an agent by ID with Configuration included
+        /// </summary>
+        /// <param name="id">The agent ID</param>
+        /// <returns>The agent with configuration, or null if not found</returns>
+        public new async Task<AgentModels?> GetByIdAsync(string id)
+        {
+            try
+            {
+                return await DbSet
+                    .Include(a => a.Configuration)
+                    .FirstOrDefaultAsync(a => a.Id == id);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting agent by ID: {AgentId}", id);
+                // Fallback to base implementation without includes
+                return await base.GetByIdAsync(id);
+            }
+        }
+
+        /// <summary>
+        /// Gets all agents with Configuration included
+        /// </summary>
+        /// <returns>All agents with their configurations</returns>
+        public new async Task<IEnumerable<AgentModels>> GetAllAsync()
+        {
+            try
+            {
+                return await DbSet
+                    .Include(a => a.Configuration)
+                    .ToListAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting all agents");
+                // Fallback to base implementation without includes
+                return await base.GetAllAsync();
+            }
+        }
         
         /// <inheritdoc/>
         public async Task<AgentModels?> GetByApiKeyAsync(string apiKey)
         {
-            return await DbSet.FirstOrDefaultAsync(a => a.ApiKey == apiKey);
+            return await DbSet
+                .Include(a => a.Configuration)
+                .FirstOrDefaultAsync(a => a.ApiKey == apiKey);
         }
         
         /// <inheritdoc/>

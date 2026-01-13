@@ -128,6 +128,45 @@ namespace Backend.Services
         }
         
         /// <inheritdoc/>
+        public async Task<AgentModels> UpdateAgentAsync(string id, UpdateAgentDto updateDto)
+        {
+            var agent = await _agentRepository.GetByIdAsync(id);
+            
+            if (agent == null)
+            {
+                throw new KeyNotFoundException($"Agent with ID {id} not found");
+            }
+
+            if (updateDto.Name != null)
+            {
+                agent.Name = updateDto.Name;
+            }
+
+            if (updateDto.Hostname != null)
+            {
+                agent.Hostname = updateDto.Hostname;
+            }
+
+            if (updateDto.IpAddress != null)
+            {
+                agent.IPAddress = updateDto.IpAddress;
+            }
+
+            if (updateDto.IsEnabled.HasValue)
+            {
+                agent.IsEnabled = updateDto.IsEnabled.Value;
+            }
+
+            agent.UpdatedAt = DateTime.UtcNow;
+
+            await _agentRepository.UpdateAsync(agent);
+
+            _logger.LogInformation("Agent updated: {AgentId}", id);
+
+            return agent;
+        }
+
+        /// <inheritdoc/>
         public async Task<AgentModels> UpdateAgentConfigAsync(string id, AgentConfigDto configDto)
         {
             var agent = await _agentRepository.GetByIdAsync(id);

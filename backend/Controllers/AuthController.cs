@@ -146,6 +146,9 @@ namespace Backend.Controllers
                     }
                 }
                 
+                // Check if this is the first user registration (allow first user to be admin)
+                bool isFirstUser = !await _context.Users.AnyAsync();
+                
                 // Add roles if specified and permission allows
                 List<string> rolesToAdd = new List<string>();
                 
@@ -178,11 +181,18 @@ namespace Backend.Controllers
                 
                 if (rolesToAdd.Count > 0)
                 {
-                    // Only allow admin roles to be assigned by an admin
-                    if (isAdminRequest)
+                    // Only allow admin roles to be assigned by an admin OR if this is the first user
+                    if (isAdminRequest || isFirstUser)
                     {
-                        // Admin can assign any role
-                        _logger.LogInformation("Admin user assigning roles: {Roles}", string.Join(", ", rolesToAdd));
+                        // Admin can assign any role, or first user can be admin
+                        if (isFirstUser)
+                        {
+                            _logger.LogInformation("First user registration - allowing requested roles: {Roles}", string.Join(", ", rolesToAdd));
+                        }
+                        else
+                        {
+                            _logger.LogInformation("Admin user assigning roles: {Roles}", string.Join(", ", rolesToAdd));
+                        }
                     }
                     else
                     {
@@ -195,7 +205,7 @@ namespace Backend.Controllers
                         
                         if (filteredRoles.Count != rolesToAdd.Count)
                         {
-                            _logger.LogWarning("Non-admin user attempted to assign restricted roles. Only User role will be assigned.");
+                            _logger.LogWarning("Non-admin user attempted to assign restricted roles. Filtered roles: {FilteredRoles}", string.Join(", ", filteredRoles));
                         }
                         
                         rolesToAdd = filteredRoles;
@@ -206,6 +216,7 @@ namespace Backend.Controllers
                 if (rolesToAdd.Count == 0)
                 {
                     rolesToAdd.Add(RoleModels.DefaultRoles.User);
+                    _logger.LogInformation("No valid roles specified, defaulting to User role");
                 }
                 
                 // Add user to database

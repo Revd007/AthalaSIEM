@@ -352,6 +352,87 @@ namespace Backend.Controllers
         }
         
         /// <summary>
+        /// Resets a user's password (admin only)
+        /// </summary>
+        /// <param name="id">The user ID</param>
+        /// <returns>Temporary password</returns>
+        [HttpPost("{id}/reset-password")]
+        public async Task<ActionResult<object>> ResetUserPassword(string id)
+        {
+            try
+            {
+                var user = await _userService.GetUserByIdAsync(id);
+                
+                if (user == null)
+                {
+                    return NotFound(new { message = "User not found" });
+                }
+                
+                // Generate a temporary password
+                var tempPassword = GenerateTemporaryPassword();
+                
+                // Update the user's password
+                var result = await _userService.AdminResetPasswordAsync(id, tempPassword);
+                
+                if (!result)
+                {
+                    return BadRequest(new { message = "Failed to reset password" });
+                }
+                
+                _logger.LogInformation("Password reset for user {UserId} by admin {AdminId}", 
+                    id, User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value);
+                
+                return Ok(new { 
+                    temporaryPassword = tempPassword,
+                    requireChange = true,
+                    message = "Password reset successfully. User must change password on next login."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error resetting password for user {UserId}", id);
+                return StatusCode(500, new { message = "An error occurred while resetting the password" });
+            }
+        }
+        
+        /// <summary>
+        /// Generates a temporary password
+        /// </summary>
+        private static string GenerateTemporaryPassword()
+        {
+            const string uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            const string lowercase = "abcdefghijklmnopqrstuvwxyz";
+            const string digits = "0123456789";
+            const string special = "!@#$%^&*";
+            
+            var random = new Random();
+            var password = new System.Text.StringBuilder();
+            
+            // Ensure at least one of each type
+            password.Append(uppercase[random.Next(uppercase.Length)]);
+            password.Append(lowercase[random.Next(lowercase.Length)]);
+            password.Append(digits[random.Next(digits.Length)]);
+            password.Append(special[random.Next(special.Length)]);
+            
+            // Fill the rest randomly
+            const string allChars = uppercase + lowercase + digits + special;
+            for (int i = 0; i < 8; i++)
+            {
+                password.Append(allChars[random.Next(allChars.Length)]);
+            }
+            
+            // Shuffle
+            var array = password.ToString().ToCharArray();
+            for (int i = array.Length - 1; i > 0; i--)
+            {
+                int j = random.Next(i + 1);
+                (array[i], array[j]) = (array[j], array[i]);
+            }
+            
+            return new string(array);
+        }
+        
+        /// <summary>
         /// Maps a user model to a DTO
         /// </summary>
         /// <param name="user">The user model</param>
@@ -370,7 +451,8 @@ namespace Backend.Controllers
                 IsActive = user.IsActive,
                 CreatedAt = user.CreatedAt,
                 UpdatedAt = user.UpdatedAt,
-                Roles = roles.ToList()
+                Roles = roles.ToList(),
+                TwoFactorEnabled = user.TwoFactorEnabled
             };
         }
     }

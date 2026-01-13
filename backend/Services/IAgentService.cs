@@ -62,6 +62,14 @@ namespace Backend.Services
         Task<AgentModels> UpdateAgentStatusAsync(string id, AgentStatus status);
         
         /// <summary>
+        /// Updates an agent's basic information
+        /// </summary>
+        /// <param name="id">The agent ID</param>
+        /// <param name="updateDto">The update data</param>
+        /// <returns>The updated agent</returns>
+        Task<AgentModels> UpdateAgentAsync(string id, UpdateAgentDto updateDto);
+
+        /// <summary>
         /// Updates an agent's configuration
         /// </summary>
         /// <param name="id">The agent ID</param>

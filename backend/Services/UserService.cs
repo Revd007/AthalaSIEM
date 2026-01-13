@@ -231,6 +231,40 @@ namespace Backend.Services
             }
         }
         
+        /// <inheritdoc/>
+        public async Task<bool> AdminResetPasswordAsync(string userId, string newPassword)
+        {
+            try
+            {
+                var user = await _userRepository.GetByIdAsync(userId);
+                if (user == null)
+                {
+                    _logger.LogWarning("User with ID {UserId} not found for password reset", userId);
+                    return false;
+                }
+                
+                // Generate new password hash and salt
+                CreatePasswordHash(newPassword, out var passwordHash, out var passwordSalt);
+                
+                // Update password
+                user.PasswordHash = Convert.ToBase64String(passwordHash);
+                user.PasswordSalt = Convert.ToBase64String(passwordSalt);
+                user.UpdatedAt = DateTime.UtcNow;
+                
+                // Update user in database
+                await _userRepository.UpdateAsync(user);
+                
+                _logger.LogInformation("Password reset by admin for user: {UserId}", userId);
+                
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error resetting password for user: {UserId}", userId);
+                return false;
+            }
+        }
+        
         /// <summary>
         /// Creates a password hash and salt
         /// </summary>

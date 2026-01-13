@@ -39,9 +39,9 @@ export function SystemHealthFilters({
   onStatusChange
 }: SystemHealthFiltersProps) {
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-4">
-        <div className="flex-1 min-w-[300px]">
+    <div className="space-y-3 sm:space-y-4">
+      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+        <div className="w-full sm:flex-1 sm:min-w-[200px] lg:min-w-[300px]">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
             <Input
@@ -52,7 +52,7 @@ export function SystemHealthFilters({
             />
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5 sm:gap-2 overflow-x-auto pb-1">
           {deviceTypes.map(({ value, label }) => (
             <Button
               key={value}
@@ -65,14 +65,14 @@ export function SystemHealthFilters({
                 }
               }}
               size="sm"
-              className="min-w-[100px]"
+              className="min-w-[70px] sm:min-w-[80px] text-xs sm:text-sm whitespace-nowrap"
             >
               {label}
             </Button>
           ))}
         </div>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5 sm:gap-2">
         {statusOptions.map(({ value, label, color }) => (
           <Button
             key={value}
@@ -85,7 +85,7 @@ export function SystemHealthFilters({
               }
             }}
             size="sm"
-            className={`min-w-[100px] ${statusFilter.includes(value) ? '' : color}`}
+            className={`min-w-[70px] sm:min-w-[80px] text-xs sm:text-sm ${statusFilter.includes(value) ? '' : color}`}
           >
             {label}
           </Button>

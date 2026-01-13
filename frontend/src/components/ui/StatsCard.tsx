@@ -45,14 +45,14 @@ export function StatsCard({
 }: StatsCardProps) {
   return (
     <Card>
-      <div className="p-6">
+      <div className="p-3 sm:p-4 lg:p-6">
         <div className="flex items-center justify-between">
-          <div className={`p-2 rounded-lg ${colorConfig[color].bg}`}>
-            <Icon className={`h-5 w-5 ${colorConfig[color].icon}`} />
+          <div className={`p-1.5 sm:p-2 rounded-lg ${colorConfig[color].bg}`}>
+            <Icon className={`h-4 w-4 sm:h-5 sm:w-5 ${colorConfig[color].icon}`} />
           </div>
           {change && (
             <span className={`
-              text-sm font-medium
+              text-xs sm:text-sm font-medium
               ${trend === 'up' ? 'text-green-600 dark:text-green-400' :
                 trend === 'down' ? 'text-red-600 dark:text-red-400' :
                 'text-gray-600 dark:text-gray-400'}
@@ -61,11 +61,11 @@ export function StatsCard({
             </span>
           )}
         </div>
-        <div className="mt-4">
-          <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">
+        <div className="mt-2 sm:mt-3 lg:mt-4">
+          <h3 className="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400">
             {title}
           </h3>
-          <p className="mt-2 text-3xl font-semibold text-gray-900 dark:text-white">
+          <p className="mt-1 sm:mt-2 text-xl sm:text-2xl lg:text-3xl font-semibold text-gray-900 dark:text-white">
             {value}
           </p>
         </div>
