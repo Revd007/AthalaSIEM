@@ -26,17 +26,29 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
-  // Combined effect for navigation
+  // Combined effect for navigation - only run on client side
+  // Use useRef to track if we've already checked to prevent multiple redirects
+  const hasCheckedAuth = React.useRef(false);
+  
   useEffect(() => {
+    // Only check if we're on the client side
+    if (typeof window === 'undefined') return;
+    
+    // Only check once
+    if (hasCheckedAuth.current) return;
+    hasCheckedAuth.current = true;
+    
+     // BREAKPOINT: LoginPage checking if user is already authenticated
     const token = localStorage.getItem('token');
     const refreshToken = localStorage.getItem('refreshToken');
     if (token && refreshToken) {
       console.log('[LoginPage] User already authenticated, redirecting to dashboard');
+       // BREAKPOINT: User already has tokens, redirecting to dashboard
       router.replace('/dashboard');
     } else {
       console.log('[LoginPage] No tokens found, staying on login page');
     }
-  }, [router]);
+  }, [router]); // Include router in dependencies to satisfy React, but guard with useRef
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -53,31 +65,40 @@ export function LoginPage() {
         password 
       })
       
-      // Backend returns PascalCase (Token, RefreshToken, User) but frontend expects camelCase
-      // Handle both cases for compatibility
-      const token = response.data?.token || (response.data as any)?.Token;
-      const refreshToken = response.data?.refreshToken || (response.data as any)?.RefreshToken;
-      const user = response.data?.user || (response.data as any)?.User;
+      // Backend uses camelCase due to JsonNamingPolicy.CamelCase, but handle both cases for safety
+      const responseData = response.data as any;
+      const token = responseData?.token || responseData?.Token;
+      const refreshToken = responseData?.refreshToken || responseData?.RefreshToken;
+      const user = responseData?.user || responseData?.User;
       
       if (token && refreshToken) {
         // Store both tokens
+        console.log('[LoginPage] Storing tokens - Token length:', token.length, 'RefreshToken length:', refreshToken.length);
+         // BREAKPOINT: After login response, before storing tokens
         localStorage.setItem('token', token)
         localStorage.setItem('refreshToken', refreshToken)
+        
+        // Verify tokens were stored
+        const storedToken = localStorage.getItem('token');
+        const storedRefreshToken = localStorage.getItem('refreshToken');
+        console.log('[LoginPage] Tokens stored - Token exists:', !!storedToken, 'RefreshToken exists:', !!storedRefreshToken);
+         // BREAKPOINT: After storing tokens, verify they exist
         
         // Also store user info if available
         if (user) {
           console.debug('Login successful, storing user info:', user);
           localStorage.setItem('user', JSON.stringify(user));
           
-          // Debug information for roles
-          const role = user.role || user.Role || (user.roles || user.Roles);
+          // Debug information for roles - handle both camelCase and PascalCase
+          const userAny = user as any;
+          const role = userAny?.role || userAny?.Role || userAny?.roles || userAny?.Roles;
           if (role) {
             console.debug('User roles:', role);
             // Show a more descriptive toast for roles
             const roleInfo = Array.isArray(role) 
               ? role.join(', ') 
               : role;
-            const username = user.username || user.Username;
+            const username = userAny?.username || userAny?.Username || '';
             toast.success(`Login successful as ${username} with role: ${roleInfo}`);
           } else {
             console.warn('No roles found in user info. User may not have permission for restricted areas.');
@@ -88,9 +109,23 @@ export function LoginPage() {
         }
         
         // Small delay to ensure tokens are stored before navigation
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        // Double-check tokens before navigation
+        const finalTokenCheck = localStorage.getItem('token');
+        const finalRefreshTokenCheck = localStorage.getItem('refreshToken');
+        console.log('[LoginPage] Before navigation - Token exists:', !!finalTokenCheck, 'RefreshToken exists:', !!finalRefreshTokenCheck);
+         // BREAKPOINT: Before navigation, check tokens one more time
+        
+        if (!finalTokenCheck || !finalRefreshTokenCheck) {
+          console.error('[LoginPage] ERROR: Tokens were not stored correctly!');
+          toast.error('Failed to store authentication tokens. Please try again.');
+          return;
+        }
         
         // Navigate directly after successful login
+        console.log('[LoginPage] Navigating to dashboard...');
+         // BREAKPOINT: About to navigate to dashboard
         router.replace('/dashboard');
       } else {
         throw new Error('Invalid response from server - missing token or refresh token')

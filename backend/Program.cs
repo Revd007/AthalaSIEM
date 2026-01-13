@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text;
 using Backend.Data;
 using Backend.Data.Repositories;
@@ -197,8 +198,17 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 });
 
 // Configure JWT Authentication
-var jwtSettings = builder.Configuration.GetSection("Jwt");
-var key = Encoding.ASCII.GetBytes(jwtSettings["Key"] ?? throw new InvalidOperationException("JWT secret not configured"));
+// Use the same key lookup logic as AuthService to ensure consistency
+string? jwtKey = builder.Configuration["JwtSettings:Secret"];
+if (string.IsNullOrEmpty(jwtKey))
+{
+    jwtKey = builder.Configuration["Jwt:Key"];
+    if (string.IsNullOrEmpty(jwtKey))
+    {
+        throw new InvalidOperationException("JWT secret not configured in either JwtSettings:Secret or Jwt:Key");
+    }
+}
+var key = Encoding.ASCII.GetBytes(jwtKey);
 
 builder.Services.AddAuthentication(x =>
 {
@@ -209,13 +219,60 @@ builder.Services.AddAuthentication(x =>
 {
     x.RequireHttpsMetadata = false;
     x.SaveToken = true;
+    
+    // Add event handlers to debug JWT validation issues
+    x.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogError(context.Exception, "[JWT] Authentication failed for path: {Path}", context.Request.Path);
+            logger.LogError("[JWT] Error type: {ErrorType}, Error message: {ErrorMessage}", 
+                context.Exception.GetType().Name, context.Exception.Message);
+            return Task.CompletedTask;
+        },
+        OnTokenValidated = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogInformation("[JWT] Token validated successfully for user: {Username}", 
+                context.Principal?.Identity?.Name);
+            return Task.CompletedTask;
+        },
+        OnChallenge = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogWarning("[JWT] Challenge triggered for path: {Path}, Error: {Error}, ErrorDescription: {ErrorDescription}", 
+                context.Request.Path, context.Error, context.ErrorDescription);
+            return Task.CompletedTask;
+        },
+        OnMessageReceived = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            var authHeader = context.Request.Headers["Authorization"].ToString();
+            logger.LogInformation("[JWT] Message received for path: {Path}, Has Auth Header: {HasAuth}", 
+                context.Request.Path, !string.IsNullOrEmpty(authHeader));
+            if (!string.IsNullOrEmpty(authHeader))
+            {
+                // Extract token from "Bearer <token>"
+                var token = authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) 
+                    ? authHeader.Substring(7) 
+                    : authHeader;
+                logger.LogInformation("[JWT] Auth header present, token length: {TokenLength}", token.Length);
+                logger.LogInformation("[JWT] Token preview: {TokenPreview}", 
+                    token.Length > 50 ? token.Substring(0, 50) + "..." : token);
+            }
+            return Task.CompletedTask;
+        }
+    };
+    
     x.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
         IssuerSigningKey = new SymmetricSecurityKey(key),
         ValidateIssuer = false,
         ValidateAudience = false,
-        ClockSkew = TimeSpan.Zero
+        ValidateLifetime = true, // Enable lifetime validation
+        ClockSkew = TimeSpan.FromMinutes(5) // Allow 5 minutes clock skew
     };
 });
 
@@ -376,6 +433,49 @@ app.Use(async (context, next) =>
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Add request logging middleware to debug authentication issues
+// This must be AFTER UseAuthentication and UseAuthorization
+app.Use(async (context, next) =>
+{
+    // Log authentication status for protected endpoints
+    if (context.Request.Path.StartsWithSegments("/api") && 
+        !context.Request.Path.StartsWithSegments("/api/auth"))
+    {
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        var authHeader = context.Request.Headers["Authorization"].ToString();
+        var hasAuth = !string.IsNullOrEmpty(authHeader);
+        
+        logger.LogInformation(
+            "[Auth Debug] Request to {Path}: Has Auth Header: {HasAuth}, Method: {Method}",
+            context.Request.Path, hasAuth, context.Request.Method);
+        
+        if (hasAuth)
+        {
+            logger.LogInformation("[Auth Debug] Auth header preview: {Header}", 
+                authHeader.Length > 50 ? authHeader.Substring(0, 50) + "..." : authHeader);
+        }
+        
+        // Check if user is authenticated after authentication middleware
+        if (context.User?.Identity?.IsAuthenticated == true)
+        {
+            logger.LogInformation("[Auth Debug] User authenticated: {Username}, Roles: {Roles}",
+                context.User.Identity.Name,
+                string.Join(", ", context.User.Claims.Where(c => c.Type == System.Security.Claims.ClaimTypes.Role).Select(c => c.Value)));
+        }
+        else
+        {
+            logger.LogWarning("[Auth Debug] User NOT authenticated for {Path}. Auth header present: {HasAuth}", 
+                context.Request.Path, hasAuth);
+            
+            // Log all headers for debugging
+            logger.LogWarning("[Auth Debug] Request headers: {Headers}",
+                string.Join(", ", context.Request.Headers.Select(h => $"{h.Key}={h.Value}")));
+        }
+    }
+    
+    await next();
+});
 
 // Map controllers
 app.MapControllers();

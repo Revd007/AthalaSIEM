@@ -133,13 +133,6 @@ export function LiveHunting() {
   const totalEvents = logsData?.totalCount || 0;
   const matches = results.filter(r => r.severity === 'high' || r.severity === 'critical').length;
 
-  const handleRunQuery = async () => {
-    setIsRunning(true)
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    setIsRunning(false)
-  }
-
   return (
     <div className="space-y-6">
       {/* Query Stats */}

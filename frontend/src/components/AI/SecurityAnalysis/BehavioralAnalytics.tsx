@@ -1,10 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { DashboardCard } from '@/components/ui/DashboardCard'
 import { Users, Activity, AlertTriangle, Brain, Network, Clock } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts'
 import { StatsCard } from '@/components/ui/StatsCard'
+import { useQuery } from '@tanstack/react-query'
+import { logService } from '@/services/log-service'
+import { useAlerts } from '@/services/alert-service'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface UserBehavior {
   id: string
@@ -21,56 +25,127 @@ interface UserBehavior {
   }[]
 }
 
-const mockTimelineData = Array.from({ length: 24 }, (_, i) => ({
-  time: new Date(Date.now() - i * 3600000).toISOString(),
-  normalActivity: Math.floor(Math.random() * 100),
-  anomalousActivity: Math.floor(Math.random() * 20)
-})).reverse()
-
-const mockUsers: UserBehavior[] = [
-  {
-    id: '1',
-    username: 'john.doe',
-    department: 'IT',
-    riskScore: 85,
-    anomalyCount: 5,
-    lastActivity: new Date().toISOString(),
-    behaviors: [
-      {
-        timestamp: new Date().toISOString(),
-        activity: 'Unusual Access Pattern',
-        risk: 'high',
-        details: 'Multiple failed login attempts from new location'
-      },
-      {
-        timestamp: new Date(Date.now() - 3600000).toISOString(),
-        activity: 'Data Access',
-        risk: 'medium',
-        details: 'Accessed sensitive files outside normal hours'
-      }
-    ]
-  },
-  {
-    id: '2',
-    username: 'jane.smith',
-    department: 'Finance',
-    riskScore: 42,
-    anomalyCount: 2,
-    lastActivity: new Date(Date.now() - 1800000).toISOString(),
-    behaviors: [
-      {
-        timestamp: new Date(Date.now() - 1800000).toISOString(),
-        activity: 'Resource Usage',
-        risk: 'low',
-        details: 'Increased network traffic to cloud storage'
-      }
-    ]
-  }
-]
-
 export function BehavioralAnalytics() {
   const [selectedUser, setSelectedUser] = useState<UserBehavior | null>(null)
   const [timeRange, setTimeRange] = useState('24h')
+
+  // Fetch logs for behavioral analysis
+  const { data: logsData, isLoading: logsLoading } = useQuery({
+    queryKey: ['behavioral-logs', timeRange],
+    queryFn: async () => {
+      const end = new Date();
+      const start = new Date();
+      switch (timeRange) {
+        case '1h': start.setHours(start.getHours() - 1); break;
+        case '24h': start.setDate(start.getDate() - 1); break;
+        case '7d': start.setDate(start.getDate() - 7); break;
+        default: start.setDate(start.getDate() - 1);
+      }
+      return logService.getLogs({
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        limit: 2000
+      });
+    },
+    refetchInterval: 60000,
+  });
+
+  // Fetch alerts
+  const { data: alertsData, isLoading: alertsLoading } = useAlerts({
+    limit: 100,
+    sortField: 'Timestamp',
+    sortDirection: 'desc'
+  });
+
+  const isLoading = logsLoading || alertsLoading;
+
+  // Generate timeline data from logs
+  const timelineData = useMemo(() => {
+    if (!logsData?.items) {
+      return Array.from({ length: 24 }, (_, i) => ({
+        time: new Date(Date.now() - i * 3600000).toISOString(),
+        normalActivity: 0,
+        anomalousActivity: 0
+      })).reverse();
+    }
+
+    const hourlyData: Record<string, { normalActivity: number; anomalousActivity: number }> = {};
+    
+    for (let i = 23; i >= 0; i--) {
+      const date = new Date();
+      date.setHours(date.getHours() - i);
+      const key = date.toISOString().substring(0, 13);
+      hourlyData[key] = { normalActivity: 0, anomalousActivity: 0 };
+    }
+
+    logsData.items.forEach(log => {
+      if (log.timestamp) {
+        const key = log.timestamp.substring(0, 13);
+        if (hourlyData[key]) {
+          if (log.severity === 'High' || log.severity === 'Critical') {
+            hourlyData[key].anomalousActivity++;
+          } else {
+            hourlyData[key].normalActivity++;
+          }
+        }
+      }
+    });
+
+    return Object.entries(hourlyData).map(([time, data]) => ({
+      time: new Date(time + ':00:00').toISOString(),
+      ...data
+    }));
+  }, [logsData]);
+
+  // Generate user behaviors from logs
+  const users = useMemo(() => {
+    if (!logsData?.items) return [];
+
+    const userMap: Record<string, UserBehavior> = {};
+    
+    logsData.items.forEach((log, index) => {
+      const username = log.username || log.source || `user-${index % 5}`;
+      
+      if (!userMap[username]) {
+        userMap[username] = {
+          id: username,
+          username,
+          department: 'Unknown',
+          riskScore: 0,
+          anomalyCount: 0,
+          lastActivity: log.timestamp || new Date().toISOString(),
+          behaviors: []
+        };
+      }
+
+      const user = userMap[username];
+      
+      if (log.severity === 'High' || log.severity === 'Critical') {
+        user.anomalyCount++;
+        user.riskScore = Math.min(100, user.riskScore + 10);
+        user.behaviors.push({
+          timestamp: log.timestamp || new Date().toISOString(),
+          activity: log.category || 'Security Event',
+          risk: log.severity === 'Critical' ? 'high' : 'medium',
+          details: log.message || 'Anomalous activity detected'
+        });
+      }
+
+      if (new Date(log.timestamp || 0) > new Date(user.lastActivity)) {
+        user.lastActivity = log.timestamp || new Date().toISOString();
+      }
+    });
+
+    return Object.values(userMap)
+      .filter(u => u.anomalyCount > 0)
+      .sort((a, b) => b.riskScore - a.riskScore)
+      .slice(0, 10);
+  }, [logsData]);
+
+  const totalUsersMonitored = users.length || 0;
+  const highRiskUsers = users.filter(u => u.riskScore > 70).length;
+  const totalAnomalies = users.reduce((acc, u) => acc + u.anomalyCount, 0);
+  const avgRiskScore = users.length > 0 ? Math.round(users.reduce((acc, u) => acc + u.riskScore, 0) / users.length) : 0;
 
   return (
     <div className="space-y-6">
@@ -78,14 +153,14 @@ export function BehavioralAnalytics() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatsCard
           title="Users Monitored"
-          value={usersMonitored.toString()}
+          value={isLoading ? '...' : totalUsersMonitored.toString()}
           change="+0"
           trend="up"
           icon={Users}
         />
         <StatsCard
           title="Anomalies Today"
-          value={anomaliesToday.toString()}
+          value={isLoading ? '...' : totalAnomalies.toString()}
           change="+0"
           trend="up"
           icon={AlertTriangle}
@@ -93,7 +168,7 @@ export function BehavioralAnalytics() {
         />
         <StatsCard
           title="Avg Risk Score"
-          value={avgRiskScore.toString()}
+          value={isLoading ? '...' : avgRiskScore.toString()}
           change="+0"
           trend="up"
           icon={Activity}
@@ -101,7 +176,7 @@ export function BehavioralAnalytics() {
         />
         <StatsCard
           title="High Risk Users"
-          value={users.filter(u => u.riskScore >= 70).length.toString()}
+          value={isLoading ? '...' : highRiskUsers.toString()}
           change="+0"
           trend="up"
           icon={Brain}
@@ -197,7 +272,14 @@ export function BehavioralAnalytics() {
         <div className="lg:col-span-1">
           <DashboardCard title="User Risk Analysis" icon={Users}>
             <div className="space-y-4">
-              {mockUsers.map((user) => (
+              {isLoading ? (
+                <>
+                  <Skeleton className="h-24 w-full" />
+                  <Skeleton className="h-24 w-full" />
+                </>
+              ) : users.length === 0 ? (
+                <div className="text-center text-gray-500 py-4">No user risk data available</div>
+              ) : users.map((user) => (
                 <div
                   key={user.id}
                   onClick={() => setSelectedUser(user)}
@@ -266,7 +348,7 @@ export function BehavioralAnalytics() {
                     </div>
                   )}
                 </div>
-              )))}
+              ))}
             </div>
           </DashboardCard>
         </div>

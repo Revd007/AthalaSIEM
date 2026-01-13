@@ -1,10 +1,14 @@
+'use client'
+
 import React, { useState } from 'react';
 import { Users, Plus, Edit2, Trash2 } from 'lucide-react';
 import { UserRole, Permission } from '../../types/auth';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { Skeleton } from '@/components/ui/skeleton';
 
-const mockRoles: UserRole[] = ['admin', 'analyst', 'auditor', 'operator'];
-
-const mockPermissions: Permission[] = [
+// Default permissions - these are system-defined
+const systemPermissions: Permission[] = [
   {
     id: '1',
     name: 'view_dashboard',
@@ -23,10 +27,39 @@ const mockPermissions: Permission[] = [
     description: 'View security reports',
     roles: ['admin', 'analyst', 'auditor'],
   },
+  {
+    id: '4',
+    name: 'manage_alerts',
+    description: 'Manage security alerts',
+    roles: ['admin', 'analyst'],
+  },
+  {
+    id: '5',
+    name: 'view_logs',
+    description: 'View system logs',
+    roles: ['admin', 'analyst', 'auditor'],
+  },
 ];
 
 export function RoleManagement() {
   const [selectedRole, setSelectedRole] = useState<UserRole>('admin');
+
+  // Fetch roles from backend
+  const { data: rolesData, isLoading } = useQuery({
+    queryKey: ['roles'],
+    queryFn: async () => {
+      try {
+        const { data } = await api.get<{ roles: string[] }>('/api/auth/roles');
+        return data?.roles || ['Admin', 'User', 'Analyst', 'Operator'];
+      } catch {
+        // Fallback to default roles
+        return ['Admin', 'User', 'Analyst', 'Operator'];
+      }
+    }
+  });
+
+  const roles = rolesData || ['Admin', 'User', 'Analyst', 'Operator'];
+  const permissions = systemPermissions;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
@@ -45,12 +78,18 @@ export function RoleManagement() {
         <div className="col-span-1">
           <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Roles</h3>
           <div className="space-y-2">
-            {mockRoles.map((role) => (
+            {isLoading ? (
+              <>
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </>
+            ) : roles.map((role) => (
               <button
                 key={role}
-                onClick={() => setSelectedRole(role)}
+                onClick={() => setSelectedRole(role.toLowerCase() as UserRole)}
                 className={`w-full text-left px-4 py-2 rounded-lg flex items-center justify-between ${
-                  selectedRole === role
+                  selectedRole === role.toLowerCase()
                     ? 'bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-200'
                     : 'hover:bg-gray-50 dark:hover:bg-gray-700'
                 }`}
@@ -68,7 +107,7 @@ export function RoleManagement() {
         <div className="col-span-2">
           <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Permissions</h3>
           <div className="space-y-4">
-            {mockPermissions.map((permission) => (
+            {permissions.map((permission) => (
               <div key={permission.id} className="border dark:border-gray-700 rounded-lg p-4">
                 <div className="flex items-center justify-between">
                   <div>

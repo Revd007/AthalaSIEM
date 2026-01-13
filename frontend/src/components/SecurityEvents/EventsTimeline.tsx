@@ -1,19 +1,70 @@
+'use client'
+
+import { useMemo } from 'react'
 import { DashboardCard } from '@/components/ui/DashboardCard'
 import { Clock } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-
-const mockData = Array.from({ length: 24 }, (_, i) => ({
-  time: `${i}:00`,
-  events: Math.floor(Math.random() * 100),
-  anomalies: Math.floor(Math.random() * 20),
-}))
+import { useQuery } from '@tanstack/react-query'
+import { logService } from '@/services/log-service'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export function EventsTimeline() {
+  // Fetch logs for timeline
+  const { data: logsData, isLoading } = useQuery({
+    queryKey: ['events-timeline'],
+    queryFn: async () => {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - 1);
+      return logService.getLogs({
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+        limit: 5000
+      });
+    },
+    refetchInterval: 30000,
+  });
+
+  // Generate timeline data
+  const timelineData = useMemo(() => {
+    if (!logsData?.items) {
+      return Array.from({ length: 24 }, (_, i) => ({
+        time: `${i}:00`,
+        events: 0,
+        anomalies: 0
+      }));
+    }
+
+    const hourlyData: Record<string, { events: number; anomalies: number }> = {};
+    
+    for (let i = 0; i < 24; i++) {
+      hourlyData[`${i}:00`] = { events: 0, anomalies: 0 };
+    }
+
+    logsData.items.forEach(log => {
+      if (log.timestamp) {
+        const hour = new Date(log.timestamp).getHours();
+        const key = `${hour}:00`;
+        if (hourlyData[key]) {
+          hourlyData[key].events++;
+          if (log.severity === 'High' || log.severity === 'Critical') {
+            hourlyData[key].anomalies++;
+          }
+        }
+      }
+    });
+
+    return Object.entries(hourlyData).map(([time, data]) => ({ time, ...data }));
+  }, [logsData]);
+
   return (
     <DashboardCard title="Events Timeline" icon={Clock}>
       <div className="h-[300px]">
+        {isLoading ? (
+          <Skeleton className="h-full w-full" />
+        ) : (
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={mockData}>
+          <LineChart data={timelineData}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis 
               dataKey="time"
@@ -50,6 +101,7 @@ export function EventsTimeline() {
             />
           </LineChart>
         </ResponsiveContainer>
+        )}
       </div>
 
       {/* Timeline Legend */}

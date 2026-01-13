@@ -66,12 +66,20 @@ const refreshToken = async () => {
 };
 
 const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promise<ApiResponse<T>> => {
-  const token = localStorage.getItem('token');
+  // Get token fresh from localStorage each time
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   const { skipAuth, responseType, ...restOptions } = options;
 
   // Debug logging for token
-  if (!skipAuth && !token && typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-    console.warn('[API] Making authenticated request without token:', url);
+  if (!skipAuth && typeof window !== 'undefined') {
+    if (!token && !window.location.pathname.includes('/login')) {
+      console.warn('[API] Making authenticated request without token:', url);
+       // BREAKPOINT: Making API call without token
+    } else if (token) {
+      console.log(`[API] Making request to ${url}, Token present: true, Token length: ${token.length}`);
+      console.log(`[API] Token preview: ${token.substring(0, 30)}...`);
+       // BREAKPOINT: Making API call with token
+    }
   }
 
   const defaultOptions: RequestInit = {
@@ -88,6 +96,14 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
 
   try {
     const response = await fetch(`${baseURL}${url}`, defaultOptions);
+    
+    // Debug: Log response status
+    if (!skipAuth && typeof window !== 'undefined') {
+      console.log(`[API] Response from ${url}: ${response.status} ${response.statusText}`);
+      if (response.status === 401) {
+        console.error(`[API] 401 Unauthorized for ${url} - Check if token is being sent correctly`);
+      }
+    }
 
     if (!response) {
       throw new Error('Network error - Failed to connect to the server');
@@ -95,6 +111,8 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
 
     // Handle 401 errors
     if (!skipAuth && response.status === 401) {
+       // BREAKPOINT: Received 401 Unauthorized response
+      
       if (url.includes('/auth/login') || url.includes('/auth/register')) {
         throw new Error('Authentication failed');
       }
@@ -104,17 +122,27 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
       const existingRefreshToken = localStorage.getItem('refreshToken');
       
       console.warn('[API] 401 Unauthorized for:', url, 'Token exists:', !!existingToken, 'RefreshToken exists:', !!existingRefreshToken);
+       // BREAKPOINT: After checking for tokens on 401
       
       if (!existingToken || !existingRefreshToken) {
         // No tokens - user is not logged in, clear everything and throw
         console.warn('[API] No tokens found, redirecting to login');
+         // BREAKPOINT: About to redirect (no tokens on 401)
         localStorage.removeItem('token');
         localStorage.removeItem('refreshToken');
         queryClient.clear();
         // Only redirect if we're not already on the login page
+        // Use a flag to prevent multiple redirects
         if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-          console.log('[API] Redirecting to login from:', window.location.pathname);
-          window.location.href = '/login';
+          // Check if we're already redirecting to prevent loop
+          const redirectingKey = '__athala_redirecting_to_login';
+          if (!sessionStorage.getItem(redirectingKey)) {
+            sessionStorage.setItem(redirectingKey, 'true');
+            console.log('[API] Redirecting to login from:', window.location.pathname);
+            // Clear the flag after a delay
+            setTimeout(() => sessionStorage.removeItem(redirectingKey), 1000);
+            window.location.href = '/login';
+          }
         }
         throw new Error('Not authenticated');
       }
