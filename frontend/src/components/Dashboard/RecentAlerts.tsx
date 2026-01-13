@@ -36,6 +36,9 @@ function formatTimeAgo(timestamp: string): string {
 }
 
 export function RecentAlerts() {
+  // Check if user is authenticated before making API calls
+  const isAuthenticated = typeof window !== 'undefined' && !!localStorage.getItem('token');
+  
   const { data, isLoading, error } = useQuery({
     queryKey: ['recent-alerts'],
     queryFn: async () => {
@@ -49,6 +52,7 @@ export function RecentAlerts() {
       const { data } = await api.get<PaginatedResult<Alert>>(`/api/alerts?${queryParams.toString()}`);
       return data?.items ?? [];
     },
+    enabled: isAuthenticated, // Only run query if authenticated
     refetchInterval: 30000, // Refetch every 30 seconds
   });
 

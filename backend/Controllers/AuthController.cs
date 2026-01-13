@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Backend.Models;
 using Backend.Data;
 using Backend.DTOs;
+using System.Linq;
 using BCrypt.Net;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
@@ -55,14 +56,37 @@ namespace Backend.Controllers
         }
 
         [HttpPost("register")]
-        public async Task<IActionResult> Register(UserRegisterDto userDto)
+        [AllowAnonymous]
+        [Consumes("application/json")]
+        [Produces("application/json")]
+        public async Task<IActionResult> Register([FromBody] UserRegisterDto? userDto)
         {
             try
             {
-                _logger.LogInformation("Registration attempt for user: {Username}", userDto.Username);
+                _logger.LogInformation("Registration attempt for user: {Username}, Email: {Email}", userDto?.Username ?? "null", userDto?.Email ?? "null");
+                
+                if (userDto == null)
+                {
+                    _logger.LogWarning("Registration failed: Request body is null");
+                    return BadRequest(new { message = "Request body is required" });
+                }
+                
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState
+                        .Where(x => x.Value?.Errors.Count > 0)
+                        .SelectMany(x => x.Value!.Errors)
+                        .Select(x => x.ErrorMessage)
+                        .ToList();
+                    
+                    _logger.LogWarning("Registration failed: Model validation errors: {Errors}", string.Join(", ", errors));
+                    return BadRequest(new { message = "Validation failed", errors = errors });
+                }
                 
                 if (string.IsNullOrEmpty(userDto.Username) || string.IsNullOrEmpty(userDto.Password) || string.IsNullOrEmpty(userDto.Email))
                 {
+                    _logger.LogWarning("Registration failed: Missing required fields. Username: {HasUsername}, Email: {HasEmail}, Password: {HasPassword}", 
+                        !string.IsNullOrEmpty(userDto.Username), !string.IsNullOrEmpty(userDto.Email), !string.IsNullOrEmpty(userDto.Password));
                     return BadRequest(new { message = "Username, email, and password are required" });
                 }
                 
@@ -82,10 +106,26 @@ namespace Backend.Controllers
                 var hashBytes = hmac.ComputeHash(Encoding.UTF8.GetBytes(userDto.Password!));
                 var saltBytes = hmac.Key;
 
+                // Parse full name if provided
+                string? firstName = userDto.FirstName;
+                string? lastName = userDto.LastName;
+                
+                if (string.IsNullOrEmpty(firstName) && !string.IsNullOrEmpty(userDto.FullName))
+                {
+                    var nameParts = userDto.FullName.Trim().Split(' ', 2);
+                    firstName = nameParts[0];
+                    if (nameParts.Length > 1)
+                    {
+                        lastName = nameParts[1];
+                    }
+                }
+                
                 var user = new UserModels
                 {
                     Username = userDto.Username,
                     Email = userDto.Email,
+                    FirstName = firstName,
+                    LastName = lastName,
                     PasswordHash = Convert.ToBase64String(hashBytes),
                     PasswordSalt = Convert.ToBase64String(saltBytes),
                     TwoFactorEnabled = userDto.TwoFactorEnabled,
@@ -93,7 +133,7 @@ namespace Backend.Controllers
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
-
+                
                 // Determine if an admin is making this request (must include Authorization header with admin token)
                 bool isAdminRequest = false;
                 if (Request.Headers.TryGetValue("Authorization", out var authHeader))
@@ -109,26 +149,56 @@ namespace Backend.Controllers
                 // Add roles if specified and permission allows
                 List<string> rolesToAdd = new List<string>();
                 
+                // Handle both single Role and Roles list from frontend
+                if (!string.IsNullOrEmpty(userDto.Role))
+                {
+                    // Map frontend role values to backend role names
+                    var mappedRole = MapRoleName(userDto.Role);
+                    if (!string.IsNullOrEmpty(mappedRole))
+                    {
+                        rolesToAdd.Add(mappedRole);
+                    }
+                }
+                
                 if (userDto.Roles != null && userDto.Roles.Count > 0)
+                {
+                    // Map all roles from frontend format to backend format
+                    foreach (var role in userDto.Roles)
+                    {
+                        var mappedRole = MapRoleName(role);
+                        if (!string.IsNullOrEmpty(mappedRole))
+                        {
+                            rolesToAdd.Add(mappedRole);
+                        }
+                    }
+                }
+                
+                // Remove duplicates
+                rolesToAdd = rolesToAdd.Distinct().ToList();
+                
+                if (rolesToAdd.Count > 0)
                 {
                     // Only allow admin roles to be assigned by an admin
                     if (isAdminRequest)
                     {
                         // Admin can assign any role
-                        rolesToAdd = userDto.Roles;
                         _logger.LogInformation("Admin user assigning roles: {Roles}", string.Join(", ", rolesToAdd));
                     }
                     else
                     {
                         // Non-admin can only assign User role (filter out admin/operator roles)
-                        rolesToAdd = userDto.Roles
-                            .Where(r => r != RoleModels.DefaultRoles.Admin && r != RoleModels.DefaultRoles.Operator)
+                        var filteredRoles = rolesToAdd
+                            .Where(r => r != RoleModels.DefaultRoles.Admin && 
+                                       r != RoleModels.DefaultRoles.Operator &&
+                                       r != "ADMIN" && r != "OPERATOR")
                             .ToList();
                         
-                        if (rolesToAdd.Count != userDto.Roles.Count)
+                        if (filteredRoles.Count != rolesToAdd.Count)
                         {
                             _logger.LogWarning("Non-admin user attempted to assign restricted roles. Only User role will be assigned.");
                         }
+                        
+                        rolesToAdd = filteredRoles;
                     }
                 }
                 
@@ -170,10 +240,26 @@ namespace Backend.Controllers
                 await _context.SaveChangesAsync();
                 _logger.LogInformation("User {Username} registered successfully with roles: {Roles}", userDto.Username, string.Join(", ", rolesToAdd));
 
+                // Reload user with roles to ensure they're included
+                await _context.Entry(user).Collection(u => u.UserRoles).LoadAsync();
+                foreach (var userRole in user.UserRoles)
+                {
+                    await _context.Entry(userRole).Reference(ur => ur.Role).LoadAsync();
+                }
+
                 // Get roles to return in response
                 var userRoles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
                 
-                return Ok(new { Id = user.Id, Username = user.Username, Email = user.Email, Roles = userRoles });
+                return Ok(new 
+                { 
+                    Id = user.Id, 
+                    Username = user.Username, 
+                    Email = user.Email, 
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    Roles = userRoles,
+                    Role = userRoles.FirstOrDefault() ?? "User" // Primary role for backward compatibility
+                });
             }
             catch (Exception ex)
             {
@@ -279,10 +365,26 @@ namespace Backend.Controllers
                 await _context.SaveChangesAsync();
                 _logger.LogInformation("Admin user {Username} registered successfully with roles: {Roles}", userDto.Username, string.Join(", ", rolesToAdd));
 
+                // Reload user with roles to ensure they're included
+                await _context.Entry(user).Collection(u => u.UserRoles).LoadAsync();
+                foreach (var userRole in user.UserRoles)
+                {
+                    await _context.Entry(userRole).Reference(ur => ur.Role).LoadAsync();
+                }
+
                 // Get roles to return in response
                 var userRoles = user.UserRoles.Select(ur => ur.Role.Name).ToList();
                 
-                return Ok(new { Id = user.Id, Username = user.Username, Email = user.Email, Roles = userRoles });
+                return Ok(new 
+                { 
+                    Id = user.Id, 
+                    Username = user.Username, 
+                    Email = user.Email, 
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    Roles = userRoles,
+                    Role = userRoles.FirstOrDefault() ?? "User"
+                });
             }
             catch (Exception ex)
             {
@@ -297,19 +399,33 @@ namespace Backend.Controllers
         /// <param name="loginDto">The login request</param>
         /// <returns>The authentication result</returns>
         [HttpPost("login")]
+        [AllowAnonymous]
+        [Consumes("application/json")]
+        [Produces("application/json")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-        public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
+        public async Task<IActionResult> Login([FromBody] LoginDto? loginDto)
         {
             try
             {
-                // Ensure CORS headers are added for this response
-                var origin = Request.Headers["Origin"].ToString();
-                if (!string.IsNullOrEmpty(origin))
+                
+                if (loginDto == null)
                 {
-                    Response.Headers["Access-Control-Allow-Origin"] = origin;
-                    Response.Headers["Access-Control-Allow-Credentials"] = "true";
+                    _logger.LogWarning("Login failed: Request body is null");
+                    return BadRequest(new { message = "Request body is required" });
+                }
+                
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState
+                        .Where(x => x.Value?.Errors.Count > 0)
+                        .SelectMany(x => x.Value!.Errors)
+                        .Select(x => x.ErrorMessage)
+                        .ToList();
+                    
+                    _logger.LogWarning("Login failed: Model validation errors: {Errors}", string.Join(", ", errors));
+                    return BadRequest(new { message = "Validation failed", errors = errors });
                 }
                 
                 _logger.LogInformation("Login attempt for user: {Username}", loginDto.Username);
@@ -338,8 +454,11 @@ namespace Backend.Controllers
 
                 _logger.LogInformation("Login successful for user {Username}", loginDto.Username);
                 
-                // Get user roles
+                // Get user roles - ensure they're loaded
                 var roles = await _authService.GetUserRolesAsync(user.Id);
+                var rolesList = roles.ToList();
+                
+                _logger.LogInformation("User {Username} has roles: {Roles}", loginDto.Username, string.Join(", ", rolesList));
                 
                 return Ok(new
                 {
@@ -352,7 +471,8 @@ namespace Backend.Controllers
                         Email = user.Email,
                         FirstName = user.FirstName,
                         LastName = user.LastName,
-                        Role = roles // Include roles in the response
+                        Roles = rolesList, // Include roles as array
+                        Role = rolesList.FirstOrDefault() ?? "User" // Include primary role for backward compatibility
                     }
                 });
             }
@@ -369,7 +489,7 @@ namespace Backend.Controllers
         /// <returns>The refreshed token</returns>
         [HttpPost("refresh")]
         [Authorize]
-        public async Task<ActionResult> RefreshToken([FromBody] RefreshTokenRequest request)
+        public async Task<ActionResult> RefreshToken([FromBody] RefreshTokenRequestDto request)
         {
             try
             {
@@ -513,8 +633,7 @@ namespace Backend.Controllers
         /// </summary>
         /// <returns>The validation result</returns>
         [HttpPost("validate")]
-        [AllowAnonymous]
-        public async Task<ActionResult> ValidateToken([FromBody] ValidateTokenRequest request)
+        public async Task<ActionResult> ValidateToken([FromBody] ValidateTokenRequestDto request)
         {
             try
             {
@@ -528,37 +647,26 @@ namespace Backend.Controllers
                 return StatusCode(500, "An error occurred while validating the token");
             }
         }
-    }
-
-    /// <summary>
-    /// Login request
-    /// </summary>
-    public class LoginDto
-    {
-        /// <summary>
-        /// Gets or sets the username
-        /// </summary>
-        public string Username { get; set; } = string.Empty;
         
         /// <summary>
-        /// Gets or sets the password
+        /// Maps frontend role names to backend role names
         /// </summary>
-        public string Password { get; set; } = string.Empty;
-    }
-    
-    /// <summary>
-    /// Validate token request
-    /// </summary>
-    public class ValidateTokenRequest
-    {
-        /// <summary>
-        /// Gets or sets the token
-        /// </summary>
-        public string Token { get; set; } = string.Empty;
-    }
-
-    public class RefreshTokenRequest
-    {
-        public string RefreshToken { get; set; } = string.Empty;
+        private string MapRoleName(string? role)
+        {
+            if (string.IsNullOrEmpty(role))
+                return string.Empty;
+                
+            // Map frontend uppercase role names to backend role names
+            return role.ToUpperInvariant() switch
+            {
+                "ADMIN" => RoleModels.DefaultRoles.Admin,
+                "ANALYST" => RoleModels.DefaultRoles.Analyst,
+                "OPERATOR" => RoleModels.DefaultRoles.Operator,
+                "VIEWER" => RoleModels.DefaultRoles.User, // Viewer maps to User
+                "USER" => RoleModels.DefaultRoles.User,
+                // If already in correct format, return as-is
+                _ => role
+            };
+        }
     }
 } 

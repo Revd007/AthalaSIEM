@@ -30,6 +30,7 @@ using Serilog;
 using Serilog.Events;
 using Microsoft.Extensions.Options;
 using Swashbuckle.AspNetCore.Filters;
+using Microsoft.AspNetCore.Mvc;
 
 // Enable HTTP/2 over HTTP (without TLS) for gRPC
 AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
@@ -44,7 +45,31 @@ builder.Logging.SetMinimumLevel(LogLevel.Debug);
 builder.Logging.AddFilter("Backend", LogLevel.Debug);
 
 // Add services to the container
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Use camelCase by default, but respect JsonPropertyName attributes
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+        options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
+        options.JsonSerializerOptions.WriteIndented = false;
+    })
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var errors = context.ModelState
+                .Where(x => x.Value?.Errors.Count > 0)
+                .SelectMany(x => x.Value!.Errors)
+                .Select(x => x.ErrorMessage)
+                .ToList();
+            
+            return new BadRequestObjectResult(new { 
+                message = "Validation failed", 
+                errors = errors 
+            });
+        };
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -83,8 +108,12 @@ builder.Services.AddGrpc(options =>
     options.MaxReceiveMessageSize = 1024 * 1024 * 100; // 100MB
     options.MaxSendMessageSize = 1024 * 1024 * 100;    // 100MB
     
-    // Get gRPC URL from configuration with fallback
-    var grpcUrl = builder.Configuration["GrpcServer:Url"] ?? "http://0.0.0.0:9595";
+    // Get gRPC URL from configuration - REQUIRED, no hardcoded defaults
+    var grpcUrl = builder.Configuration["GrpcServer:Url"];
+    if (string.IsNullOrEmpty(grpcUrl))
+    {
+        throw new InvalidOperationException("GrpcServer:Url must be configured in appsettings.json. No hardcoded defaults for security.");
+    }
     Console.WriteLine($"🔧 gRPC server configured for: {grpcUrl}");
 });
 
@@ -115,24 +144,44 @@ builder.Services.AddGrpcClient<AthalaSIEM.Agent.SiemService.SiemServiceClient>(o
     };
 });
 
-// Configure CORS with default + environment override
+// Configure CORS - MUST come from configuration, no hardcoded values
 builder.Services.AddCors(options =>
 {
+    // Get allowed origins from configuration - REQUIRED, no defaults for security
+    var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+    
+    if (allowedOrigins == null || allowedOrigins.Length == 0)
+    {
+        throw new InvalidOperationException("Cors:AllowedOrigins must be configured in appsettings.json. No hardcoded defaults for security.");
+    }
+
+    // Default policy (used by UseCors() without name)
     options.AddDefaultPolicy(corsBuilder =>
     {
-        // Get allowed origins from configuration (defaults + environment override)
-        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() 
-            ?? new[] { "http://localhost:3000", "http://localhost:7654", "http://localhost:9595" };
-
         corsBuilder
             .WithOrigins(allowedOrigins)
             .AllowAnyMethod()
             .AllowAnyHeader()
-            .AllowCredentials();
+            .AllowCredentials()
+            .SetPreflightMaxAge(TimeSpan.FromHours(1));
         
         // Log configured origins for debugging
         var logger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("CORS");
-        logger.LogInformation("🌐 CORS configured with origins: {Origins}", string.Join(", ", allowedOrigins));
+        logger.LogInformation("🌐 CORS DefaultPolicy configured with origins: {Origins}", string.Join(", ", allowedOrigins));
+    });
+    
+    // Named policy for controllers that explicitly use it
+    options.AddPolicy("AllowFrontend", corsBuilder =>
+    {
+        corsBuilder
+            .WithOrigins(allowedOrigins)
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials()
+            .SetPreflightMaxAge(TimeSpan.FromHours(1));
+        
+        var logger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("CORS");
+        logger.LogInformation("🌐 CORS AllowFrontend policy configured with origins: {Origins}", string.Join(", ", allowedOrigins));
     });
 });
 
@@ -184,22 +233,22 @@ builder.Services.AddAuthorization(options =>
               .RequireClaim("permission", "agent:read"));
 });
 
-// Configure Kestrel with default + configurable ports
+// Configure Kestrel - port MUST come from configuration
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
-    // Get port from configuration with fallback to default
-    var httpPort = builder.Configuration.GetValue<int>("Enterprise:DefaultPorts:Backend");
-    if (httpPort == 0)
-    {
-        httpPort = 9595; // Ultimate fallback
-    }
-
-    // Allow environment override
+    // Get URL from configuration - REQUIRED, no hardcoded defaults
     var configuredUrl = builder.Configuration["Kestrel:Endpoints:Http:Url"];
-    if (!string.IsNullOrEmpty(configuredUrl) && Uri.TryCreate(configuredUrl, UriKind.Absolute, out var uri))
+    if (string.IsNullOrEmpty(configuredUrl))
     {
-        httpPort = uri.Port;
+        throw new InvalidOperationException("Kestrel:Endpoints:Http:Url must be configured in appsettings.json. No hardcoded defaults for security.");
     }
+    
+    if (!Uri.TryCreate(configuredUrl, UriKind.Absolute, out var uri))
+    {
+        throw new InvalidOperationException($"Invalid Kestrel URL configuration: {configuredUrl}");
+    }
+    
+    var httpPort = uri.Port;
 
     serverOptions.ListenAnyIP(httpPort, listenOptions =>
     {
@@ -277,27 +326,47 @@ if (app.Environment.IsDevelopment())
 // Configure middleware in correct order - IMPORTANT: Routing must come before CORS
 app.UseRouting();
 
-// Special handling for OPTIONS requests (preflight)
+// Apply CORS middleware BEFORE authentication and authorization
+app.UseCors();
+
+// Special handling for OPTIONS requests (preflight) - AFTER CORS middleware
 app.Use(async (context, next) =>
 {
     // If it's a preflight request, handle it directly
     if (context.Request.Method == "OPTIONS")
     {
-        // Apply CORS directly for OPTIONS requests
-        context.Response.Headers["Access-Control-Allow-Origin"] = context.Request.Headers["Origin"];
-        context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
-        context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With";
-        context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+        // Get allowed origins from configuration - REQUIRED, no hardcoded defaults
+        var configuration = context.RequestServices.GetRequiredService<IConfiguration>();
+        var allowedOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+        
+        if (allowedOrigins == null || allowedOrigins.Length == 0)
+        {
+            context.Response.StatusCode = 500;
+            await context.Response.WriteAsync("CORS configuration error: Cors:AllowedOrigins must be configured in appsettings.json");
+            await context.Response.CompleteAsync();
+            return;
+        }
+        
+        var origin = context.Request.Headers["Origin"].ToString();
+        
+        // Only set headers if origin is in allowed list
+        if (!string.IsNullOrEmpty(origin) && allowedOrigins.Contains(origin))
+        {
+            context.Response.Headers["Access-Control-Allow-Origin"] = origin;
+            context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS";
+            context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept";
+            context.Response.Headers["Access-Control-Allow-Credentials"] = "true";
+            context.Response.Headers["Access-Control-Max-Age"] = "3600";
+        }
+        
         context.Response.StatusCode = 200;
+        await context.Response.CompleteAsync();
         return;
     }
 
     // For non-OPTIONS requests, continue with middleware pipeline
     await next();
 });
-
-// Apply CORS middleware for handling standard requests
-app.UseCors();
 
 // Only apply HTTPS redirection in production environment
 // if (!app.Environment.IsDevelopment())

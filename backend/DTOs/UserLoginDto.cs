@@ -1,13 +1,16 @@
 namespace Backend.DTOs
 {
     using System.ComponentModel.DataAnnotations;
+    using System.Text.Json.Serialization;
 
-    public class UserLoginDto
+    public class LoginDto
     {
-        [Required]
-        public required string Username { get; set; }
+        [Required(ErrorMessage = "Username is required")]
+        [JsonPropertyName("username")]
+        public string Username { get; set; } = string.Empty;
         
-        [Required]
-        public required string Password { get; set; }
+        [Required(ErrorMessage = "Password is required")]
+        [JsonPropertyName("password")]
+        public string Password { get; set; } = string.Empty;
     }
 } 

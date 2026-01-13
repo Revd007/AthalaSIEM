@@ -9,6 +9,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 const COLORS = ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899'];
 
 export function SecurityEvents() {
+  // Check if user is authenticated before making API calls
+  const isAuthenticated = typeof window !== 'undefined' && !!localStorage.getItem('token');
+  
   const { data: logsData, isLoading } = useQuery({
     queryKey: ['security-events-distribution'],
     queryFn: async () => {
@@ -21,6 +24,7 @@ export function SecurityEvents() {
         limit: 10000
       });
     },
+    enabled: isAuthenticated, // Only run query if authenticated
     refetchInterval: 60000, // Refresh every minute
   });
 

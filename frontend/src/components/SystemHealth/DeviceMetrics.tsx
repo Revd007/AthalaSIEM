@@ -10,7 +10,11 @@ import {
   Thermometer,
   Network
 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { agentService } from '@/services/agent-service'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { DeviceHealth } from '@/types/system-health'
+import type { Agent } from '@/types/agent'
 
 interface DeviceMetricsProps {
   deviceId: string
@@ -53,13 +57,6 @@ function MetricCard({
     </Card>
   )
 }
-
-'use client'
-
-import { useQuery } from '@tanstack/react-query'
-import { agentService } from '@/services/agent-service'
-import { Skeleton } from '@/components/ui/skeleton'
-import type { Agent } from '@/types/agent'
 
 function formatBytes(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']

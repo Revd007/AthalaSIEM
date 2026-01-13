@@ -25,11 +25,15 @@ interface MetricsData {
 }
 
 export function MetricsGrid() {
+  // Check if user is authenticated before making API calls
+  const isAuthenticated = typeof window !== 'undefined' && !!localStorage.getItem('token');
+  
   // Fetch alerts for critical alerts count
   const { data: alertsData } = useAlerts({ 
     severity: 'critical',
     limit: 1000,
-    status: 'new'
+    status: 'new',
+    enabled: isAuthenticated
   });
 
   // Fetch recent logs for events/sec calculation
@@ -45,6 +49,7 @@ export function MetricsGrid() {
         limit: 10000
       });
     },
+    enabled: isAuthenticated, // Only run query if authenticated
     refetchInterval: 30000,
   });
 
@@ -52,6 +57,7 @@ export function MetricsGrid() {
   const { data: agentsData } = useQuery({
     queryKey: ['agents-metrics'],
     queryFn: () => agentService.getAgents(),
+    enabled: isAuthenticated, // Only run query if authenticated
     refetchInterval: 30000,
   });
 

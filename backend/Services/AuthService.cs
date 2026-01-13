@@ -173,7 +173,10 @@ namespace Backend.Services
                 }
                 else
                 {
-                    _logger.LogInformation("GetUserFromTokenAsync: Successfully retrieved user {Username}", user.Username);
+                    // Ensure roles are loaded
+                    var roles = await _userRepository.GetUserRolesAsync(userId);
+                    _logger.LogInformation("GetUserFromTokenAsync: Successfully retrieved user {Username} with roles: {Roles}", 
+                        user.Username, string.Join(", ", roles));
                 }
                 
                 return user;

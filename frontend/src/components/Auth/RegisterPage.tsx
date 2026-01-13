@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import { Shield, Mail, User, Lock, Eye, EyeOff } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { env } from '@/config/env'
 
 // Define available roles based on backend enum
 const USER_ROLES = [
@@ -46,21 +47,45 @@ export function RegisterPage() {
     }
 
     try {
-      const response = await fetch('/api/auth/register', {
+      // Use the environment variable for API URL (from env config)
+      const apiUrl = env.NEXT_PUBLIC_API_URL || 'http://localhost:9595'
+      console.log('API URL:', apiUrl)
+      
+      const requestBody = {
+        username: formData.username.trim(),
+        email: formData.email.trim(),
+        password: formData.password,
+        ...(formData.full_name && formData.full_name.trim() && { full_name: formData.full_name.trim() }),
+        ...(formData.role && { role: formData.role })
+      }
+      
+      console.log('Registering with:', { ...requestBody, password: '***' })
+      
+      const response = await fetch(`${apiUrl}/api/auth/register`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: formData.username,
-          email: formData.email,
-          password: formData.password,
-          full_name: formData.full_name || undefined,
-          role: formData.role // Role akan dikirim dalam uppercase sesuai backend enum
-        })
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify(requestBody)
       })
 
       if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.detail || 'Registration failed')
+        let errorData
+        try {
+          errorData = await response.json()
+        } catch {
+          errorData = { message: `HTTP ${response.status}: ${response.statusText}` }
+        }
+        
+        const errorMessage = errorData.message || 
+                           errorData.detail || 
+                           (errorData.errors && Array.isArray(errorData.errors) ? errorData.errors.join(', ') : '') ||
+                           `Registration failed: ${response.status} ${response.statusText}`
+        
+        console.error('Registration error:', errorData)
+        throw new Error(errorMessage)
       }
 
       router.push('/login?registered=true')

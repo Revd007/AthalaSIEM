@@ -69,6 +69,11 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
   const token = localStorage.getItem('token');
   const { skipAuth, responseType, ...restOptions } = options;
 
+  // Debug logging for token
+  if (!skipAuth && !token && typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+    console.warn('[API] Making authenticated request without token:', url);
+  }
+
   const defaultOptions: RequestInit = {
     mode: 'cors',
     credentials: 'include',
@@ -94,6 +99,26 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
         throw new Error('Authentication failed');
       }
       
+      // Check if we have a token - if not, user is not logged in
+      const existingToken = localStorage.getItem('token');
+      const existingRefreshToken = localStorage.getItem('refreshToken');
+      
+      console.warn('[API] 401 Unauthorized for:', url, 'Token exists:', !!existingToken, 'RefreshToken exists:', !!existingRefreshToken);
+      
+      if (!existingToken || !existingRefreshToken) {
+        // No tokens - user is not logged in, clear everything and throw
+        console.warn('[API] No tokens found, redirecting to login');
+        localStorage.removeItem('token');
+        localStorage.removeItem('refreshToken');
+        queryClient.clear();
+        // Only redirect if we're not already on the login page
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          console.log('[API] Redirecting to login from:', window.location.pathname);
+          window.location.href = '/login';
+        }
+        throw new Error('Not authenticated');
+      }
+      
       if (!isRefreshingToken) {
         isRefreshingToken = true;
         
@@ -112,10 +137,14 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
             },
           });
         } catch (error) {
-          // If refresh failed, clear both tokens and throw error
+          // If refresh failed, clear both tokens and redirect to login
           localStorage.removeItem('token');
           localStorage.removeItem('refreshToken');
           queryClient.clear();
+          // Only redirect if we're not already on the login page
+          if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+            window.location.href = '/login';
+          }
           throw new Error('Session expired');
         } finally {
           isRefreshingToken = false;

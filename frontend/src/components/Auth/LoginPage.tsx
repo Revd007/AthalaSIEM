@@ -29,8 +29,12 @@ export function LoginPage() {
   // Combined effect for navigation
   useEffect(() => {
     const token = localStorage.getItem('token');
-    if (token) {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (token && refreshToken) {
+      console.log('[LoginPage] User already authenticated, redirecting to dashboard');
       router.replace('/dashboard');
+    } else {
+      console.log('[LoginPage] No tokens found, staying on login page');
     }
   }, [router]);
 
@@ -49,24 +53,32 @@ export function LoginPage() {
         password 
       })
       
-      if (response.data?.token && response.data?.refreshToken) {
+      // Backend returns PascalCase (Token, RefreshToken, User) but frontend expects camelCase
+      // Handle both cases for compatibility
+      const token = response.data?.token || (response.data as any)?.Token;
+      const refreshToken = response.data?.refreshToken || (response.data as any)?.RefreshToken;
+      const user = response.data?.user || (response.data as any)?.User;
+      
+      if (token && refreshToken) {
         // Store both tokens
-        localStorage.setItem('token', response.data.token)
-        localStorage.setItem('refreshToken', response.data.refreshToken)
+        localStorage.setItem('token', token)
+        localStorage.setItem('refreshToken', refreshToken)
         
         // Also store user info if available
-        if (response.data.user) {
-          console.debug('Login successful, storing user info:', response.data.user);
-          localStorage.setItem('user', JSON.stringify(response.data.user));
+        if (user) {
+          console.debug('Login successful, storing user info:', user);
+          localStorage.setItem('user', JSON.stringify(user));
           
           // Debug information for roles
-          if (response.data.user.role) {
-            console.debug('User roles:', response.data.user.role);
+          const role = user.role || user.Role || (user.roles || user.Roles);
+          if (role) {
+            console.debug('User roles:', role);
             // Show a more descriptive toast for roles
-            const roleInfo = Array.isArray(response.data.user.role) 
-              ? response.data.user.role.join(', ') 
-              : response.data.user.role;
-            toast.success(`Login successful as ${response.data.user.username} with role: ${roleInfo}`);
+            const roleInfo = Array.isArray(role) 
+              ? role.join(', ') 
+              : role;
+            const username = user.username || user.Username;
+            toast.success(`Login successful as ${username} with role: ${roleInfo}`);
           } else {
             console.warn('No roles found in user info. User may not have permission for restricted areas.');
             toast.warning('Login successful but no role information found. You may have limited access.');
@@ -74,6 +86,9 @@ export function LoginPage() {
         } else {
           toast.success('Login successful');
         }
+        
+        // Small delay to ensure tokens are stored before navigation
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         // Navigate directly after successful login
         router.replace('/dashboard');

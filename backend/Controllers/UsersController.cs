@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Backend.Models;
 using Backend.Services;
+using Backend.DTOs;
+using Backend.Data.Repositories;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -19,6 +22,7 @@ namespace Backend.Controllers
     {
         private readonly IUserService _userService;
         private readonly IAuthService _authService;
+        private readonly IUserRepository _userRepository;
         private readonly ILogger<UsersController> _logger;
         
         /// <summary>
@@ -26,14 +30,17 @@ namespace Backend.Controllers
         /// </summary>
         /// <param name="userService">The user service</param>
         /// <param name="authService">The authentication service</param>
+        /// <param name="userRepository">The user repository</param>
         /// <param name="logger">The logger</param>
         public UsersController(
             IUserService userService,
             IAuthService authService,
+            IUserRepository userRepository,
             ILogger<UsersController> logger)
         {
             _userService = userService ?? throw new ArgumentNullException(nameof(userService));
             _authService = authService ?? throw new ArgumentNullException(nameof(authService));
+            _userRepository = userRepository ?? throw new ArgumentNullException(nameof(userRepository));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
         
@@ -51,7 +58,7 @@ namespace Backend.Controllers
                 
                 foreach (var user in users)
                 {
-                    userDtos.Add(MapToDto(user));
+                    userDtos.Add(await MapToDtoAsync(user));
                 }
                 
                 return Ok(userDtos);
@@ -80,7 +87,7 @@ namespace Backend.Controllers
                     return NotFound();
                 }
                 
-                return Ok(MapToDto(user));
+                return Ok(await MapToDtoAsync(user));
             }
             catch (Exception ex)
             {
@@ -107,7 +114,7 @@ namespace Backend.Controllers
                     return Unauthorized();
                 }
                 
-                return Ok(MapToDto(user));
+                return Ok(await MapToDtoAsync(user));
             }
             catch (Exception ex)
             {
@@ -122,7 +129,7 @@ namespace Backend.Controllers
         /// <param name="request">The create user request</param>
         /// <returns>The created user</returns>
         [HttpPost]
-        public async Task<ActionResult<UserDto>> CreateUser(CreateUserRequest request)
+        public async Task<ActionResult<UserDto>> CreateUser([FromBody] CreateUserRequestDto request)
         {
             try
             {
@@ -146,7 +153,7 @@ namespace Backend.Controllers
                     }
                 }
                 
-                return CreatedAtAction(nameof(GetUserById), new { id = createdUser.Id }, MapToDto(createdUser));
+                return CreatedAtAction(nameof(GetUserById), new { id = createdUser.Id }, await MapToDtoAsync(createdUser));
             }
             catch (InvalidOperationException ex)
             {
@@ -166,7 +173,7 @@ namespace Backend.Controllers
         /// <param name="request">The update user request</param>
         /// <returns>The updated user</returns>
         [HttpPut("{id}")]
-        public async Task<ActionResult<UserDto>> UpdateUser(string id, UpdateUserRequest request)
+        public async Task<ActionResult<UserDto>> UpdateUser(string id, [FromBody] UpdateUserRequestDto request)
         {
             try
             {
@@ -185,7 +192,7 @@ namespace Backend.Controllers
                 
                 var updatedUser = await _userService.UpdateUserAsync(existingUser);
                 
-                return Ok(MapToDto(updatedUser));
+                return Ok(await MapToDtoAsync(updatedUser));
             }
             catch (KeyNotFoundException)
             {
@@ -209,7 +216,7 @@ namespace Backend.Controllers
         /// <param name="request">The change password request</param>
         /// <returns>Success or failure</returns>
         [HttpPut("{id}/password")]
-        public async Task<ActionResult> ChangePassword(string id, ChangePasswordRequest request)
+        public async Task<ActionResult> ChangePassword(string id, [FromBody] ChangePasswordRequestDto request)
         {
             try
             {
@@ -236,7 +243,7 @@ namespace Backend.Controllers
         /// <returns>Success or failure</returns>
         [HttpPut("me/password")]
         [Authorize]
-        public async Task<ActionResult> ChangeMyPassword(ChangePasswordRequest request)
+        public async Task<ActionResult> ChangeMyPassword([FromBody] ChangePasswordRequestDto request)
         {
             try
             {
@@ -271,7 +278,7 @@ namespace Backend.Controllers
         /// <param name="request">The add role request</param>
         /// <returns>Success or failure</returns>
         [HttpPost("{id}/roles")]
-        public async Task<ActionResult> AddRoleToUser(string id, AddRoleRequest request)
+        public async Task<ActionResult> AddRoleToUser(string id, [FromBody] AddRoleRequestDto request)
         {
             try
             {
@@ -349,8 +356,10 @@ namespace Backend.Controllers
         /// </summary>
         /// <param name="user">The user model</param>
         /// <returns>The user DTO</returns>
-        private UserDto MapToDto(UserModels user)
+        private async Task<UserDto> MapToDtoAsync(UserModels user)
         {
+            var roles = await _userRepository.GetUserRolesAsync(user.Id);
+            
             return new UserDto
             {
                 Id = user.Id,
@@ -360,148 +369,9 @@ namespace Backend.Controllers
                 LastName = user.LastName ?? string.Empty,
                 IsActive = user.IsActive,
                 CreatedAt = user.CreatedAt,
-                UpdatedAt = user.UpdatedAt
+                UpdatedAt = user.UpdatedAt,
+                Roles = roles.ToList()
             };
         }
-    }
-    
-    /// <summary>
-    /// User DTO
-    /// </summary>
-    public class UserDto
-    {
-        /// <summary>
-        /// Gets or sets the ID
-        /// </summary>
-        public string Id { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets the username
-        /// </summary>
-        public string Username { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets the email
-        /// </summary>
-        public string Email { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets the first name
-        /// </summary>
-        public string FirstName { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets the last name
-        /// </summary>
-        public string LastName { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets a value indicating whether the user is active
-        /// </summary>
-        public bool IsActive { get; set; }
-        
-        /// <summary>
-        /// Gets or sets the creation timestamp
-        /// </summary>
-        public DateTime CreatedAt { get; set; }
-        
-        /// <summary>
-        /// Gets or sets the update timestamp
-        /// </summary>
-        public DateTime UpdatedAt { get; set; }
-    }
-    
-    /// <summary>
-    /// Create user request
-    /// </summary>
-    public class CreateUserRequest
-    {
-        /// <summary>
-        /// Gets or sets the username
-        /// </summary>
-        public string Username { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets the email
-        /// </summary>
-        public string Email { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets the password
-        /// </summary>
-        public string Password { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets the first name
-        /// </summary>
-        public string FirstName { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets the last name
-        /// </summary>
-        public string LastName { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets the roles
-        /// </summary>
-        public List<string> Roles { get; set; } = new List<string>();
-    }
-    
-    /// <summary>
-    /// Update user request
-    /// </summary>
-    public class UpdateUserRequest
-    {
-        /// <summary>
-        /// Gets or sets the username
-        /// </summary>
-        public string Username { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets the email
-        /// </summary>
-        public string Email { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets the first name
-        /// </summary>
-        public string FirstName { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets the last name
-        /// </summary>
-        public string LastName { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets a value indicating whether the user is active
-        /// </summary>
-        public bool IsActive { get; set; }
-    }
-    
-    /// <summary>
-    /// Change password request
-    /// </summary>
-    public class ChangePasswordRequest
-    {
-        /// <summary>
-        /// Gets or sets the current password
-        /// </summary>
-        public string CurrentPassword { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets the new password
-        /// </summary>
-        public string NewPassword { get; set; } = string.Empty;
-    }
-    
-    /// <summary>
-    /// Add role request
-    /// </summary>
-    public class AddRoleRequest
-    {
-        /// <summary>
-        /// Gets or sets the role ID
-        /// </summary>
-        public string RoleId { get; set; } = string.Empty;
     }
 } 
