@@ -113,6 +113,7 @@ namespace AthalaSIEM.UniversalAgent.Collectors
 
                 _isActive = true;
                 _logger.LogInformation("✅ Linux System Metrics Collector started successfully");
+                await Task.CompletedTask;
             }
             catch (Exception ex)
             {
@@ -133,6 +134,7 @@ namespace AthalaSIEM.UniversalAgent.Collectors
                 _collectionTimer?.Dispose();
                 _isActive = false;
                 _logger.LogInformation("🛑 Linux System Metrics Collector stopped successfully");
+                await Task.CompletedTask;
             }
             catch (Exception ex)
             {
@@ -234,6 +236,7 @@ namespace AthalaSIEM.UniversalAgent.Collectors
 
             _logger.LogInformation("🔍 System capabilities detected: {Capabilities}", 
                 string.Join(", ", capabilities));
+            await Task.CompletedTask;
         }
 
         #endregion

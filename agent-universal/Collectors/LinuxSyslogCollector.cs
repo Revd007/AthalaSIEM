@@ -546,6 +546,7 @@ namespace AthalaSIEM.UniversalAgent.Core.Collectors
             try
             {
                 _logger.LogInformation("🚀 Starting systemd journal reader");
+                await Task.CompletedTask;
 
                 // Start journalctl in follow mode
                 _journalProcess = new Process

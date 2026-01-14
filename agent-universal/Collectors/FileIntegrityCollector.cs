@@ -204,6 +204,7 @@ namespace AthalaSIEM.Agent.Collectors
                 // This could be expanded to send rule status updates to backend
                 _logger.LogDebug("📤 FIM rule {RuleId} status: {Status}", rule.Id, status);
                 // await _fimConfigService.UpdateRuleStatusAsync(rule.Id, status);
+                await Task.CompletedTask;
             }
             catch (Exception ex)
             {

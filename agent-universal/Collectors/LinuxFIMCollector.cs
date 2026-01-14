@@ -1142,11 +1142,17 @@ namespace AthalaSIEM.UniversalAgent.Collectors
             try
             {
                 var currentProcess = Process.GetCurrentProcess();
+                await Task.CompletedTask;
                 return currentProcess.ProcessName;
             }
             catch
             {
+                await Task.CompletedTask;
                 return "unknown";
+            }
+            finally
+            {
+                await Task.CompletedTask;
             }
         }
 

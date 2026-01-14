@@ -8,6 +8,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Text.Json;
 using System.Linq;
+using System.Runtime.InteropServices;
 using AthalaSIEM.UniversalAgent.Models;
 
 namespace AthalaSIEM.UniversalAgent.Services
@@ -203,15 +204,23 @@ namespace AthalaSIEM.UniversalAgent.Services
         {
             try
             {
-                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\AthalaSIEM\UniversalAgent\Configuration");
-                if (key != null)
+                // Windows registry check (Windows only)
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    var backendUrl = key.GetValue("BackendUrl")?.ToString();
-                    if (!string.IsNullOrEmpty(backendUrl) && await ValidateSIEMServerAsync(backendUrl))
+                    using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\AthalaSIEM\UniversalAgent\Configuration");
+                    if (key != null)
                     {
-                        _discoveredServers.Add(backendUrl);
-                        _logger.LogInformation("✅ Registry discovery found SIEM server: {Server}", backendUrl);
+                        var backendUrl = key.GetValue("BackendUrl")?.ToString();
+                        if (!string.IsNullOrEmpty(backendUrl) && await ValidateSIEMServerAsync(backendUrl))
+                        {
+                            _discoveredServers.Add(backendUrl);
+                        }
                     }
+                }
+                else
+                {
+                    // On non-Windows platforms, skip registry-based discovery
+                    _logger.LogDebug("Registry-based discovery skipped - not running on Windows");
                 }
             }
             catch (Exception ex)

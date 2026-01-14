@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using AthalaSIEM.UniversalAgent.Core;
 using AthalaSIEM.UniversalAgent.Models;
@@ -298,24 +299,27 @@ namespace AthalaSIEM.Agent.Collectors
 
                 paths.AddRange(defaultPaths);
 
-                // Try to get configured log path from registry
-                try
+                // Try to get configured log path from registry (Windows only)
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
-                        @"SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile\Logging");
-                    
-                    if (key != null)
+                    try
                     {
-                        var logPath = key.GetValue("LogFilePath")?.ToString();
-                        if (!string.IsNullOrEmpty(logPath))
+                        using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(
+                            @"SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\StandardProfile\Logging");
+                        
+                        if (key != null)
                         {
-                            paths.Add(logPath);
+                            var logPath = key.GetValue("LogFilePath")?.ToString();
+                            if (!string.IsNullOrEmpty(logPath))
+                            {
+                                paths.Add(logPath);
+                            }
                         }
                     }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogDebug("Could not read firewall log path from registry: {Error}", ex.Message);
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to read firewall log path from registry");
+                    }
                 }
             }
             catch (Exception ex)

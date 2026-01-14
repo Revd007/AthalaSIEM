@@ -276,7 +276,7 @@ namespace AthalaSIEM.Agent.Services
         /// Processes the response queue.
         /// </summary>
         /// <param name="state">Timer state (not used).</param>
-        private async void ProcessResponseQueue(object? state)
+        private void ProcessResponseQueue(object? state)
         {
             if (!_isActive) return;
 
@@ -478,6 +478,7 @@ namespace AthalaSIEM.Agent.Services
                 }
 
                 _logger.LogInformation("Process terminated: {ProcessName} (PID: {ProcessId})", processName, processId);
+                await Task.CompletedTask;
                 return new ResponseResult 
                 { 
                     Success = true, 
@@ -486,6 +487,7 @@ namespace AthalaSIEM.Agent.Services
             }
             catch (Exception ex)
             {
+                await Task.CompletedTask;
                 return new ResponseResult { Success = false, Error = ex.Message };
             }
         }
@@ -527,6 +529,7 @@ namespace AthalaSIEM.Agent.Services
                 File.Move(filePath, quarantinePath);
 
                 _logger.LogInformation("File quarantined: {FilePath} -> {QuarantinePath}", filePath, quarantinePath);
+                await Task.CompletedTask;
                 return new ResponseResult 
                 { 
                     Success = true, 
@@ -536,6 +539,7 @@ namespace AthalaSIEM.Agent.Services
             }
             catch (Exception ex)
             {
+                await Task.CompletedTask;
                 return new ResponseResult { Success = false, Error = ex.Message };
             }
         }
@@ -671,6 +675,7 @@ namespace AthalaSIEM.Agent.Services
                 // Log alert (in production, this would send to alerting system)
                 _logger.LogWarning("SECURITY ALERT: {Message} (Severity: {Severity})", message, severity);
 
+                await Task.CompletedTask;
                 return new ResponseResult 
                 { 
                     Success = true, 
@@ -679,6 +684,7 @@ namespace AthalaSIEM.Agent.Services
             }
             catch (Exception ex)
             {
+                await Task.CompletedTask;
                 return new ResponseResult { Success = false, Error = ex.Message };
             }
         }

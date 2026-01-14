@@ -7,6 +7,7 @@ using System.Threading;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -339,7 +340,13 @@ namespace AthalaSIEM.UniversalAgent.UAT
 
             try
             {
-                // Test 1: Initialize Event Log Collector
+                // Test 1: Initialize Event Log Collector (Windows only)
+                if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    result.AddWarning("Windows Event Log Collector tests skipped - not running on Windows");
+                    return;
+                }
+
                 var eventCollector = new WindowsEventLogCollector(_serviceProvider.GetRequiredService<ILogger<WindowsEventLogCollector>>());
                 
                 var eventConfig = new Dictionary<string, object>

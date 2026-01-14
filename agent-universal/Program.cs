@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Threading;
+using System.Runtime.InteropServices;
 using AthalaSIEM.Agent.Collectors;
 using AthalaSIEM.UniversalAgent.Core.Collectors;
 using System.Threading.Tasks;
@@ -417,53 +418,61 @@ namespace AthalaSIEM.UniversalAgent
         {
             try
             {
-                // Read MSI-provided configuration from registry
-                using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\AthalaSIEM\UniversalAgent\Configuration");
-                if (key != null)
+                // Read MSI-provided configuration from registry (Windows only)
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    var backendUrl = key.GetValue("BackendUrl")?.ToString();
-                    var agentName = key.GetValue("AgentName")?.ToString() ?? Environment.MachineName;
-                    
-                    if (!string.IsNullOrEmpty(backendUrl))
+                    using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\AthalaSIEM\UniversalAgent\Configuration");
+                    if (key != null)
                     {
-                        // Update appsettings.json with MSI configuration
-                        var configPath = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json");
-                        if (File.Exists(configPath))
+                        var backendUrl = key.GetValue("BackendUrl")?.ToString();
+                        var agentName = key.GetValue("AgentName")?.ToString() ?? Environment.MachineName;
+                        
+                        if (!string.IsNullOrEmpty(backendUrl))
                         {
-                            var configText = File.ReadAllText(configPath);
-                            var config = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(configText);
-                            
-                            // Extract URL components
-                            var uri = new Uri(backendUrl);
-                            var configDict = new Dictionary<string, object>
+                            // Update appsettings.json with MSI configuration
+                            var configPath = Path.Combine(Directory.GetCurrentDirectory(), "appsettings.json");
+                            if (File.Exists(configPath))
                             {
-                                ["SiemManager"] = new Dictionary<string, object>
+                                var configText = File.ReadAllText(configPath);
+                                var config = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(configText);
+                                
+                                // Extract URL components
+                                var uri = new Uri(backendUrl);
+                                var configDict = new Dictionary<string, object>
                                 {
-                                    ["ManagerIP"] = uri.Host,
-                                    ["ManagerPort"] = uri.Port,
-                                    ["UseHTTPS"] = uri.Scheme == "https"
-                                },
-                                ["Agent"] = new Dictionary<string, object>
-                                {
-                                    ["Name"] = agentName,
-                                    ["Id"] = agentName,
-                                    ["ManagerUrl"] = backendUrl
-                                }
-                            };
-                            
-                            // Merge with existing config and save
-                            var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
-                            var newConfigText = System.Text.Json.JsonSerializer.Serialize(configDict, options);
-                            
-                            // For simplicity, just update the core values we need
-                            configText = configText.Replace("\"ManagerIP\": \"\"", $"\"ManagerIP\": \"{uri.Host}\"");
-                            configText = configText.Replace("\"ManagerPort\": 9595", $"\"ManagerPort\": {uri.Port}");
-                            configText = configText.Replace("\"ManagerUrl\": \"\"", $"\"ManagerUrl\": \"{backendUrl}\"");
-                            configText = configText.Replace("\"Name\": \"AthalaSIEM-Universal-Agent\"", $"\"Name\": \"{agentName}\"");
-                            
-                            File.WriteAllText(configPath, configText);
+                                    ["SiemManager"] = new Dictionary<string, object>
+                                    {
+                                        ["ManagerIP"] = uri.Host,
+                                        ["ManagerPort"] = uri.Port,
+                                        ["UseHTTPS"] = uri.Scheme == "https"
+                                    },
+                                    ["Agent"] = new Dictionary<string, object>
+                                    {
+                                        ["Name"] = agentName,
+                                        ["Id"] = agentName,
+                                        ["ManagerUrl"] = backendUrl
+                                    }
+                                };
+                                
+                                // Merge with existing config and save
+                                var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+                                var newConfigText = System.Text.Json.JsonSerializer.Serialize(configDict, options);
+                                
+                                // For simplicity, just update the core values we need
+                                configText = configText.Replace("\"ManagerIP\": \"\"", $"\"ManagerIP\": \"{uri.Host}\"");
+                                configText = configText.Replace("\"ManagerPort\": 9595", $"\"ManagerPort\": {uri.Port}");
+                                configText = configText.Replace("\"ManagerUrl\": \"\"", $"\"ManagerUrl\": \"{backendUrl}\"");
+                                configText = configText.Replace("\"Name\": \"AthalaSIEM-Universal-Agent\"", $"\"Name\": \"{agentName}\"");
+                                
+                                File.WriteAllText(configPath, configText);
+                            }
                         }
                     }
+                }
+                else
+                {
+                    // On non-Windows platforms, skip registry-based configuration
+                    Console.WriteLine("Registry-based configuration skipped - not running on Windows");
                 }
                 
                 Environment.Exit(0); // Success
@@ -492,22 +501,30 @@ namespace AthalaSIEM.UniversalAgent
         {
             try
             {
-                // Check service status
-                var serviceName = "AthalaSIEMUniversalAgent";
-                using var serviceController = new System.ServiceProcess.ServiceController(serviceName);
-                
-                Console.WriteLine($"Service Status: {serviceController.Status}");
-                Console.WriteLine($"Service Type: {serviceController.ServiceType}");
-                Console.WriteLine($"Can Stop: {serviceController.CanStop}");
-                Console.WriteLine($"Can Pause/Continue: {serviceController.CanPauseAndContinue}");
-                
-                if (serviceController.Status == System.ServiceProcess.ServiceControllerStatus.Running)
+                // Check service status (Windows only)
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    Environment.Exit(0);
+                    var serviceName = "AthalaSIEMUniversalAgent";
+                    using var serviceController = new System.ServiceProcess.ServiceController(serviceName);
+                    
+                    Console.WriteLine($"Service Status: {serviceController.Status}");
+                    Console.WriteLine($"Service Type: {serviceController.ServiceType}");
+                    Console.WriteLine($"Can Stop: {serviceController.CanStop}");
+                    Console.WriteLine($"Can Pause/Continue: {serviceController.CanPauseAndContinue}");
+                    
+                    if (serviceController.Status == System.ServiceProcess.ServiceControllerStatus.Running)
+                    {
+                        Environment.Exit(0);
+                    }
+                    else
+                    {
+                        Environment.Exit(1);
+                    }
                 }
                 else
                 {
-                    Environment.Exit(1);
+                    Console.WriteLine("Service status check skipped - not running on Windows");
+                    Environment.Exit(0);
                 }
             }
             catch (Exception ex)

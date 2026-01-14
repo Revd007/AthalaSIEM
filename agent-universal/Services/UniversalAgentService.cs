@@ -7,6 +7,7 @@ using System;
 using System.Net.Http;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using AthalaSIEM.UniversalAgent.Core;
 using AthalaSIEM.UniversalAgent.Services;
 using AthalaSIEM.UniversalAgent.Models;
@@ -103,26 +104,42 @@ namespace AthalaSIEM.UniversalAgent
                 _logger.LogInformation("Initializing agent pipeline...");
 
                 // Step 1: Initialize Windows Authentication (CRITICAL for SIEM operations)
-                _logger.LogInformation("🔐 Step 1: Initializing Windows Authentication...");
-                var authInitialized = await _authenticationService.InitializeAsync();
-                if (!authInitialized)
+                Models.AuthenticationStatus authStatus;
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    _logger.LogError("❌ Windows authentication initialization failed - Cannot proceed");
-                    throw new InvalidOperationException("Windows authentication failed");
-                }
+                    _logger.LogInformation("🔐 Step 1: Initializing Windows Authentication...");
+                    var authInitialized = await _authenticationService.InitializeAsync();
+                    if (!authInitialized)
+                    {
+                        _logger.LogError("❌ Windows authentication initialization failed - Cannot proceed");
+                        throw new InvalidOperationException("Windows authentication failed");
+                    }
 
-                // Check if we have required privileges
-                var authStatus = _authenticationService.GetAuthenticationStatus();
-                if (!authStatus.HasAdminPrivileges)
-                {
-                    _logger.LogWarning("⚠️ Running without Administrator privileges - SIEM functionality will be limited");
-                    _authenticationService.LogAuthenticationGuidance();
+                    // Check if we have required privileges
+                    authStatus = _authenticationService.GetAuthenticationStatus();
+                    if (!authStatus.HasAdminPrivileges)
+                    {
+                        _logger.LogWarning("⚠️ Running without Administrator privileges - SIEM functionality will be limited");
+                        _authenticationService.LogAuthenticationGuidance();
                     
-                    // Continue but with warnings - some collectors will be disabled
+                        // Continue but with warnings - some collectors will be disabled
+                    }
+                    else
+                    {
+                        _logger.LogInformation("✅ Administrator privileges confirmed - Full SIEM functionality available");
+                    }
                 }
                 else
                 {
-                    _logger.LogInformation("✅ Administrator privileges confirmed - Full SIEM functionality available");
+                    // On non-Windows platforms, create a default authentication status
+                    authStatus = new Models.AuthenticationStatus
+                    {
+                        HasAdminPrivileges = false,
+                        IsAuthenticated = false,
+                        CurrentUser = Environment.UserName,
+                        ServiceAccount = Environment.UserName
+                    };
+                    _logger.LogInformation("🔐 Skipping Windows Authentication - not running on Windows");
                 }
 
                 // Step 2: Initialize backend communication
@@ -191,7 +208,11 @@ namespace AthalaSIEM.UniversalAgent
             try
             {
                 var collectorConfigs = GetCollectorConfigurations();
-                var authStatus = _authenticationService.GetAuthenticationStatus();
+                
+                // Get authentication status (Windows only)
+                var authStatus = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                    ? _authenticationService.GetAuthenticationStatus()
+                    : new Models.AuthenticationStatus { HasAdminPrivileges = false };
                 
                 _logger.LogInformation("Registering {Count} collectors with authentication context", collectorConfigs.Count);
 

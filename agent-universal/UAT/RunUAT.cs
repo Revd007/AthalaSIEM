@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -88,8 +89,13 @@ namespace AthalaSIEM.UniversalAgent.UAT
 
             // Add collectors
             services.AddSingleton<FileIntegrityCollector>();
-            services.AddSingleton<WindowsEventLogCollector>();
-            services.AddSingleton<WindowsRegistryCollector>();
+            
+            // Windows-specific collectors
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                services.AddSingleton<WindowsEventLogCollector>();
+                services.AddSingleton<WindowsRegistryCollector>();
+            }
 
             // Add communication service
             services.AddSingleton<IBackendCommunicationService, BackendCommunicationService>();
