@@ -17,7 +17,9 @@ import {
   Menu,
   X,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Database,
+  Link2
 } from 'lucide-react'
 
 const categories = [
@@ -26,7 +28,9 @@ const categories = [
     items: [
       { name: 'Security Events', href: '/dashboard/events', icon: Shield },
       { name: 'Threat Hunting', href: '/dashboard/threat-hunting', icon: Target },
-      { name: 'AI Analysis', href: '/dashboard/ai-analysis', icon: Brain }
+      { name: 'AI Analysis', href: '/dashboard/ai-analysis', icon: Brain },
+      { name: 'Log Normalization', href: '/dashboard/normalization', icon: Database },
+      { name: 'Correlation Engine', href: '/dashboard/correlation', icon: Link2 }
     ]
   },
   {

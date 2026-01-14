@@ -20,16 +20,19 @@ namespace Backend.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly ILogger<LogService> _logger;
+        private readonly IServiceProvider _serviceProvider;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="LogService"/> class
         /// </summary>
         /// <param name="context">The database context</param>
         /// <param name="logger">The logger</param>
-        public LogService(ApplicationDbContext context, ILogger<LogService> logger)
+        /// <param name="serviceProvider">The service provider for accessing workers</param>
+        public LogService(ApplicationDbContext context, ILogger<LogService> logger, IServiceProvider serviceProvider)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         }
 
         /// <summary>
@@ -83,6 +86,38 @@ namespace Backend.Services
                     await _context.SaveChangesAsync();
 
                     result.ProcessedLogs = uniqueLogEntries;
+
+                    // Enqueue logs for normalization (backward compatibility path)
+                    try
+                    {
+                        var normalizationWorker = _serviceProvider.GetService<Backend.Workers.LogNormalizationWorker>();
+                        if (normalizationWorker != null)
+                        {
+                            foreach (var logModel in uniqueLogEntries)
+                            {
+                                var logEntry = new Backend.Domain.Entities.LogEntry
+                                {
+                                    Id = logModel.Id,
+                                    AgentId = logModel.AgentId,
+                                    Timestamp = logModel.Timestamp,
+                                    ReceivedAt = logModel.ReceivedAt,
+                                    RawMessage = logModel.Message,
+                                    Source = logModel.Source,
+                                    Category = logModel.Category,
+                                    EventId = logModel.EventId > 0 ? logModel.EventId : null,
+                                    RawProperties = logModel.Properties,
+                                    Processed = logModel.Processed,
+                                    ProcessedAt = logModel.ProcessedAt
+                                };
+                                await normalizationWorker.EnqueueLogAsync(logEntry);
+                            }
+                            _logger.LogDebug("Enqueued {Count} logs for normalization", uniqueLogEntries.Count);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to enqueue logs for normalization");
+                    }
                 }
 
                 result.ProcessedCount = processedCount;

@@ -12,4 +12,5 @@ public interface ILogRepository
     Task AddRangeAsync(IEnumerable<LogEntry> logEntries, CancellationToken cancellationToken = default);
     Task UpdateAsync(LogEntry logEntry, CancellationToken cancellationToken = default);
     Task UpdateRangeAsync(IEnumerable<LogEntry> logEntries, CancellationToken cancellationToken = default);
+    Task<IEnumerable<LogEntry>> GetNormalizedLogsByFieldAsync(string fieldName, string fieldValue, DateTime startTime, DateTime endTime, CancellationToken cancellationToken = default);
 }

@@ -302,9 +302,19 @@ namespace Backend.DTOs
         public List<string> RelatedLogIds { get; set; } = new List<string>();
         
         /// <summary>
+        /// Gets or sets the log entry IDs (for correlation alerts)
+        /// </summary>
+        public List<string> LogEntryIds { get; set; } = new List<string>();
+        
+        /// <summary>
         /// Gets or sets the details
         /// </summary>
         public Dictionary<string, string> Details { get; set; } = new Dictionary<string, string>();
+        
+        /// <summary>
+        /// Gets or sets additional metadata
+        /// </summary>
+        public Dictionary<string, object>? Metadata { get; set; }
     }
     
     /// <summary>

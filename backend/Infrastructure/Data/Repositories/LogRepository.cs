@@ -106,6 +106,94 @@ public class LogRepository : ILogRepository
         await _context.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<IEnumerable<LogEntry>> GetNormalizedLogsByFieldAsync(
+        string fieldName, 
+        string fieldValue, 
+        DateTime startTime, 
+        DateTime endTime, 
+        CancellationToken cancellationToken = default)
+    {
+        // Query normalized logs from NormalizedLogs table
+        var normalizedLogs = await _context.NormalizedLogs
+            .Where(nl => nl.Timestamp >= startTime && nl.Timestamp <= endTime)
+            .ToListAsync(cancellationToken);
+
+        // Filter by field name and value
+        var filtered = normalizedLogs.Where(nl =>
+        {
+            return fieldName switch
+            {
+                "SourceIp" => nl.SourceIp == fieldValue,
+                "UserName" => nl.UserName == fieldValue,
+                "DestinationIp" => nl.DestinationIp == fieldValue,
+                "ProcessName" => nl.ProcessName == fieldValue,
+                _ => false
+            };
+        }).ToList();
+
+        // Get corresponding LogEntries and map to domain entities
+        var logEntryIds = filtered.Select(nl => nl.LogEntryId).ToList();
+        var logEntryModels = await _context.LogEntries
+            .Where(le => logEntryIds.Contains(le.Id))
+            .ToListAsync(cancellationToken);
+
+        var logEntries = logEntryModels.Select(MapToDomain).ToList();
+
+        // Attach normalized fields from NormalizedLogs
+        foreach (var logEntry in logEntries)
+        {
+            var normalizedLog = filtered.FirstOrDefault(nl => nl.LogEntryId == logEntry.Id);
+            if (normalizedLog != null)
+            {
+                // Map NormalizedLog to ECSLogFields
+                logEntry.NormalizedFields = new Backend.Domain.ValueObjects.ECSLogFields
+                {
+                    Timestamp = normalizedLog.Timestamp,
+                    AgentId = normalizedLog.AgentId,
+                    AgentName = normalizedLog.AgentName,
+                    HostName = normalizedLog.HostName,
+                    HostIp = normalizedLog.HostIp,
+                    UserName = normalizedLog.UserName,
+                    UserId = normalizedLog.UserId,
+                    UserDomain = normalizedLog.UserDomain,
+                    ProcessName = normalizedLog.ProcessName,
+                    ProcessId = normalizedLog.ProcessId,
+                    ProcessPath = normalizedLog.ProcessPath,
+                    ProcessCommandLine = normalizedLog.ProcessCommandLine,
+                    ProcessHash = normalizedLog.ProcessHash,
+                    ParentProcessName = normalizedLog.ParentProcessName,
+                    ParentProcessId = normalizedLog.ParentProcessId,
+                    SourceIp = normalizedLog.SourceIp,
+                    SourcePort = normalizedLog.SourcePort,
+                    DestinationIp = normalizedLog.DestinationIp,
+                    DestinationPort = normalizedLog.DestinationPort,
+                    Protocol = normalizedLog.Protocol,
+                    EventAction = normalizedLog.EventAction,
+                    EventCategory = normalizedLog.EventCategory,
+                    EventType = normalizedLog.EventType,
+                    EventOutcome = normalizedLog.EventOutcome,
+                    EventCode = normalizedLog.EventCode,
+                    FilePath = normalizedLog.FilePath,
+                    FileName = normalizedLog.FileName,
+                    FileHash = normalizedLog.FileHash,
+                    FileSize = normalizedLog.FileSize,
+                    SiemRuleId = normalizedLog.SiemRuleId,
+                    SiemTechniqueId = normalizedLog.SiemTechniqueId,
+                    SiemConfidence = normalizedLog.SiemConfidence,
+                    SiemSeverity = normalizedLog.SiemSeverity,
+                    SiemCorrelationId = normalizedLog.SiemCorrelationId,
+                    Metadata = !string.IsNullOrEmpty(normalizedLog.MetadataJson)
+                        ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(normalizedLog.MetadataJson)
+                        : null
+                };
+                logEntry.IsNormalized = true;
+                logEntry.NormalizedAt = normalizedLog.CreatedAt;
+            }
+        }
+
+        return logEntries;
+    }
+
     private LogEntry MapToDomain(Models.LogEntryModels model)
     {
         var entry = new LogEntry

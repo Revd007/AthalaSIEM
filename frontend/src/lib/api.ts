@@ -298,6 +298,15 @@ export const endpoints = {
     overview: '/api/dashboard',
     metrics: '/api/dashboard/metrics'
   },
+  normalization: {
+    statistics: '/api/normalization/statistics',
+    normalized: '/api/normalization/normalized'
+  },
+  correlation: {
+    statistics: '/api/correlation/statistics',
+    rules: '/api/correlation/rules',
+    trigger: (logEntryId: string) => `/api/correlation/trigger/${logEntryId}`
+  },
   ai: {
     analyze: '/api/ai/analyze',
     status: '/api/ai/status'

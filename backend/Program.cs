@@ -352,11 +352,16 @@ builder.Services.AddScoped<IThreatIntelligenceService, ThreatIntelligenceService
 builder.Services.AddScoped<ILogArchivingService, LogArchivingService>();
 
 // Register new infrastructure services
-builder.Services.AddScoped<Backend.Infrastructure.Normalizers.ILogNormalizer, Backend.Infrastructure.Normalizers.ECSLogNormalizer>();
+// Use Enhanced ECS Normalizer (ensures timestamp, source_ip, event_type, severity)
+builder.Services.AddScoped<Backend.Infrastructure.Normalizers.ILogNormalizer, Backend.Infrastructure.Normalizers.EnhancedECSLogNormalizer>();
 builder.Services.AddScoped<Backend.Infrastructure.Detection.RuleEngine.IRuleParser, Backend.Infrastructure.Detection.RuleEngine.YamlRuleParser>();
 builder.Services.AddScoped<Backend.Infrastructure.Detection.RuleEngine.IRuleExecutor, Backend.Infrastructure.Detection.RuleEngine.PatternMatchRuleExecutor>();
 builder.Services.AddScoped<Backend.Infrastructure.Detection.IDetectionEngine, Backend.Infrastructure.Detection.DetectionEngine>();
 builder.Services.AddScoped<Backend.Infrastructure.Correlation.ICorrelationEngine, Backend.Infrastructure.Correlation.TemporalCorrelator>();
+builder.Services.AddScoped<Backend.Infrastructure.Correlation.SimpleRuleEngine>();
+builder.Services.AddScoped<Backend.Services.INormalizationService, Backend.Services.NormalizationService>();
+builder.Services.AddScoped<Backend.Services.ICorrelationService, Backend.Services.CorrelationService>();
+builder.Services.AddHostedService<Backend.Workers.CorrelationWorker>();
 builder.Services.AddScoped<Backend.Infrastructure.AlertProcessing.IAlertDeduplicator, Backend.Infrastructure.AlertProcessing.AlertDeduplicator>();
 builder.Services.AddScoped<Backend.Infrastructure.AlertProcessing.IAlertSeverityScorer, Backend.Infrastructure.AlertProcessing.AlertSeverityScorer>();
 

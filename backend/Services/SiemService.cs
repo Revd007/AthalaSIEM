@@ -25,7 +25,7 @@ namespace Backend.Services
         private readonly IAgentDeploymentTokenRepository _tokenRepository;
         private readonly IMediator _mediator;
         private readonly IAgentRepository _agentRepository;
-        private readonly ILogRepository _logRepository;
+        private readonly Backend.Domain.Interfaces.ILogRepository _logRepository;
 
         public SiemService(
             ILogger<SiemService> logger,

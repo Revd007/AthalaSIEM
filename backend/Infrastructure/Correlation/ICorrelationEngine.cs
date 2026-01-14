@@ -11,6 +11,8 @@ public interface ICorrelationEngine
 public class CorrelationResult
 {
     public string CorrelationId { get; set; } = Guid.NewGuid().ToString();
+    public string? RuleName { get; set; }
+    public string? RuleDescription { get; set; }
     public List<LogEntry> CorrelatedLogs { get; set; } = new();
     public CorrelationType Type { get; set; }
     public double Confidence { get; set; }
@@ -22,5 +24,6 @@ public enum CorrelationType
     Temporal,
     CrossAgent,
     Behavioral,
-    AttackChain
+    AttackChain,
+    RuleBased
 }
