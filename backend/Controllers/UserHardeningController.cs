@@ -46,13 +46,50 @@ namespace Backend.Controllers
                     return Unauthorized();
                 }
 
-                var settings = await _context.UserSecurityModels
-                    .FirstOrDefaultAsync(s => s.UserId == userId);
+                UserSecurityModels? settings = null;
+                try
+                {
+                    settings = await _context.UserSecurityModels
+                        .FirstOrDefaultAsync(s => s.UserId == userId);
+                }
+                catch (Exception dbEx)
+                {
+                    _logger.LogWarning(dbEx, "Table may not exist yet, returning default settings");
+                    // Table might not exist yet, return defaults
+                    return Ok(new UserHardeningSettingsDto());
+                }
 
                 if (settings == null)
                 {
                     // Return default settings
                     return Ok(new UserHardeningSettingsDto());
+                }
+
+                List<string>? allowedIPs = null;
+                List<TimeWindowDto>? allowedTimeWindows = null;
+
+                try
+                {
+                    if (!string.IsNullOrEmpty(settings.AllowedIPAddresses))
+                    {
+                        allowedIPs = JsonSerializer.Deserialize<List<string>>(settings.AllowedIPAddresses);
+                    }
+                }
+                catch (Exception jsonEx)
+                {
+                    _logger.LogWarning(jsonEx, "Failed to deserialize AllowedIPAddresses for user {UserId}", userId);
+                }
+
+                try
+                {
+                    if (!string.IsNullOrEmpty(settings.AllowedTimeWindows))
+                    {
+                        allowedTimeWindows = JsonSerializer.Deserialize<List<TimeWindowDto>>(settings.AllowedTimeWindows);
+                    }
+                }
+                catch (Exception jsonEx)
+                {
+                    _logger.LogWarning(jsonEx, "Failed to deserialize AllowedTimeWindows for user {UserId}", userId);
                 }
 
                 var dto = new UserHardeningSettingsDto
@@ -61,13 +98,9 @@ namespace Backend.Controllers
                     SessionTimeoutMinutes = settings.SessionTimeoutMinutes,
                     RequireReauthForSensitive = settings.RequireReauthForSensitive,
                     RestrictLoginByIP = settings.RestrictLoginByIP,
-                    AllowedIPAddresses = string.IsNullOrEmpty(settings.AllowedIPAddresses)
-                        ? null
-                        : JsonSerializer.Deserialize<List<string>>(settings.AllowedIPAddresses),
+                    AllowedIPAddresses = allowedIPs,
                     RestrictLoginByTime = settings.RestrictLoginByTime,
-                    AllowedTimeWindows = string.IsNullOrEmpty(settings.AllowedTimeWindows)
-                        ? null
-                        : JsonSerializer.Deserialize<List<TimeWindowDto>>(settings.AllowedTimeWindows),
+                    AllowedTimeWindows = allowedTimeWindows,
                     MaxFailedLoginAttempts = settings.MaxFailedLoginAttempts,
                     LockoutDurationMinutes = settings.LockoutDurationMinutes,
                     EnablePasswordExpiration = settings.EnablePasswordExpiration,
@@ -112,8 +145,17 @@ namespace Backend.Controllers
                     return Unauthorized();
                 }
 
-                var settings = await _context.UserSecurityModels
-                    .FirstOrDefaultAsync(s => s.UserId == userId);
+                UserSecurityModels? settings = null;
+                try
+                {
+                    settings = await _context.UserSecurityModels
+                        .FirstOrDefaultAsync(s => s.UserId == userId);
+                }
+                catch (Exception dbEx)
+                {
+                    _logger.LogError(dbEx, "Database error accessing UserSecurityModels table. Table may not exist.");
+                    return StatusCode(500, new { message = "Database table not available. Please run migrations.", error = dbEx.Message });
+                }
 
                 if (settings == null)
                 {

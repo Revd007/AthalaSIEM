@@ -329,25 +329,84 @@ namespace Backend.Controllers
         /// <param name="id">The agent ID</param>
         /// <returns>No content</returns>
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> DeleteAgent(string id)
         {
-            var agent = await _agentService.GetAgentByIdAsync(id);
-            if (agent == null)
+            try
             {
-                return NotFound(new { Error = $"Agent with ID {id} not found" });
+                var agent = await _agentService.GetAgentByIdAsync(id);
+                if (agent == null)
+                {
+                    return NotFound(new { Error = $"Agent with ID {id} not found" });
+                }
+
+                // Delete related records first to avoid foreign key constraint violations
+                var agentId = id;
+                
+                // Delete agent configuration
+                var config = await _context.AgentConfigs.FirstOrDefaultAsync(c => c.AgentId == agentId);
+                if (config != null)
+                {
+                    _context.AgentConfigs.Remove(config);
+                }
+
+                // Delete log entries
+                var logEntries = await _context.LogEntries.Where(l => l.AgentId == agentId).ToListAsync();
+                if (logEntries.Any())
+                {
+                    _context.LogEntries.RemoveRange(logEntries);
+                }
+
+                // Delete alerts
+                var alerts = await _context.Alerts.Where(a => a.AgentId == agentId).ToListAsync();
+                if (alerts.Any())
+                {
+                    _context.Alerts.RemoveRange(alerts);
+                }
+
+                // Delete health reports
+                var healthReports = await _context.AgentHealthReports.Where(hr => hr.AgentId == agentId).ToListAsync();
+                if (healthReports.Any())
+                {
+                    _context.AgentHealthReports.RemoveRange(healthReports);
+                }
+
+                // Delete heartbeats
+                var heartbeats = await _context.AgentHeartbeats.Where(h => h.AgentId == agentId).ToListAsync();
+                if (heartbeats.Any())
+                {
+                    _context.AgentHeartbeats.RemoveRange(heartbeats);
+                }
+
+                // Delete health metrics
+                var healthMetrics = await _context.HealthMetrics.Where(h => h.AgentId == agentId).ToListAsync();
+                if (healthMetrics.Any())
+                {
+                    _context.HealthMetrics.RemoveRange(healthMetrics);
+                }
+
+                // Delete security events
+                var securityEvents = await _context.SecurityEvents.Where(s => s.AgentId == agentId).ToListAsync();
+                if (securityEvents.Any())
+                {
+                    _context.SecurityEvents.RemoveRange(securityEvents);
+                }
+
+                // Now delete the agent itself
+                _context.Agents.Remove(agent);
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Successfully deleted agent {AgentId} and all related records", id);
+                return NoContent();
             }
-            
-            var result = await _agentService.DeleteAgentAsync(id);
-            if (!result)
+            catch (Exception ex)
             {
-                _logger.LogError("Failed to delete agent {AgentId}", id);
-                return StatusCode(500, new { Error = "An error occurred while deleting the agent" });
+                _logger.LogError(ex, "Error deleting agent {AgentId}: {Message}", id, ex.Message);
+                return StatusCode(500, new { Error = "An error occurred while deleting the agent", Details = ex.Message });
             }
-            
-            return NoContent();
         }
 
         /// <summary>
