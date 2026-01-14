@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using Backend.Models;
 using Backend.Services;
@@ -17,7 +18,7 @@ namespace Backend.Controllers
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize(Roles = "Admin")]
+    [Authorize] // Require authentication for all endpoints, but not necessarily Admin role
     public class UsersController : ControllerBase
     {
         private readonly IUserService _userService;
@@ -49,6 +50,7 @@ namespace Backend.Controllers
         /// </summary>
         /// <returns>All users</returns>
         [HttpGet]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<IEnumerable<UserDto>>> GetAllUsers()
         {
             try
@@ -76,6 +78,7 @@ namespace Backend.Controllers
         /// <param name="id">The user ID</param>
         /// <returns>The user</returns>
         [HttpGet("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<UserDto>> GetUserById(string id)
         {
             try
@@ -106,15 +109,38 @@ namespace Backend.Controllers
         {
             try
             {
-                var token = HttpContext.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var user = await _authService.GetUserFromTokenAsync(token);
+                // Get user ID from claims (more reliable than extracting token)
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
                 
-                if (user == null)
+                if (string.IsNullOrEmpty(userId))
                 {
+                    // Fallback: try to get from token
+                    var token = HttpContext.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+                    if (string.IsNullOrEmpty(token))
+                    {
+                        _logger.LogWarning("GetCurrentUser: No user ID in claims and no token found");
+                        return Unauthorized();
+                    }
+                    
+                    var user = await _authService.GetUserFromTokenAsync(token);
+                    if (user == null)
+                    {
+                        _logger.LogWarning("GetCurrentUser: Failed to get user from token");
+                        return Unauthorized();
+                    }
+                    
+                    return Ok(await MapToDtoAsync(user));
+                }
+                
+                // Get user by ID from claims
+                var userById = await _userService.GetUserByIdAsync(userId);
+                if (userById == null)
+                {
+                    _logger.LogWarning("GetCurrentUser: User with ID {UserId} not found", userId);
                     return Unauthorized();
                 }
                 
-                return Ok(await MapToDtoAsync(user));
+                return Ok(await MapToDtoAsync(userById));
             }
             catch (Exception ex)
             {
@@ -124,11 +150,57 @@ namespace Backend.Controllers
         }
         
         /// <summary>
+        /// Updates the current user's profile
+        /// </summary>
+        /// <param name="request">The update user request</param>
+        /// <returns>The updated user</returns>
+        [HttpPut("me")]
+        [Authorize]
+        public async Task<ActionResult<UserDto>> UpdateCurrentUser([FromBody] UpdateUserRequestDto request)
+        {
+            try
+            {
+                // Get user ID from claims
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return Unauthorized();
+                }
+                
+                var user = await _userService.GetUserByIdAsync(userId);
+                if (user == null)
+                {
+                    return Unauthorized();
+                }
+                
+                user.Username = request.Username;
+                user.Email = request.Email;
+                user.FirstName = request.FirstName;
+                user.LastName = request.LastName;
+                
+                var updatedUser = await _userService.UpdateUserAsync(user);
+                
+                return Ok(await MapToDtoAsync(updatedUser));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error updating current user");
+                return StatusCode(500, "An error occurred while updating the user");
+            }
+        }
+        
+        /// <summary>
         /// Creates a new user
         /// </summary>
         /// <param name="request">The create user request</param>
         /// <returns>The created user</returns>
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<UserDto>> CreateUser([FromBody] CreateUserRequestDto request)
         {
             try
@@ -173,6 +245,7 @@ namespace Backend.Controllers
         /// <param name="request">The update user request</param>
         /// <returns>The updated user</returns>
         [HttpPut("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<UserDto>> UpdateUser(string id, [FromBody] UpdateUserRequestDto request)
         {
             try
@@ -216,6 +289,7 @@ namespace Backend.Controllers
         /// <param name="request">The change password request</param>
         /// <returns>Success or failure</returns>
         [HttpPut("{id}/password")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult> ChangePassword(string id, [FromBody] ChangePasswordRequestDto request)
         {
             try
@@ -247,15 +321,15 @@ namespace Backend.Controllers
         {
             try
             {
-                var token = HttpContext.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-                var user = await _authService.GetUserFromTokenAsync(token);
+                // Get user ID from claims
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
                 
-                if (user == null)
+                if (string.IsNullOrEmpty(userId))
                 {
                     return Unauthorized();
                 }
                 
-                var result = await _userService.ChangePasswordAsync(user.Id, request.CurrentPassword, request.NewPassword);
+                var result = await _userService.ChangePasswordAsync(userId, request.CurrentPassword, request.NewPassword);
                 
                 if (!result)
                 {
@@ -272,12 +346,79 @@ namespace Backend.Controllers
         }
         
         /// <summary>
+        /// Gets the current user's notification settings
+        /// </summary>
+        /// <returns>Notification settings</returns>
+        [HttpGet("me/notifications")]
+        [Authorize]
+        public ActionResult<object> GetNotificationSettings()
+        {
+            // Return default notification settings (in production, store in database)
+            return Ok(new
+            {
+                emailAlerts = true,
+                pushNotifications = true,
+                securityAlerts = true,
+                reportNotifications = false,
+                maintenanceNotifications = true
+            });
+        }
+        
+        /// <summary>
+        /// Updates the current user's notification settings
+        /// </summary>
+        /// <param name="settings">The notification settings</param>
+        /// <returns>Success</returns>
+        [HttpPut("me/notifications")]
+        [Authorize]
+        public ActionResult UpdateNotificationSettings([FromBody] object settings)
+        {
+            // In production, save to database linked to user
+            // For now, just return success
+            return Ok(new { message = "Notification settings updated" });
+        }
+        
+        /// <summary>
+        /// Gets the current user's preferences
+        /// </summary>
+        /// <returns>User preferences</returns>
+        [HttpGet("me/preferences")]
+        [Authorize]
+        public ActionResult<object> GetPreferences()
+        {
+            // Return default preferences (in production, store in database)
+            return Ok(new
+            {
+                theme = "system",
+                language = "en",
+                timezone = "UTC",
+                dateFormat = "MM/dd/yyyy",
+                timeFormat = "24h"
+            });
+        }
+        
+        /// <summary>
+        /// Updates the current user's preferences
+        /// </summary>
+        /// <param name="preferences">The preferences</param>
+        /// <returns>Success</returns>
+        [HttpPut("me/preferences")]
+        [Authorize]
+        public ActionResult UpdatePreferences([FromBody] object preferences)
+        {
+            // In production, save to database linked to user
+            // For now, just return success
+            return Ok(new { message = "Preferences updated" });
+        }
+        
+        /// <summary>
         /// Adds a role to a user
         /// </summary>
         /// <param name="id">The user ID</param>
         /// <param name="request">The add role request</param>
         /// <returns>Success or failure</returns>
         [HttpPost("{id}/roles")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult> AddRoleToUser(string id, [FromBody] AddRoleRequestDto request)
         {
             try
@@ -305,6 +446,7 @@ namespace Backend.Controllers
         /// <param name="roleId">The role ID</param>
         /// <returns>Success or failure</returns>
         [HttpDelete("{id}/roles/{roleId}")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult> RemoveRoleFromUser(string id, string roleId)
         {
             try
@@ -331,6 +473,7 @@ namespace Backend.Controllers
         /// <param name="id">The user ID</param>
         /// <returns>No content</returns>
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult> DeleteUser(string id)
         {
             try
@@ -357,6 +500,7 @@ namespace Backend.Controllers
         /// <param name="id">The user ID</param>
         /// <returns>Temporary password</returns>
         [HttpPost("{id}/reset-password")]
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<object>> ResetUserPassword(string id)
         {
             try

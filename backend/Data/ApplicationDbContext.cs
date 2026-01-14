@@ -81,6 +81,11 @@ namespace Backend.Data
         public DbSet<UserRoleModels> UserRoles { get; set; } = null!;
 
         /// <summary>
+        /// Gets or sets the user security settings
+        /// </summary>
+        public DbSet<UserSecurityModels> UserSecurityModels { get; set; } = null!;
+
+        /// <summary>
         /// Gets or sets the dashboards
         /// </summary>
         public DbSet<DashboardModels> Dashboards { get; set; } = null!;
@@ -323,6 +328,18 @@ namespace Backend.Data
                 entity.HasOne(ur => ur.Role)
                     .WithMany(r => r.UserRoles)
                     .HasForeignKey(ur => ur.RoleId);
+            });
+
+            // User Security Settings table
+            modelBuilder.Entity<UserSecurityModels>(entity =>
+            {
+                entity.ToTable("user_security_settings");
+                entity.HasKey(e => e.UserId);
+                
+                entity.HasOne(uss => uss.User)
+                    .WithOne()
+                    .HasForeignKey<UserSecurityModels>(uss => uss.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
             });
 
             // Dashboards table
