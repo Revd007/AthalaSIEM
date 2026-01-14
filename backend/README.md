@@ -1,182 +1,280 @@
-# ATHALA SIEM Backend
+# 🛡️ AthalaSIEM Backend
 
-ATHALA SIEM (Security Information and Event Management) is a comprehensive security monitoring solution designed to collect, analyze, and respond to security events across your infrastructure.
+**Enterprise-grade SIEM backend with production-ready architecture**
 
-## Overview
+[![.NET](https://img.shields.io/badge/.NET-8.0-purple)](https://dotnet.microsoft.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14+-blue)](https://www.postgresql.org/)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-The backend component of ATHALA SIEM provides the core functionality for:
-- Agent management and deployment
-- Log collection, storage, and analysis
-- Alert generation and management
-- User authentication and authorization
-- Real-time event processing
-- Reporting and dashboard metrics
-- Threat intelligence integration
+## 📋 Table of Contents
 
-## Tech Stack
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Deployment](#deployment)
+- [API Documentation](#api-documentation)
+- [Database](#database)
+- [Security](#security)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
 
-- **Framework**: ASP.NET Core 8.0
-- **Database**: PostgreSQL with Entity Framework Core
-- **Authentication**: JWT (JSON Web Tokens)
-- **API Documentation**: Swagger/OpenAPI
-- **Communication Protocol**: gRPC for agent-server communication
-- **Background Processing**: Hosted Services
-- **Logging**: Structured logging with Serilog
+## 📖 Overview
 
-## Project Structure
+The AthalaSIEM Backend is a production-grade ASP.NET Core 8.0 application that provides the core SIEM functionality including agent management, log ingestion, alert generation, user authentication, and real-time event processing. It follows Clean Architecture principles with clear separation of concerns.
+
+### Key Capabilities
+
+- **Agent Management**: Registration, configuration, health monitoring
+- **Log Ingestion**: High-throughput log processing (REST API and gRPC)
+- **Alert Generation**: Real-time alert generation and management
+- **User Management**: JWT authentication, role-based access control
+- **Dashboard Metrics**: Real-time system metrics and statistics
+- **Reporting**: Security reports and compliance documentation
+- **Threat Intelligence**: Integration with threat intelligence feeds
+
+## ✨ Features
+
+### Core Functionality
+- ✅ REST API for frontend and agent communication
+- ✅ gRPC for high-performance agent communication
+- ✅ PostgreSQL database with Entity Framework Core
+- ✅ JWT authentication with refresh tokens
+- ✅ Role-based access control (Admin, User, Analyst)
+- ✅ Background services for monitoring and cleanup
+- ✅ Structured logging with Serilog
+- ✅ Health checks and metrics
+
+### Agent Management
+- ✅ Agent registration and authentication
+- ✅ Configuration management
+- ✅ Health monitoring and heartbeat tracking
+- ✅ Installer package generation
+- ✅ Deployment token management
+
+### Log Processing
+- ✅ High-throughput log ingestion
+- ✅ Log normalization and enrichment
+- ✅ Real-time alert generation
+- ✅ Log archiving and retention
+- ✅ Advanced search and filtering
+
+### Security
+- ✅ JWT token authentication
+- ✅ Password hashing (BCrypt)
+- ✅ Two-factor authentication (2FA)
+- ✅ Password policy enforcement
+- ✅ Session management
+- ✅ User hardening settings
+
+## 🏗️ Architecture
 
 ```
-backend/
-├── Controllers/               # API endpoints for REST communication
-├── Services/                  # Business logic implementation
-│   └── Background/            # Background services (agent monitoring, cleanup)
-├── Data/                      # Database access
-│   └── Repositories/          # Repository pattern implementation
-├── Models/                    # Domain entities
-├── DTOs/                      # Data Transfer Objects
-├── Protos/                    # gRPC service definitions
-├── Migrations/                # EF Core database migrations
-├── Properties/                # Launch and project properties
-└── Installers/                # Installation scripts
+┌─────────────────────────────────────────────────────────────┐
+│                    Frontend (Next.js)                        │
+│                    Port: 3000/7654                           │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ REST API (HTTP/HTTPS)
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Backend API Layer                          │
+│                    Port: 9595 (HTTP) / 9596 (HTTPS)           │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
+│  │ Controllers  │  │   Services   │  │ Background   │        │
+│  │  (REST API)  │  │  (Business   │  │   Services   │        │
+│  │              │  │    Logic)    │  │  (Workers)   │        │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘        │
+│         │                 │                 │                 │
+│         └─────────────────┴─────────────────┘                 │
+│                            │                                   │
+│                            ▼                                   │
+│                  ┌──────────────────┐                          │
+│                  │  Repositories    │                          │
+│                  │  (Data Access)   │                          │
+│                  └────────┬─────────┘                          │
+└───────────────────────────┼───────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    PostgreSQL Database                       │
+│                    Port: 5432                                │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
+│  │  Agents  │  │   Logs   │  │  Alerts  │  │  Users   │   │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
+└─────────────────────────────────────────────────────────────┘
+                            ▲
+                            │ gRPC (Port: 9595)
+                            │
+┌─────────────────────────────────────────────────────────────┐
+│                    Agents (Universal Agent)                   │
+│                    Multiple Agents                            │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### Core Components
+### Clean Architecture Layers
 
-#### Controllers
-The Controllers directory contains all REST API endpoints for:
+1. **Controllers**: API endpoints (REST)
+2. **Services**: Business logic implementation
+3. **Repositories**: Data access abstraction
+4. **Models**: Domain entities
+5. **DTOs**: Data transfer objects
+6. **Infrastructure**: External service integrations
 
-- **`AgentsController.cs`**: Agent registration, configuration, and management
-- **`AlertsController.cs`**: Alert query, management, and rule configuration
-- **`AuthController.cs`**: User authentication and token generation
-- **`DashboardsController.cs`**: Dashboard metrics and visualization data
-- **`HealthController.cs`**: System health status endpoint
-- **`LogsController.cs`**: Log ingestion, querying, and analysis
-- **`ReportsController.cs`**: Security report generation and management
-- **`UsersController.cs`**: User management and role assignments
+## 📋 Prerequisites
 
-#### Services
-The Services directory contains the core business logic for:
+### Required
+- .NET 8.0 SDK (for development) or Runtime (for production)
+- PostgreSQL 14+ database
+- Windows 10+, Linux (Ubuntu 18.04+, CentOS 7+), or Docker
 
-- **`AgentService.cs`**: Manages agent registration, configuration, and status tracking
-- **`AgentMonitoringService.cs`**: Monitors agent health and availability
-- **`AlertService.cs`**: Generates and manages security alerts
-- **`AlertProcessingService.cs`**: Processes incoming events for alert generation
-- **`AuthService.cs`**: Handles user authentication and JWT token generation
-- **`DashboardService.cs`**: Provides metrics for dashboard visualization
-- **`InstallerService.cs`**: Manages agent installer packages
-- **`LogAnalysisService.cs`**: Analyzes logs for security events and patterns
-- **`LogService.cs`**: Processes and stores log entries
-- **`ReportService.cs`**: Generates security reports and analysis
-- **`SiemService.cs`**: gRPC implementation for agent communication
-- **`UserService.cs`**: Manages user accounts and permissions
+### Optional
+- Redis (for caching)
+- Nginx/Apache (reverse proxy)
+- SSL certificates (for HTTPS)
 
-**Background Services**:
-- **`AgentMonitoringService.cs`**: Monitors agent heartbeats and status
-- **`LogCleanupService.cs`**: Handles log retention policies
-- **`AlertCleanupService.cs`**: Manages alert lifecycle and cleanup
+## 🚀 Quick Start
 
-#### Data Layer
-The Data directory contains database context and repository implementations:
+### 1. Clone Repository
 
-- **`ApplicationDbContext.cs`**: EF Core database context
-- **Repository Implementations**:
-  - **`AgentRepository.cs`**: Agent data operations
-  - **`AlertRepository.cs`**: Alert data operations
-  - **`DashboardRepository.cs`**: Dashboard metrics operations
-  - **`LogEntryRepository.cs`**: Log data operations
-  - **`ReportRepository.cs`**: Report data operations
-  - **`UserRepository.cs`**: User data operations
-  - **`AgentDeploymentTokenRepository.cs`**: Token management
-  - **`SystemConfigurationRepository.cs`**: System config operations
+```bash
+git clone https://github.com/athalasiem/athalasiem.git
+cd athalasiem/backend
+```
 
-#### Models
-The Models directory contains domain entities for:
+### 2. Configure Database
 
-- **Agent Management**: `AgentModels.cs`, `AgentConfigModels.cs`, `AgentStatus.cs`, `AgentHeartbeatModels.cs`
-- **Alert Management**: `AlertModels.cs`, `AlertEnums.cs`, `AlertRuleModels.cs`
-- **User Management**: `UserModels.cs`, `UserRoleModels.cs`, `RoleModels.cs`
-- **Log Management**: `LogEntryModels.cs`, `LogSeverityModels.cs`
-- **Dashboard & Reporting**: `DashboardModels.cs`, `ReportModels.cs`, `ComplianceReport.cs`
-- **System Metrics**: `HealthMetricModels.cs`, `SystemConfiguration.cs`
-- **Security**: `SecurityEventModels.cs`, `ThreatIntelligence.cs`
+```bash
+# Create PostgreSQL database
+createdb siem-db
 
-#### DTOs (Data Transfer Objects)
-The DTOs directory contains objects used for API communications:
+# Or using psql
+psql -U postgres -c "CREATE DATABASE \"siem-db\";"
+```
 
-- **Agent DTOs**: `AgentDTOs.cs`, `AgentConfigDto.cs`, `AgentHeartbeatDto.cs`
-- **Alert DTOs**: `AlertDTOs.cs`, `AlertDto.cs`
-- **Log DTOs**: `LogDTOs.cs`, `LogEntryDTO.cs`
-- **Health DTOs**: `HealthReportDTO.cs`, `HeartbeatDto.cs`, `SystemMetricsDto.cs`
-- **Authentication DTOs**: `UserLoginDto.cs`, `UserRegisterDto.cs`
+### 3. Configure Application
 
-#### gRPC Services
-The Protos directory contains protocol buffer definitions for agent communication:
+Edit `appsettings.json`:
 
-- **`siem.proto`**: Defines gRPC services for agent-server communication including:
-  - Agent registration and authentication
-  - Configuration management
-  - Log forwarding
-  - Heartbeat monitoring
-  - System metrics reporting
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5432;Database=siem-db;Username=youruser;Password=yourpassword;"
+  },
+  "Jwt": {
+    "Key": "your-256-bit-secret-key-here-change-in-production",
+    "Issuer": "AthalaSIEM",
+    "Audience": "AthalaSIEMUsers",
+    "ExpireMinutes": 60
+  }
+}
+```
 
-## API Endpoints
+### 4. Run Database Migrations
 
-### Authentication
-- `POST /api/auth/login`: Authenticate users
-- `POST /api/auth/register`: Register new users (admin only)
-- `POST /api/auth/refresh-token`: Refresh JWT token
+```bash
+dotnet ef database update
+```
 
-### Agents
-- `GET /api/agents`: List all registered agents
-- `GET /api/agents/{id}`: Get agent details
-- `POST /api/agents/register`: Register a new agent
-- `PUT /api/agents/{id}`: Update agent configuration
-- `DELETE /api/agents/{id}`: Deactivate an agent
-- `POST /api/agents/token`: Generate agent deployment token
-- `GET /api/agents/{id}/logs`: Get logs for a specific agent
-- `GET /api/agents/{id}/health`: Get health status for a specific agent
+### 5. Run Application
 
-### Logs
-- `GET /api/logs`: Query logs with filtering
-- `POST /api/logs/ingest`: Ingest single log entry
-- `POST /api/logs/batch`: Ingest batch log entries
-- `GET /api/logs/statistics`: Get log statistics
-- `GET /api/logs/search`: Search logs with advanced filtering
+```bash
+dotnet run
+```
 
-### Alerts
-- `GET /api/alerts`: Query alerts with filtering
-- `GET /api/alerts/{id}`: Get alert details
-- `PUT /api/alerts/{id}/status`: Update alert status
-- `POST /api/alerts/rules`: Create/update alert rules
-- `GET /api/alerts/rules`: Get all alert rules
-- `GET /api/alerts/rules/{id}`: Get specific alert rule
-- `DELETE /api/alerts/rules/{id}`: Delete alert rule
+The backend will be available at:
+- **HTTP**: http://localhost:9595
+- **Swagger UI**: http://localhost:9595/swagger
+- **gRPC**: http://localhost:9595 (same port)
 
-### Dashboard
-- `GET /api/dashboards/summary`: Get dashboard summary statistics
-- `GET /api/dashboards/recent-alerts`: Get recent alerts
-- `GET /api/dashboards/agent-status`: Get agent status overview
-- `GET /api/dashboards/log-volume`: Get log volume metrics
-- `GET /api/dashboards/security-posture`: Get security posture score
+## 📦 Installation
 
-### Reports
-- `GET /api/reports`: List available reports
-- `POST /api/reports/generate`: Generate a new report
-- `GET /api/reports/{id}`: Get report details
-- `GET /api/reports/templates`: Get available report templates
-- `GET /api/reports/download/{id}`: Download report in requested format
+### Method 1: Docker (Recommended)
 
-### Users
-- `GET /api/users`: List all users (admin only)
-- `GET /api/users/{id}`: Get user details
-- `POST /api/users`: Create a new user
-- `PUT /api/users/{id}`: Update user details
-- `DELETE /api/users/{id}`: Delete user
-- `PUT /api/users/{id}/role`: Update user role
+```bash
+# Build image
+docker build -t athala-siem-backend:latest .
 
-## Configuration
+# Run container
+docker run -d \
+  --name athala-backend \
+  -p 9595:9595 \
+  -e ConnectionStrings__DefaultConnection="Host=db;Port=5432;Database=siem-db;Username=postgres;Password=password;" \
+  -e Jwt__Key="your-secret-key" \
+  athala-siem-backend:latest
 
-The application uses `appsettings.json` for configuration:
+# Or use docker-compose
+docker-compose up -d
+```
+
+### Method 2: Windows Service
+
+```powershell
+# 1. Publish application
+dotnet publish -c Release -r win-x64 --self-contained -o ./publish
+
+# 2. Install as Windows Service
+# Use NSSM or similar tool
+nssm install AthalaSIEMBackend "C:\Program Files\AthalaSIEM\Backend\backend.exe"
+nssm set AthalaSIEMBackend AppDirectory "C:\Program Files\AthalaSIEM\Backend"
+nssm start AthalaSIEMBackend
+```
+
+### Method 3: Linux systemd
+
+```bash
+# 1. Publish application
+dotnet publish -c Release -r linux-x64 --self-contained -o ./publish
+
+# 2. Copy to installation directory
+sudo mkdir -p /opt/athala-backend
+sudo cp -r ./publish/* /opt/athala-backend/
+
+# 3. Create systemd service
+sudo nano /etc/systemd/system/athala-backend.service
+```
+
+Service file (`/etc/systemd/system/athala-backend.service`):
+
+```ini
+[Unit]
+Description=AthalaSIEM Backend
+After=network.target postgresql.service
+
+[Service]
+Type=notify
+WorkingDirectory=/opt/athala-backend
+ExecStart=/opt/athala-backend/backend
+Restart=always
+RestartSec=10
+User=athala
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=siem-db;Username=athala;Password=password;
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+# 4. Enable and start service
+sudo systemctl daemon-reload
+sudo systemctl enable athala-backend
+sudo systemctl start athala-backend
+```
+
+### Method 4: IIS (Windows)
+
+1. Install .NET 8.0 Hosting Bundle
+2. Create IIS application pool (No Managed Code)
+3. Create IIS application pointing to published folder
+4. Configure SSL certificates
+5. Set environment variables in web.config
+
+## ⚙️ Configuration
+
+### appsettings.json
 
 ```json
 {
@@ -184,64 +282,431 @@ The application uses `appsettings.json` for configuration:
     "DefaultConnection": "Host=localhost;Port=5432;Database=siem-db;Username=user;Password=password;"
   },
   "Jwt": {
-    "Key": "your-secret-key",
+    "Key": "your-256-bit-secret-key-change-in-production",
     "Issuer": "AthalaSIEM",
     "Audience": "AthalaSIEMUsers",
     "ExpireMinutes": 60
   },
-  "ApiKey": "your-api-key",
-  "InstallerDownloadCode": "secure-download-code",
   "Kestrel": {
     "Endpoints": {
-      "Http": { "Url": "http://0.0.0.0:9595" },
-      "Https": { "Url": "https://0.0.0.0:9596" },
-      "Grpc": {
-        "Url": "http://0.0.0.0:50051",
-        "Protocols": "Http2"
+      "Http": {
+        "Url": "http://0.0.0.0:9595"
+      },
+      "Https": {
+        "Url": "https://0.0.0.0:9596",
+        "Certificate": {
+          "Path": "/path/to/certificate.pfx",
+          "Password": "certificate-password"
+        }
+      }
+    }
+  },
+  "Cors": {
+    "AllowedOrigins": [
+      "http://localhost:3000",
+      "http://localhost:7654",
+      "https://your-frontend-domain.com"
+    ]
+  },
+  "GrpcServer": {
+    "Url": "http://0.0.0.0:9595"
+  },
+  "LogArchiving": {
+    "IntervalHours": 24,
+    "RetentionDays": 90,
+    "BatchSize": 1000,
+    "Directory": "archives/logs",
+    "EnableCompression": true
+  }
+}
+```
+
+### Environment Variables
+
+Override configuration via environment variables:
+
+```bash
+# Database
+export ConnectionStrings__DefaultConnection="Host=db;Port=5432;Database=siem-db;Username=user;Password=pass;"
+
+# JWT
+export Jwt__Key="your-secret-key"
+export Jwt__ExpireMinutes=60
+
+# Kestrel
+export Kestrel__Endpoints__Http__Url="http://0.0.0.0:9595"
+
+# CORS
+export Cors__AllowedOrigins__0="http://localhost:3000"
+export Cors__AllowedOrigins__1="https://your-domain.com"
+```
+
+### Production Configuration
+
+Create `appsettings.Production.json`:
+
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Warning",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "Kestrel": {
+    "Endpoints": {
+      "Https": {
+        "Url": "https://0.0.0.0:9596"
       }
     }
   }
 }
 ```
 
-## Getting Started
+## 🚢 Deployment
+
+### Docker Compose (Full Stack)
+
+```yaml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: siem-db
+      POSTGRES_USER: athala
+      POSTGRES_PASSWORD: secure-password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build: .
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=siem-db;Username=athala;Password=secure-password;"
+      Jwt__Key: "your-secret-key"
+      ASPNETCORE_ENVIRONMENT: Production
+    ports:
+      - "9595:9595"
+    depends_on:
+      - postgres
+    volumes:
+      - ./archives:/app/archives
+
+volumes:
+  postgres-data:
+```
+
+```bash
+docker-compose up -d
+```
+
+### Kubernetes Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: athala-backend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: athala-backend
+  template:
+    metadata:
+      labels:
+        app: athala-backend
+    spec:
+      containers:
+      - name: backend
+        image: athalasiem/backend:latest
+        ports:
+        - containerPort: 9595
+        env:
+        - name: ConnectionStrings__DefaultConnection
+          valueFrom:
+            secretKeyRef:
+              name: athala-secrets
+              key: database-connection
+        - name: Jwt__Key
+          valueFrom:
+            secretKeyRef:
+              name: athala-secrets
+              key: jwt-key
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: athala-backend
+spec:
+  selector:
+    app: athala-backend
+  ports:
+  - port: 9595
+    targetPort: 9595
+  type: LoadBalancer
+```
+
+### Reverse Proxy (Nginx)
+
+```nginx
+server {
+    listen 80;
+    server_name siem.yourdomain.com;
+
+    location / {
+        proxy_pass http://localhost:9595;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection keep-alive;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+## 📡 API Documentation
+
+### Swagger UI
+
+Access interactive API documentation at:
+- **Development**: http://localhost:9595/swagger
+- **Production**: https://your-domain.com/swagger
+
+### Key Endpoints
+
+#### Authentication
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - User login
+- `POST /api/auth/refresh-token` - Refresh JWT token
+
+#### Agents
+- `GET /api/agents` - List all agents
+- `POST /api/agents/register` - Register new agent
+- `GET /api/agents/{id}` - Get agent details
+- `PUT /api/agents/{id}` - Update agent
+- `DELETE /api/agents/{id}` - Delete agent
+- `GET /api/agents/{id}/health` - Get agent health
+
+#### Logs
+- `GET /api/logs` - Query logs
+- `POST /api/logs/ingest` - Ingest single log
+- `POST /api/logs/batch` - Ingest log batch
+- `GET /api/logs/statistics` - Get log statistics
+
+#### Alerts
+- `GET /api/alerts` - Query alerts
+- `GET /api/alerts/{id}` - Get alert details
+- `PUT /api/alerts/{id}/status` - Update alert status
+
+#### Users
+- `GET /api/users` - List users (Admin only)
+- `POST /api/users` - Create user (Admin only)
+- `PUT /api/users/{id}` - Update user
+- `DELETE /api/users/{id}` - Delete user
+
+### gRPC Services
+
+- `RegisterAgent` - Agent registration
+- `ForwardLogs` - Log forwarding
+- `SendHeartbeat` - Agent heartbeat
+- `GetAgentConfiguration` - Get agent config
+
+## 🗄️ Database
+
+### Schema Overview
+
+- **Agents**: Registered agent information
+- **LogEntries**: Ingested log entries
+- **Alerts**: Generated security alerts
+- **Users**: User accounts and authentication
+- **Roles**: Role definitions
+- **UserRoles**: User-role assignments
+- **AgentConfigs**: Agent configurations
+- **HealthReports**: Agent health reports
+
+### Migrations
+
+```bash
+# Add new migration
+dotnet ef migrations add MigrationName
+
+# Update database
+dotnet ef database update
+
+# Generate SQL script
+dotnet ef migrations script
+
+# Rollback migration
+dotnet ef database update PreviousMigrationName
+```
+
+### Backup and Restore
+
+```bash
+# Backup
+pg_dump -U postgres -d siem-db -F c -f backup.dump
+
+# Restore
+pg_restore -U postgres -d siem-db -c backup.dump
+```
+
+## 🔒 Security
+
+### Authentication
+- JWT tokens with configurable expiration
+- Refresh token support
+- Password hashing with BCrypt
+- Two-factor authentication (2FA)
+
+### Authorization
+- Role-based access control (RBAC)
+- Admin, User, Analyst roles
+- Endpoint-level authorization
+
+### Data Protection
+- HTTPS/TLS encryption
+- SQL injection protection (parameterized queries)
+- Input validation and sanitization
+- CORS configuration
+
+### Best Practices
+1. **Change default JWT key** in production
+2. **Use strong database passwords**
+3. **Enable HTTPS** in production
+4. **Configure CORS** properly
+5. **Regular security updates**
+6. **Monitor access logs**
+
+## 🐛 Troubleshooting
+
+### Database Connection Issues
+
+```bash
+# Test PostgreSQL connection
+psql -h localhost -U postgres -d siem-db
+
+# Check connection string format
+# Should be: Host=localhost;Port=5432;Database=siem-db;Username=user;Password=pass;
+```
+
+### Application Won't Start
+
+1. **Check logs:**
+   ```bash
+   # View application logs
+   tail -f logs/backend-*.log
+   ```
+
+2. **Verify .NET Runtime:**
+   ```bash
+   dotnet --version
+   # Should show 8.0.x
+   ```
+
+3. **Check port availability:**
+   ```bash
+   # Windows
+   netstat -ano | findstr :9595
+   
+   # Linux
+   sudo lsof -i :9595
+   ```
+
+### Migration Errors
+
+```bash
+# Reset database (development only)
+dotnet ef database drop
+dotnet ef database update
+
+# Check migration status
+dotnet ef migrations list
+```
+
+### Performance Issues
+
+1. **Database optimization:**
+   - Add indexes for frequently queried columns
+   - Analyze query performance
+   - Consider connection pooling
+
+2. **Application optimization:**
+   - Enable response compression
+   - Use async/await properly
+   - Monitor memory usage
+
+## 🛠️ Development
 
 ### Prerequisites
+
 - .NET 8.0 SDK
 - PostgreSQL 14+
 - Visual Studio 2022 or VS Code
+- Git
 
-### Development Setup
-1. Clone the repository
-2. Update the connection string in `appsettings.json`
-3. Run database migrations:
-   ```
+### Setup Development Environment
+
+```bash
+# Clone repository
+git clone https://github.com/athalasiem/athalasiem.git
+cd athalasiem/backend
+
+# Restore dependencies
+dotnet restore
+
+# Update database
    dotnet ef database update
-   ```
-4. Start the application:
-   ```
+
+# Run application
    dotnet run
    ```
-5. Access Swagger UI at https://localhost:9596/swagger
 
-### Docker Setup
-```bash
-docker build -t athala-siem-backend .
-docker run -p 9595:9595 -p 9596:9596 -p 50051:50051 athala-siem-backend
+### Project Structure
+
+```
+backend/
+├── Controllers/          # REST API controllers
+├── Services/             # Business logic services
+├── Repositories/         # Data access repositories
+├── Models/              # Domain entities
+├── DTOs/                # Data transfer objects
+├── Data/                # Database context
+├── Infrastructure/      # External integrations
+├── Workers/             # Background services
+├── Protos/              # gRPC definitions
+└── Migrations/          # EF Core migrations
 ```
 
-## Architecture Principles
+### Running Tests
 
-The backend follows these principles:
-- **Clean Architecture**: Separation of concerns with clear boundaries
-- **Repository Pattern**: Abstraction of data access
-- **Dependency Injection**: For loose coupling between components
-- **SOLID Principles**: Single responsibility, Open/closed, Liskov substitution, Interface segregation, Dependency inversion
-- **RESTful API Design**: Consistent API patterns
-- **Asynchronous Programming**: Non-blocking I/O operations
-- **Domain-Driven Design**: Core entities reflect business domain
+```bash
+# Run all tests
+dotnet test
 
-## License
+# Run with coverage
+dotnet test /p:CollectCoverage=true
+```
+
+### Code Style
+
+- Follow .NET coding conventions
+- Use EditorConfig for formatting
+- XML documentation for public APIs
+- Async/await for I/O operations
+
+## 📚 Additional Resources
+
+- [API Documentation](http://localhost:9595/swagger) - Interactive API docs
+- [Architecture Analysis](../ATHALASIEM_BACKEND_ARCHITECTURE_ANALYSIS.md) - Detailed architecture
+- [FIM Documentation](README_FIM_ENHANCED.md) - File Integrity Monitoring
+
+## 📄 License
 
 Copyright © 2025 Athala Security Solutions
 
@@ -250,3 +715,7 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. 
+
+---
+
+**🎉 Production-ready SIEM backend!** Deploy enterprise security monitoring with confidence.
