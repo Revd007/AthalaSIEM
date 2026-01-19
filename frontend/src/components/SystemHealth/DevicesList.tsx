@@ -287,6 +287,10 @@ export function DevicesList({
             {filteredAgents.map(agent => {
               const StatusIcon = statusConfig[agent.status]?.icon || Server
               const agentId = agent.id;
+              if (!agentId) {
+                console.warn('Agent missing ID:', agent);
+                return null;
+              }
               return (
                 <div
                   key={agentId}

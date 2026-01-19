@@ -440,21 +440,20 @@ namespace AthalaSIEM.UniversalAgent.Services
                     };
                     
                     // Backend expects AgentHeartbeatDto with camelCase properties
-                    // Status enum must be serialized as integer (3 = Online)
+                    // Status enum must be serialized as string name (e.g., "Online") not integer
                     // Backend uses: PropertyNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true
                     var heartbeatDto = new
                     {
-                        timestamp = DateTime.UtcNow,
-                        status = 3, // AgentStatus.Online = 3 (integer, not string)
-                        cpuUsage = cpuUsage,
-                        memoryUsage = memoryUsage,
-                        diskUsage = diskUsage,
-                        ipAddress = ipAddress ?? string.Empty,
-                        additionalInfo = JsonSerializer.Serialize(additionalInfo)
+                        Timestamp = DateTime.UtcNow,
+                        Status = "Online", // Send as string enum name, not integer
+                        CpuUsage = cpuUsage,
+                        MemoryUsage = memoryUsage,
+                        DiskUsage = diskUsage,
+                        IpAddress = ipAddress ?? string.Empty,
+                        AdditionalInfo = JsonSerializer.Serialize(additionalInfo)
                     };
 
                     // Serialize with camelCase to match backend's JSON options
-                    // Note: Anonymous objects with lowercase property names will serialize correctly
                     var options = new JsonSerializerOptions
                     {
                         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,

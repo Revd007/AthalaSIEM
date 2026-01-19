@@ -75,16 +75,16 @@ export function NormalizationFilters({
         <div className="space-y-2">
           <Label htmlFor="eventType">Event Type</Label>
           <Select
-            value={localFilters.eventType || ''}
+            value={localFilters.eventType || 'all'}
             onValueChange={(value) =>
-              setLocalFilters((prev) => ({ ...prev, eventType: value || undefined }))
+              setLocalFilters((prev) => ({ ...prev, eventType: value === 'all' ? undefined : value }))
             }
           >
             <SelectTrigger>
               <SelectValue placeholder="All event types" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All event types</SelectItem>
+              <SelectItem value="all">All event types</SelectItem>
               {EVENT_TYPES.map((type) => (
                 <SelectItem key={type} value={type}>
                   {type.charAt(0).toUpperCase() + type.slice(1)}
@@ -109,11 +109,11 @@ export function NormalizationFilters({
         <div className="space-y-2">
           <Label htmlFor="minSeverity">Min Severity</Label>
           <Select
-            value={localFilters.minSeverity?.toString() || ''}
+            value={localFilters.minSeverity?.toString() || 'any'}
             onValueChange={(value) =>
               setLocalFilters((prev) => ({
                 ...prev,
-                minSeverity: value ? parseInt(value) : undefined,
+                minSeverity: value === 'any' ? undefined : parseInt(value),
               }))
             }
           >
@@ -121,7 +121,7 @@ export function NormalizationFilters({
               <SelectValue placeholder="Any severity" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Any severity</SelectItem>
+              <SelectItem value="any">Any severity</SelectItem>
               <SelectItem value="1">Debug (1)</SelectItem>
               <SelectItem value="2">Info (2)</SelectItem>
               <SelectItem value="4">Warning (4)</SelectItem>

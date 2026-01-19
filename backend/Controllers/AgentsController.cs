@@ -140,6 +140,34 @@ namespace Backend.Controllers
         }
 
         /// <summary>
+        /// Gets agent status/health by ID (alias for GetAgentById for frontend compatibility)
+        /// </summary>
+        /// <param name="id">The agent ID</param>
+        /// <returns>The agent with status information</returns>
+        [HttpGet("{id}/status")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<AgentDto>> GetAgentStatus(string id)
+        {
+            try
+            {
+                var agent = await _agentService.GetAgentByIdAsync(id);
+                if (agent == null)
+                {
+                    return NotFound(new { Error = $"Agent with ID {id} not found" });
+                }
+                
+                return Ok(MapToDto(agent));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving agent status {AgentId}", id);
+                return StatusCode(500, new { Error = "An error occurred while retrieving the agent status", Details = ex.Message });
+            }
+        }
+
+        /// <summary>
         /// Gets agents by status
         /// </summary>
         /// <param name="status">The agent status</param>

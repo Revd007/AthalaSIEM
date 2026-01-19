@@ -23,10 +23,11 @@ interface DeviceDetailsProps {
 }
 
 export function DeviceDetails({ deviceId }: DeviceDetailsProps) {
-  const { data: agent, isLoading: agentLoading } = useQuery({
+  const { data: agent, isLoading: agentLoading, error: agentError } = useQuery({
     queryKey: ['agent', deviceId],
     queryFn: () => agentService.getAgentStatus(deviceId),
     enabled: !!deviceId,
+    retry: 1,
   });
 
   const { data: alertsData, isLoading: alertsLoading } = useAlerts({
@@ -50,10 +51,18 @@ export function DeviceDetails({ deviceId }: DeviceDetailsProps) {
     );
   }
 
+  if (agentError) {
+    return (
+      <div className="text-center text-red-500 py-8">
+        Error loading agent: {agentError instanceof Error ? agentError.message : 'Unknown error'}
+      </div>
+    );
+  }
+
   if (!agent) {
     return (
       <div className="text-center text-gray-500 py-8">
-        Agent not found
+        Agent not found (ID: {deviceId})
       </div>
     );
   }

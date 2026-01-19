@@ -20,9 +20,6 @@ namespace AthalaSIEM.UniversalAgent.Services
         private readonly ILogger<FIMConfigurationService> _logger;
         private readonly IConfiguration _configuration;
         private readonly HttpClient _httpClient;
-        private readonly string _agentId;
-        private readonly string _apiKey;
-        private readonly string _backendUrl;
 
         public FIMConfigurationService(
             ILogger<FIMConfigurationService> logger, 
@@ -32,16 +29,44 @@ namespace AthalaSIEM.UniversalAgent.Services
             _logger = logger;
             _configuration = configuration;
             _httpClient = httpClient;
-            
-            _agentId = _configuration["Agent:Id"] ?? Environment.MachineName;
-            _apiKey = _configuration["Agent:ApiKey"] ?? "";
-            _backendUrl = _configuration["Agent:ManagerUrl"] ?? "";
-            
-            // Configure HTTP client
-            if (!string.IsNullOrEmpty(_apiKey))
+        }
+
+        /// <summary>
+        /// Gets the current API key from configuration (updated after registration)
+        /// </summary>
+        private string GetApiKey()
+        {
+            return _configuration["Agent:ApiKey"] ?? "";
+        }
+
+        /// <summary>
+        /// Gets the current agent ID from configuration
+        /// </summary>
+        private string GetAgentId()
+        {
+            return _configuration["Agent:Id"] ?? Environment.MachineName;
+        }
+
+        /// <summary>
+        /// Gets the backend URL from configuration
+        /// </summary>
+        private string GetBackendUrl()
+        {
+            return _configuration["Agent:ManagerUrl"] ?? "";
+        }
+
+        /// <summary>
+        /// Creates an HTTP request message with authentication headers
+        /// </summary>
+        private HttpRequestMessage CreateAuthenticatedRequest(HttpMethod method, string url)
+        {
+            var request = new HttpRequestMessage(method, url);
+            var apiKey = GetApiKey();
+            if (!string.IsNullOrEmpty(apiKey))
             {
-                _httpClient.DefaultRequestHeaders.Add("X-API-Key", _apiKey);
+                request.Headers.Add("X-API-Key", apiKey);
             }
+            return request;
         }
 
         /// <summary>
@@ -51,16 +76,19 @@ namespace AthalaSIEM.UniversalAgent.Services
         {
             try
             {
-                if (string.IsNullOrEmpty(_backendUrl))
+                var backendUrl = GetBackendUrl();
+                if (string.IsNullOrEmpty(backendUrl))
                 {
                     _logger.LogWarning("Backend URL not configured - cannot fetch FIM configurations");
                     return new List<FIMConfigurationDto>();
                 }
 
-                var url = $"{_backendUrl}/api/fim/configurations/agent/{_agentId}";
+                var agentId = GetAgentId();
+                var url = $"{backendUrl}/api/fim/configurations/agent/{agentId}";
                 _logger.LogDebug("Fetching FIM configurations from: {Url}", url);
 
-                var response = await _httpClient.GetAsync(url);
+                var request = CreateAuthenticatedRequest(HttpMethod.Get, url);
+                var response = await _httpClient.SendAsync(request);
                 
                 if (response.IsSuccessStatusCode)
                 {
@@ -94,17 +122,19 @@ namespace AthalaSIEM.UniversalAgent.Services
         {
             try
             {
-                if (string.IsNullOrEmpty(_backendUrl))
+                var backendUrl = GetBackendUrl();
+                if (string.IsNullOrEmpty(backendUrl))
                 {
                     _logger.LogWarning("Backend URL not configured - cannot send FIM event");
                     return false;
                 }
-
-                var url = $"{_backendUrl}/api/fim/events";
+                var url = $"{backendUrl}/api/fim/events";
                 var json = JsonSerializer.Serialize(fimEvent);
                 var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PostAsync(url, content);
+                var request = CreateAuthenticatedRequest(HttpMethod.Post, url);
+                request.Content = content;
+                var response = await _httpClient.SendAsync(request);
                 
                 if (response.IsSuccessStatusCode)
                 {
@@ -132,17 +162,18 @@ namespace AthalaSIEM.UniversalAgent.Services
         {
             try
             {
-                if (string.IsNullOrEmpty(_backendUrl))
+                var backendUrl = GetBackendUrl();
+                if (string.IsNullOrEmpty(backendUrl))
                 {
                     _logger.LogWarning("Backend URL not configured - cannot fetch FIM templates");
                     return new List<FIMTemplateDto>();
                 }
-
                 var url = string.IsNullOrEmpty(operatingSystem) 
-                    ? $"{_backendUrl}/api/fim/templates"
-                    : $"{_backendUrl}/api/fim/templates/os/{operatingSystem}";
+                    ? $"{backendUrl}/api/fim/templates"
+                    : $"{backendUrl}/api/fim/templates/os/{operatingSystem}";
 
-                var response = await _httpClient.GetAsync(url);
+                var request = CreateAuthenticatedRequest(HttpMethod.Get, url);
+                var response = await _httpClient.SendAsync(request);
                 
                 if (response.IsSuccessStatusCode)
                 {
