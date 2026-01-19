@@ -54,7 +54,7 @@ namespace AthalaSIEM.UniversalAgent.UAT
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ UAT Test Suite failed with exception: {ex.Message}");
+                Console.WriteLine($"UAT Test Suite failed with exception: {ex.Message}");
                 Console.WriteLine($"Details: {ex}");
                 return 1;
             }
@@ -123,14 +123,14 @@ namespace AthalaSIEM.UniversalAgent.UAT
 
             foreach (var testResult in result.TestResults)
             {
-                var statusEmoji = testResult.Passed ? "✅" : "❌";
+                var statusEmoji = testResult.Passed ? "" : "❌";
                 Console.WriteLine($"{statusEmoji} {testResult.TestName} - {(testResult.Passed ? "PASSED" : "FAILED")} ({testResult.Duration.TotalMilliseconds:F0}ms)");
                 
                 if (!testResult.Passed && testResult.Errors.Any())
                 {
                     foreach (var error in testResult.Errors)
                     {
-                        Console.WriteLine($"   ❌ {error}");
+                        Console.WriteLine($"   {error}");
                     }
                 }
 
@@ -138,7 +138,7 @@ namespace AthalaSIEM.UniversalAgent.UAT
                 {
                     foreach (var warning in testResult.Warnings)
                     {
-                        Console.WriteLine($"   ⚠️ {warning}");
+                        Console.WriteLine($"   {warning}");
                     }
                 }
             }
@@ -151,7 +151,7 @@ namespace AthalaSIEM.UniversalAgent.UAT
             }
             else
             {
-                Console.WriteLine("❌ Some UAT tests failed. Please review the errors above.");
+                Console.WriteLine("Some UAT tests failed. Please review the errors above.");
                 Console.WriteLine("📊 Check UAT-Reports directory for detailed reports.");
             }
         }
@@ -165,7 +165,7 @@ namespace AthalaSIEM.UniversalAgent.UAT
         {
             return status switch
             {
-                "PASSED" => "✅",
+                "PASSED" => "",
                 "FAILED" => "❌",
                 _ => "❓"
             };

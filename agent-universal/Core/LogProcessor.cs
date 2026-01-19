@@ -525,7 +525,7 @@ namespace AthalaSIEM.UniversalAgent.Core
                     Success = true
                 });
 
-                _logger.LogInformation("✅ {ConfigType} configuration updated successfully", configType);
+                _logger.LogInformation(" {ConfigType} configuration updated successfully", configType);
                 return true;
             }
             catch (Exception ex)

@@ -64,7 +64,7 @@ namespace AthalaSIEM.UniversalAgent.UAT
                 // Run each test scenario
                 foreach (var scenario in _uatConfig.TestScenarios)
                 {
-                    _logger.LogInformation("📋 Running test scenario: {Scenario}", scenario);
+                    _logger.LogInformation(" Running test scenario: {Scenario}", scenario);
                     var result = await RunTestScenarioAsync(scenario);
                     _testResults.Add(result);
                 }
@@ -78,12 +78,12 @@ namespace AthalaSIEM.UniversalAgent.UAT
                     await CleanupTestEnvironmentAsync();
                 }
 
-                _logger.LogInformation("✅ UAT Test Suite completed. Overall Status: {Status}", overallResult.OverallStatus);
+                _logger.LogInformation(" UAT Test Suite completed. Overall Status: {Status}", overallResult.OverallStatus);
                 return overallResult;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ UAT Test Suite failed with exception");
+                _logger.LogError(ex, "UAT Test Suite failed with exception");
                 throw;
             }
         }
@@ -130,7 +130,7 @@ namespace AthalaSIEM.UniversalAgent.UAT
                 Directory.CreateDirectory("UAT-Logs");
                 Directory.CreateDirectory("UAT-Reports");
 
-                _logger.LogInformation("✅ Test environment setup completed");
+                _logger.LogInformation(" Test environment setup completed");
                 await Task.CompletedTask;
             }
             catch (Exception ex)
@@ -204,7 +204,7 @@ namespace AthalaSIEM.UniversalAgent.UAT
                 result.Passed = result.Errors.Count == 0;
 
                 _logger.LogInformation("{Status} Test scenario '{Scenario}' completed in {Duration}ms", 
-                    result.Passed ? "✅" : "❌", scenario, result.Duration.TotalMilliseconds);
+                    result.Passed ? "" : "❌", scenario, result.Duration.TotalMilliseconds);
 
             }
             catch (Exception ex)
@@ -214,7 +214,7 @@ namespace AthalaSIEM.UniversalAgent.UAT
                 result.Duration = result.EndTime - result.StartTime;
                 result.Passed = false;
                 
-                _logger.LogError(ex, "❌ Test scenario '{Scenario}' failed", scenario);
+                _logger.LogError(ex, "Test scenario '{Scenario}' failed", scenario);
             }
 
             return result;
@@ -320,12 +320,12 @@ namespace AthalaSIEM.UniversalAgent.UAT
                 await fimCollector.DisposeAsync();
                 result.AddStep("FIM Collector disposed successfully");
 
-                _logger.LogInformation("✅ FIM Tests completed successfully");
+                _logger.LogInformation(" FIM Tests completed successfully");
             }
             catch (Exception ex)
             {
                 result.AddError($"FIM Test failed: {ex.Message}");
-                _logger.LogError(ex, "❌ FIM Tests failed");
+                _logger.LogError(ex, "FIM Tests failed");
             }
         }
 
@@ -402,12 +402,12 @@ namespace AthalaSIEM.UniversalAgent.UAT
                 await eventCollector.DisposeAsync();
                 result.AddStep("Event Log Collector disposed successfully");
 
-                _logger.LogInformation("✅ Event Collection Tests completed successfully");
+                _logger.LogInformation(" Event Collection Tests completed successfully");
             }
             catch (Exception ex)
             {
                 result.AddError($"Event Collection Test failed: {ex.Message}");
-                _logger.LogError(ex, "❌ Event Collection Tests failed");
+                _logger.LogError(ex, "Event Collection Tests failed");
             }
         }
 
@@ -467,32 +467,32 @@ namespace AthalaSIEM.UniversalAgent.UAT
                 
                 if (finalHealth.IsConnected)
                 {
-                    result.AddWarning("⚠️ IsConnected=true during UAT - this indicates a backend is running");
+                    result.AddWarning("IsConnected=true during UAT - this indicates a backend is running");
                     result.AddWarning("🔧 To fix: Ensure no backend is running during UAT tests");
                     isUATBehaviorCorrect = false;
                 }
                 else
                 {
-                    result.AddStep("✅ IsConnected=false - Correct UAT behavior (no backend)");
+                    result.AddStep(" IsConnected=false - Correct UAT behavior (no backend)");
                 }
 
                 if (finalHealth.QueuedLogs > 0)
                 {
-                    result.AddStep($"✅ QueuedLogs={finalHealth.QueuedLogs} - Correct UAT behavior (logs queued)");
+                    result.AddStep($" QueuedLogs={finalHealth.QueuedLogs} - Correct UAT behavior (logs queued)");
                 }
                 else
                 {
-                    result.AddWarning("⚠️ QueuedLogs=0 - Unexpected, logs should be queued in UAT");
+                    result.AddWarning("QueuedLogs=0 - Unexpected, logs should be queued in UAT");
                     isUATBehaviorCorrect = false;
                 }
 
                 if (finalHealth.TotalLogsSent == 0)
                 {
-                    result.AddStep("✅ TotalLogsSent=0 - Correct UAT behavior (no logs sent)");
+                    result.AddStep(" TotalLogsSent=0 - Correct UAT behavior (no logs sent)");
                 }
                 else
                 {
-                    result.AddWarning($"⚠️ TotalLogsSent={finalHealth.TotalLogsSent} - Unexpected, no logs should be sent in UAT");
+                    result.AddWarning($"TotalLogsSent={finalHealth.TotalLogsSent} - Unexpected, no logs should be sent in UAT");
                     isUATBehaviorCorrect = false;
                 }
 
@@ -502,16 +502,16 @@ namespace AthalaSIEM.UniversalAgent.UAT
                 }
                 else
                 {
-                    result.AddStep("⚠️ UAT Communication Test: PASSED with warnings - Check backend isolation");
+                    result.AddStep("UAT Communication Test: PASSED with warnings - Check backend isolation");
                 }
 
-                _logger.LogInformation("✅ Communication Tests completed successfully");
+                _logger.LogInformation(" Communication Tests completed successfully");
                 await Task.CompletedTask;
             }
             catch (Exception ex)
             {
                 result.AddError($"Communication Test failed: {ex.Message}");
-                _logger.LogError(ex, "❌ Communication Tests failed");
+                _logger.LogError(ex, "Communication Tests failed");
             }
         }
 
@@ -597,12 +597,12 @@ namespace AthalaSIEM.UniversalAgent.UAT
                 var gcAfter = GC.CollectionCount(0);
                 result.AddStep($"Garbage collection: {gcAfter - gcBefore} Gen0 collections during test");
 
-                _logger.LogInformation("✅ Performance Tests completed successfully");
+                _logger.LogInformation(" Performance Tests completed successfully");
             }
             catch (Exception ex)
             {
                 result.AddError($"Performance Test failed: {ex.Message}");
-                _logger.LogError(ex, "❌ Performance Tests failed");
+                _logger.LogError(ex, "Performance Tests failed");
             }
         }
 
@@ -732,7 +732,7 @@ namespace AthalaSIEM.UniversalAgent.UAT
             foreach (var testResult in result.TestResults)
             {
                 var testClass = testResult.Passed ? "passed" : "failed";
-                var testStatus = testResult.Passed ? "✅ PASSED" : "❌ FAILED";
+                var testStatus = testResult.Passed ? " PASSED" : "FAILED";
                 
                 html += $@"
     <div class='test-result {testClass}'>
@@ -752,7 +752,7 @@ namespace AthalaSIEM.UniversalAgent.UAT
                     html += "<h3>Warnings:</h3>";
                     foreach (var warning in testResult.Warnings)
                     {
-                        html += $"<div class='warning'>⚠️ {warning}</div>";
+                        html += $"<div class='warning'>{warning}</div>";
                     }
                 }
 
@@ -761,7 +761,7 @@ namespace AthalaSIEM.UniversalAgent.UAT
                     html += "<h3>Errors:</h3>";
                     foreach (var error in testResult.Errors)
                     {
-                        html += $"<div class='error'>❌ {error}</div>";
+                        html += $"<div class='error'>{error}</div>";
                     }
                 }
 
@@ -805,12 +805,12 @@ namespace AthalaSIEM.UniversalAgent.UAT
                     }
                 }
 
-                _logger.LogInformation("✅ UAT test environment cleanup completed");
+                _logger.LogInformation(" UAT test environment cleanup completed");
                 await Task.CompletedTask;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "⚠️ Test environment cleanup encountered errors");
+                _logger.LogWarning(ex, "Test environment cleanup encountered errors");
             }
         }
 

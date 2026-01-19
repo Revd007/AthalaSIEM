@@ -231,11 +231,11 @@ psql -d athalasiem -c "SELECT * FROM alerts WHERE title LIKE '%offline%' OR titl
 
 ## Success Criteria
 
-✅ **All scenarios pass**
-✅ **No critical errors in logs**
-✅ **Frontend displays all data correctly**
-✅ **System handles 5+ agents simultaneously**
-✅ **Complete pipeline works end-to-end**
+ **All scenarios pass**
+ **No critical errors in logs**
+ **Frontend displays all data correctly**
+ **System handles 5+ agents simultaneously**
+ **Complete pipeline works end-to-end**
 
 ---
 

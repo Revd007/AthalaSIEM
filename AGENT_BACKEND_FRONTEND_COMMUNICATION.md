@@ -542,7 +542,7 @@ All events are normalized to this schema before sending to backend:
 
 Based on your specification, here's what needs to be implemented:
 
-### ✅ Already Implemented
+###  Already Implemented
 - [x] REST API communication (`BackendCommunicationService`)
 - [x] Agent registration
 - [x] Heartbeat mechanism
@@ -556,7 +556,7 @@ Based on your specification, here's what needs to be implemented:
 - [ ] Complete normalization to Athala ECS-lite schema
 - [ ] Additional collectors (Journalctl, Syslog, Docker)
 
-### 📋 To Do
+###  To Do
 - [ ] Parser implementation for all log types
 - [ ] Normalizer with full ECS-lite mapping
 - [ ] Test mode with file export

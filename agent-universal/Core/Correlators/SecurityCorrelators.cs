@@ -118,7 +118,7 @@ namespace AthalaSIEM.UniversalAgent.Core.Correlators
             var configSource = isTestEnvironment ? "UAT testing values" : 
                              (config.Any() ? "backend configuration with production defaults" : "production defaults");
             
-            _logger.LogInformation("✅ Authentication correlator initialized with {Source} - BruteForce: {BF}, CredentialStuffing: {CS}, TimeWindow: {TW}min, SuccessAfterFailures: {SAF}",
+            _logger.LogInformation(" Authentication correlator initialized with {Source} - BruteForce: {BF}, CredentialStuffing: {CS}, TimeWindow: {TW}min, SuccessAfterFailures: {SAF}",
                 configSource, _bruteForceThreshold, _credentialStuffingThreshold, _timeWindowMinutes, _successAfterFailuresThreshold);
 
             return await Task.FromResult(true);
@@ -570,7 +570,7 @@ namespace AthalaSIEM.UniversalAgent.Core.Correlators
             var configSource = isTestEnvironment ? "UAT testing values" : 
                              (config.Any() ? "backend configuration with production defaults" : "production defaults");
             
-            _logger.LogInformation("✅ Privilege escalation correlator initialized with {Source} - PrivilegeUse: {PU}, TimeWindow: {TW}min",
+            _logger.LogInformation(" Privilege escalation correlator initialized with {Source} - PrivilegeUse: {PU}, TimeWindow: {TW}min",
                 configSource, _privilegeUseThreshold, _timeWindowMinutes);
 
             return await Task.FromResult(true);

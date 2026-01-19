@@ -76,12 +76,12 @@ namespace AthalaSIEM.UniversalAgent.Collectors
                 // Validate system capabilities
                 await ValidateSystemCapabilitiesAsync();
 
-                _logger.LogInformation("✅ Linux System Metrics Collector initialized successfully");
+                _logger.LogInformation(" Linux System Metrics Collector initialized successfully");
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Failed to initialize Linux System Metrics Collector");
+                _logger.LogError(ex, "Failed to initialize Linux System Metrics Collector");
                 CollectionError?.Invoke(this, new LogCollectionErrorEventArgs
                 {
                     Exception = ex,
@@ -112,12 +112,12 @@ namespace AthalaSIEM.UniversalAgent.Collectors
                     TimeSpan.FromSeconds(_config.CollectionIntervalSeconds));
 
                 _isActive = true;
-                _logger.LogInformation("✅ Linux System Metrics Collector started successfully");
+                _logger.LogInformation(" Linux System Metrics Collector started successfully");
                 await Task.CompletedTask;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Failed to start Linux System Metrics Collector");
+                _logger.LogError(ex, "Failed to start Linux System Metrics Collector");
                 CollectionError?.Invoke(this, new LogCollectionErrorEventArgs
                 {
                     Exception = ex,
@@ -138,7 +138,7 @@ namespace AthalaSIEM.UniversalAgent.Collectors
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error stopping Linux System Metrics Collector");
+                _logger.LogError(ex, "Error stopping Linux System Metrics Collector");
                 CollectionError?.Invoke(this, new LogCollectionErrorEventArgs
                 {
                     Exception = ex,
@@ -317,7 +317,7 @@ namespace AthalaSIEM.UniversalAgent.Collectors
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error collecting system metrics");
+                _logger.LogError(ex, "Error collecting system metrics");
                 CollectionError?.Invoke(this, new LogCollectionErrorEventArgs
                 {
                     Exception = ex,

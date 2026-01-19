@@ -10,6 +10,7 @@ using AthalaSIEM.UniversalAgent.Core;
 using AthalaSIEM.UniversalAgent.Models;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using LocalLogEntry = AthalaSIEM.UniversalAgent.Models.LogEntry;
 
 namespace AthalaSIEM.Agent.Collectors
 {
@@ -33,7 +34,7 @@ namespace AthalaSIEM.Agent.Collectors
         public long LogsCollected { get; private set; }
 
         private readonly ILogger<FirewallCollector> _logger;
-        private readonly List<LogEntry> _collectedLogs = new List<LogEntry>();
+        private readonly List<LocalLogEntry> _collectedLogs = new List<LocalLogEntry>();
         private readonly List<FileSystemWatcher> _watchers = new();
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private Timer? _scanTimer;
@@ -81,7 +82,7 @@ namespace AthalaSIEM.Agent.Collectors
                 
                 if (_firewallLogPaths.Count == 0)
                 {
-                    _logger.LogWarning("⚠️ No firewall log paths configured. Firewall monitoring disabled.");
+                    _logger.LogWarning("No firewall log paths configured. Firewall monitoring disabled.");
                     _logger.LogInformation("💡 Configure firewall monitoring via SIEM Web Interface:");
                     _logger.LogInformation("   • Go to Collectors → Firewall → Configure Paths");
                     _logger.LogInformation("   • Enable the log sources you want to monitor");
@@ -91,7 +92,7 @@ namespace AthalaSIEM.Agent.Collectors
                 // Setup file watchers for firewall logs
                 await SetupFirewallWatchersAsync();
 
-                _logger.LogInformation("✅ Firewall Monitor initialized: {PathCount} log paths, Type: {Type}", 
+                _logger.LogInformation(" Firewall Monitor initialized: {PathCount} log paths, Type: {Type}", 
                     _firewallLogPaths.Count, _detectedFirewallType);
                 
                 return true;
@@ -127,7 +128,7 @@ namespace AthalaSIEM.Agent.Collectors
                 _firewallLogPaths.AddRange(customPaths);
             }
 
-            _logger.LogInformation("📋 Firewall configuration loaded: Inbound={Inbound}, Outbound={Outbound}, Blocked={Blocked}, Allowed={Allowed}",
+            _logger.LogInformation(" Firewall configuration loaded: Inbound={Inbound}, Outbound={Outbound}, Blocked={Blocked}, Allowed={Allowed}",
                 _monitorInbound, _monitorOutbound, _monitorBlocked, _monitorAllowed);
         }
 
@@ -432,7 +433,7 @@ namespace AthalaSIEM.Agent.Collectors
                 // Start periodic scan timer
                 _scanTimer = new Timer(PerformFirewallScan, null, TimeSpan.Zero, TimeSpan.FromMinutes(5));
                 
-                _logger.LogInformation("✅ Firewall Monitor started - monitoring {Count} log files", _watchers.Count);
+                _logger.LogInformation(" Firewall Monitor started - monitoring {Count} log files", _watchers.Count);
             }
             catch (Exception ex)
             {
@@ -468,11 +469,11 @@ namespace AthalaSIEM.Agent.Collectors
         }
 
         /// <inheritdoc />
-        public Task<IEnumerable<LogEntry>> GetLogsAsync(int batchSize = 100, CancellationToken cancellationToken = default)
+        public Task<IEnumerable<LocalLogEntry>> GetLogsAsync(int batchSize = 100, CancellationToken cancellationToken = default)
         {
             var logs = _collectedLogs.Take(batchSize).ToList();
             _collectedLogs.RemoveRange(0, logs.Count);
-            return Task.FromResult<IEnumerable<LogEntry>>(logs);
+            return Task.FromResult<IEnumerable<LocalLogEntry>>(logs);
         }
 
         /// <inheritdoc />
@@ -519,7 +520,7 @@ namespace AthalaSIEM.Agent.Collectors
 
                         LogCollected?.Invoke(this, new LogCollectedEventArgs 
                         { 
-                            Logs = new[] { logEntry },
+                            Logs = new List<LocalLogEntry> { logEntry },
                             Source = CollectorName,
                             CollectionTime = DateTime.UtcNow
                         });
@@ -535,7 +536,7 @@ namespace AthalaSIEM.Agent.Collectors
         /// <summary>
         /// Parse a firewall log line into a LogEntry
         /// </summary>
-        private LogEntry? ParseFirewallLogLine(string line, string logPath)
+        private LocalLogEntry? ParseFirewallLogLine(string line, string logPath)
         {
             try
             {
@@ -559,13 +560,13 @@ namespace AthalaSIEM.Agent.Collectors
         /// <summary>
         /// Parse Windows Firewall log format
         /// </summary>
-        private LogEntry? ParseWindowsFirewallLog(string line, string logPath)
+        private LocalLogEntry? ParseWindowsFirewallLog(string line, string logPath)
         {
             // Windows Firewall log format: date time action protocol src-ip dst-ip src-port dst-port size tcpflags tcpsyn tcpack tcpwin icmptype icmpcode info path
             var parts = line.Split(' ');
             if (parts.Length < 8) return null;
 
-            var logEntry = new LogEntry
+            var logEntry = new LocalLogEntry
             {
                 Timestamp = DateTime.TryParse($"{parts[0]} {parts[1]}", out var timestamp) ? timestamp : DateTime.UtcNow,
                 Source = "WindowsFirewall",
@@ -593,10 +594,10 @@ namespace AthalaSIEM.Agent.Collectors
         /// <summary>
         /// Parse Linux firewall log format
         /// </summary>
-        private LogEntry? ParseLinuxFirewallLog(string line, string logPath)
+        private LocalLogEntry? ParseLinuxFirewallLog(string line, string logPath)
         {
             // Linux iptables/UFW log format varies, but typically includes: timestamp hostname kernel: [UFW BLOCK] ...
-            var logEntry = new LogEntry
+            var logEntry = new LocalLogEntry
             {
                 Timestamp = DateTime.UtcNow,
                 Source = "LinuxFirewall",
@@ -650,9 +651,9 @@ namespace AthalaSIEM.Agent.Collectors
         /// <summary>
         /// Parse generic firewall log format
         /// </summary>
-        private LogEntry? ParseGenericFirewallLog(string line, string logPath)
+        private LocalLogEntry? ParseGenericFirewallLog(string line, string logPath)
         {
-            return new LogEntry
+            return new LocalLogEntry
             {
                 Timestamp = DateTime.UtcNow,
                 Source = "Firewall",
@@ -673,7 +674,7 @@ namespace AthalaSIEM.Agent.Collectors
         /// <summary>
         /// Check if log entry should be collected based on configuration
         /// </summary>
-        private bool ShouldCollectLogEntry(LogEntry logEntry)
+        private bool ShouldCollectLogEntry(LocalLogEntry logEntry)
         {
             var action = logEntry.Properties.GetValueOrDefault("Action", "").ToString()?.ToLower();
             

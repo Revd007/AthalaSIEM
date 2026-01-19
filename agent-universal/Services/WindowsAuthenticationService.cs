@@ -60,7 +60,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                 _isAuthenticated = _currentIdentity.IsAuthenticated;
                 if (!_isAuthenticated)
                 {
-                    _logger.LogError("❌ Windows authentication failed - user not authenticated");
+                    _logger.LogError("Windows authentication failed - user not authenticated");
                     return false;
                 }
 
@@ -69,12 +69,12 @@ namespace AthalaSIEM.UniversalAgent.Services
                 
                 if (_hasAdminPrivileges)
                 {
-                    _logger.LogInformation("✅ Administrator privileges confirmed - Full SIEM functionality available");
+                    _logger.LogInformation(" Administrator privileges confirmed - Full SIEM functionality available");
                     _logger.LogInformation("🛡️ Can access Security Event Log, Registry, and File System");
                 }
                 else
                 {
-                    _logger.LogWarning("⚠️ NO Administrator privileges - Limited SIEM functionality");
+                    _logger.LogWarning("NO Administrator privileges - Limited SIEM functionality");
                     _logger.LogWarning("🚨 Cannot access Security Event Log - Critical for SIEM operations");
                     _logger.LogWarning("💡 To fix: Run agent as Administrator or configure service account");
                 }
@@ -109,7 +109,7 @@ namespace AthalaSIEM.UniversalAgent.Services
             foreach (var privilege in privileges)
             {
                 var hasPrivilege = HasPrivilege(privilege);
-                var status = hasPrivilege ? "✅" : "❌";
+                var status = hasPrivilege ? "" : "❌";
                 _logger.LogInformation("{Status} {Privilege}: {HasPrivilege}", 
                     status, privilege, hasPrivilege ? "GRANTED" : "DENIED");
             }
@@ -198,7 +198,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                 if (!string.IsNullOrEmpty(serviceAccount))
                 {
                     _logger.LogInformation("Service account configured: {ServiceAccount}", serviceAccount);
-                    _logger.LogWarning("⚠️ SECURITY WARNING: Service password should be configured via Windows Credential Manager, not configuration files");
+                    _logger.LogWarning("SECURITY WARNING: Service password should be configured via Windows Credential Manager, not configuration files");
                     
                     // In production, retrieve password from Windows Credential Manager:
                     // var credential = CredentialManager.ReadCredential(serviceAccount);
@@ -252,9 +252,9 @@ namespace AthalaSIEM.UniversalAgent.Services
         public void LogAuthenticationGuidance()
         {
             _logger.LogInformation("🔐 Windows Authentication Configuration Guidance:");
-            _logger.LogInformation("  ✅ Current User: {User}", CurrentUser);
-            _logger.LogInformation("  ✅ Authenticated: {Status}", _isAuthenticated ? "YES" : "NO");
-            _logger.LogInformation("  ✅ Admin Privileges: {Status}", _hasAdminPrivileges ? "YES" : "NO");
+            _logger.LogInformation("   Current User: {User}", CurrentUser);
+            _logger.LogInformation("   Authenticated: {Status}", _isAuthenticated ? "YES" : "NO");
+            _logger.LogInformation("   Admin Privileges: {Status}", _hasAdminPrivileges ? "YES" : "NO");
             
             if (!_hasAdminPrivileges)
             {

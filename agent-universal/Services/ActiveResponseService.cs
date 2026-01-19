@@ -122,7 +122,7 @@ namespace AthalaSIEM.Agent.Services
                 await LoadResponsePoliciesAsync();
                 
                 _isInitialized = true;
-                _logger.LogInformation("✅ Active Response Service initialized with {Count} policies", _responsePolicies.Count);
+                _logger.LogInformation(" Active Response Service initialized with {Count} policies", _responsePolicies.Count);
                 
                 return true;
             }

@@ -9,6 +9,7 @@ using AthalaSIEM.UniversalAgent.Core;
 using AthalaSIEM.UniversalAgent.Models;
 using Core = AthalaSIEM.UniversalAgent.Core;
 using Microsoft.Extensions.Logging;
+using LocalLogEntry = AthalaSIEM.UniversalAgent.Models.LogEntry;
 
 namespace AthalaSIEM.Agent.Collectors
 {
@@ -27,7 +28,7 @@ namespace AthalaSIEM.Agent.Collectors
         public bool IsActive { get; private set; }
         public long LogsCollected { get; private set; }
 
-        private readonly List<LogEntry> _collectedLogs = new List<LogEntry>();
+        private readonly List<LocalLogEntry> _collectedLogs = new List<LocalLogEntry>();
         private readonly Dictionary<string, EventLogQuery> _logQueries = new Dictionary<string, EventLogQuery>();
         private readonly List<EventLogFilter> _securityFilters = new List<EventLogFilter>();
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
@@ -129,11 +130,11 @@ namespace AthalaSIEM.Agent.Collectors
             return Task.CompletedTask;
         }
 
-        public Task<IEnumerable<LogEntry>> GetLogsAsync(int batchSize = 100, CancellationToken cancellationToken = default)
+        public Task<IEnumerable<LocalLogEntry>> GetLogsAsync(int batchSize = 100, CancellationToken cancellationToken = default)
         {
             var logs = _collectedLogs.Take(batchSize).ToList();
             _collectedLogs.RemoveRange(0, logs.Count);
-            return Task.FromResult<IEnumerable<LogEntry>>(logs);
+            return Task.FromResult<IEnumerable<LocalLogEntry>>(logs);
         }
 
         public Task<CollectorHealth> GetHealthAsync()
@@ -277,7 +278,7 @@ namespace AthalaSIEM.Agent.Collectors
                     
                     LogCollected?.Invoke(this, new LogCollectedEventArgs 
                     { 
-                        Logs = new[] { logEntry },
+                        Logs = new List<LocalLogEntry> { logEntry },
                         Source = sourceName,
                         CollectionTime = DateTime.UtcNow
                     });
@@ -328,9 +329,9 @@ namespace AthalaSIEM.Agent.Collectors
         /// Parse and normalize event following SIEM standard pattern
         /// Breaks down events into structured, searchable components
         /// </summary>
-        private LogEntry ParseAndNormalizeEvent(EventRecord eventRecord, string sourceName, EventLogFilter filter)
+        private LocalLogEntry ParseAndNormalizeEvent(EventRecord eventRecord, string sourceName, EventLogFilter filter)
         {
-            var logEntry = new LogEntry
+            var logEntry = new LocalLogEntry
             {
                 Id = LogEntryIdGenerator.GenerateId("WEVT"),
                 Timestamp = eventRecord.TimeCreated ?? DateTime.UtcNow,
@@ -362,7 +363,7 @@ namespace AthalaSIEM.Agent.Collectors
         /// Enrich log entry with additional context for analysis
         /// Following ManageEngine's enrichment pattern
         /// </summary>
-        private void EnrichLogEntry(LogEntry logEntry, EventRecord eventRecord)
+        private void EnrichLogEntry(LocalLogEntry logEntry, EventRecord eventRecord)
         {
             // Add computer name
             if (!string.IsNullOrEmpty(eventRecord.MachineName))

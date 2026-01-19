@@ -88,7 +88,7 @@ export function ComplianceEvidence({ framework }: ComplianceEvidenceProps) {
     switch (type) {
       case 'document': return '📄'
       case 'screenshot': return '🖼️'
-      case 'log': return '📋'
+      case 'log': return ''
       case 'policy': return '📜'
       default: return '📁'
     }

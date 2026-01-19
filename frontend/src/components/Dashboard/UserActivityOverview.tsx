@@ -34,7 +34,7 @@ const getIcon = (message: string): string => {
   if (msg.includes('login') || msg.includes('auth')) return '🔑';
   if (msg.includes('file') || msg.includes('access')) return '🔐';
   if (msg.includes('firewall') || msg.includes('network')) return '🛡️';
-  return '📋';
+  return '';
 };
 
 export function UserActivityOverview() {

@@ -74,7 +74,7 @@ namespace AthalaSIEM.UniversalAgent
                     return;
                 }
 
-                _logger.LogInformation("✅ Agent pipeline initialized successfully, starting collection");
+                _logger.LogInformation(" Agent pipeline initialized successfully, starting collection");
 
                 // Start the main agent loop
                 await RunAgentMainLoopAsync(stoppingToken);
@@ -111,7 +111,7 @@ namespace AthalaSIEM.UniversalAgent
                     var authInitialized = await _authenticationService.InitializeAsync();
                     if (!authInitialized)
                     {
-                        _logger.LogError("❌ Windows authentication initialization failed - Cannot proceed");
+                        _logger.LogError("Windows authentication initialization failed - Cannot proceed");
                         throw new InvalidOperationException("Windows authentication failed");
                     }
 
@@ -119,14 +119,14 @@ namespace AthalaSIEM.UniversalAgent
                     authStatus = _authenticationService.GetAuthenticationStatus();
                     if (!authStatus.HasAdminPrivileges)
                     {
-                        _logger.LogWarning("⚠️ Running without Administrator privileges - SIEM functionality will be limited");
+                        _logger.LogWarning("Running without Administrator privileges - SIEM functionality will be limited");
                         _authenticationService.LogAuthenticationGuidance();
                     
                         // Continue but with warnings - some collectors will be disabled
                     }
                     else
                     {
-                        _logger.LogInformation("✅ Administrator privileges confirmed - Full SIEM functionality available");
+                        _logger.LogInformation(" Administrator privileges confirmed - Full SIEM functionality available");
                     }
                 }
                 else
@@ -169,14 +169,14 @@ namespace AthalaSIEM.UniversalAgent
                 SetupEventHandlers();
 
                 _isInitialized = true;
-                _logger.LogInformation("✅ Agent pipeline initialized successfully with Windows authentication");
+                _logger.LogInformation(" Agent pipeline initialized successfully with Windows authentication");
                 
                 // Log final authentication status
                 LogAuthenticationSummary(authStatus);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Failed to initialize agent pipeline");
+                _logger.LogError(ex, "Failed to initialize agent pipeline");
                 throw;
             }
         }
@@ -196,7 +196,7 @@ namespace AthalaSIEM.UniversalAgent
             
             if (authStatus.RequiresElevation)
             {
-                _logger.LogWarning("⚠️ ELEVATION REQUIRED for full SIEM functionality");
+                _logger.LogWarning("ELEVATION REQUIRED for full SIEM functionality");
             }
         }
 
@@ -242,7 +242,7 @@ namespace AthalaSIEM.UniversalAgent
                             // Check authentication requirements
                             if (RequiresAdminPrivileges(config.Type) && !authStatus.HasAdminPrivileges)
                             {
-                                _logger.LogWarning("❌ Collector {Type} requires Administrator privileges but not available - SKIPPING", config.Type);
+                                _logger.LogWarning("Collector {Type} requires Administrator privileges but not available - SKIPPING", config.Type);
                                 continue;
                             }
 
@@ -258,21 +258,33 @@ namespace AthalaSIEM.UniversalAgent
                             var success = await _collectorManager.RegisterCollectorAsync(collector, config.Properties);
                             if (success)
                             {
-                                _logger.LogInformation("✅ Registered collector: {Type}", config.Type);
+                                _logger.LogInformation(" Registered collector: {Type}", config.Type);
                             }
                             else
                             {
-                                _logger.LogWarning("❌ Failed to register collector: {Type}", config.Type);
+                                _logger.LogWarning("Failed to register collector: {Type}", config.Type);
                             }
                         }
                         else
                         {
-                            _logger.LogWarning("❌ Unsupported collector type: {Type}", config.Type);
+                            // Skip unsupported collectors silently if they're platform-specific
+                            if (config.Type.Equals("LinuxSyslog", StringComparison.OrdinalIgnoreCase) && !System.OperatingSystem.IsLinux())
+                            {
+                                _logger.LogDebug("Skipping LinuxSyslog collector on Windows platform");
+                            }
+                            else if (config.Type.Equals("Firewall", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _logger.LogDebug("Skipping Firewall collector (not yet fully implemented)");
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Unsupported collector type: {Type}", config.Type);
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "❌ Error registering collector {Type}", config.Type);
+                        _logger.LogError(ex, "Error registering collector {Type}", config.Type);
                     }
                 }
 

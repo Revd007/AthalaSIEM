@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using AthalaSIEM.UniversalAgent.Core;
 using AthalaSIEM.UniversalAgent.Models;
 using Core = AthalaSIEM.UniversalAgent.Core;
+using LocalLogEntry = AthalaSIEM.UniversalAgent.Models.LogEntry;
 
 namespace AthalaSIEM.Agent.Collectors
 {
@@ -27,7 +28,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private readonly ILogger<WindowsRegistryCollector> _logger;
         private readonly IConfiguration? _configuration;
-        private readonly List<LogEntry> _collectedLogs = new List<LogEntry>();
+        private readonly List<LocalLogEntry> _collectedLogs = new List<LocalLogEntry>();
         private readonly Dictionary<string, Dictionary<string, object>> _registryBaseline = new();
         private readonly List<RegistryMonitorRule> _monitorRules = new List<RegistryMonitorRule>();
         private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -91,11 +92,11 @@ namespace AthalaSIEM.Agent.Collectors
             return Task.CompletedTask;
         }
 
-        public Task<IEnumerable<LogEntry>> GetLogsAsync(int batchSize = 100, CancellationToken cancellationToken = default)
+        public Task<IEnumerable<LocalLogEntry>> GetLogsAsync(int batchSize = 100, CancellationToken cancellationToken = default)
         {
             var logs = _collectedLogs.Take(batchSize).ToList();
             _collectedLogs.RemoveRange(0, logs.Count);
-            return Task.FromResult<IEnumerable<LogEntry>>(logs);
+            return Task.FromResult<IEnumerable<LocalLogEntry>>(logs);
         }
 
         public Task<CollectorHealth> GetHealthAsync()
@@ -228,7 +229,7 @@ namespace AthalaSIEM.Agent.Collectors
                             
                             LogCollected?.Invoke(this, new LogCollectedEventArgs 
                             { 
-                                Logs = new[] { logEntry },
+                                Logs = new List<LocalLogEntry> { logEntry },
                                 Source = CollectorName,
                                 CollectionTime = DateTime.UtcNow
                             });
@@ -389,11 +390,11 @@ namespace AthalaSIEM.Agent.Collectors
         /// <summary>
         /// Create registry change event following SIEM patterns
         /// </summary>
-        private LogEntry? CreateRegistryChangeEvent(RegistryChange change, RegistryMonitorRule rule)
+        private LocalLogEntry? CreateRegistryChangeEvent(RegistryChange change, RegistryMonitorRule rule)
         {
             try
             {
-                var logEntry = new LogEntry
+                var logEntry = new LocalLogEntry
                 {
                     Id = LogEntryIdGenerator.GenerateId("REG"),
                     Timestamp = DateTime.UtcNow,

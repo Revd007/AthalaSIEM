@@ -6,21 +6,22 @@ package athala.siem;
 
 // SIEM service for agent management and communication
 service SiemService {
-  // Agent registration and management
+  // Control Plane (HTTP fallback available)
   rpc RegisterAgent (RegisterAgentRequest) returns (RegisterAgentResponse);
   rpc ValidateApiKey (ValidateApiKeyRequest) returns (ValidateApiKeyResponse);
   rpc RotateApiKey (RotateApiKeyRequest) returns (RotateApiKeyResponse);
+  rpc GetAgentConfiguration (GetAgentConfigurationRequest) returns (GetAgentConfigurationResponse);
   
-  // Log forwarding
+  // Data Plane - Streaming (gRPC primary)
+  rpc StreamLogs (stream LogEntry) returns (LogBatchResponse);
+  rpc StreamHeartbeat (stream HeartbeatRequest) returns (stream HeartbeatResponse);
+  rpc StreamSystemMetrics (stream SystemMetricsRequest) returns (SystemMetricsResponse);
+  
+  // Data Plane - Unary (backward compatibility)
   rpc ForwardLogs (LogBatchRequest) returns (LogBatchResponse);
-  
-  // Health monitoring
   rpc SendHeartbeat (HeartbeatRequest) returns (HeartbeatResponse);
   rpc SendSystemMetrics (SystemMetricsRequest) returns (SystemMetricsResponse);
   rpc SendHealthReport (HealthReportRequest) returns (HealthReportResponse);
-  
-  // Configuration
-  rpc GetAgentConfiguration (GetAgentConfigurationRequest) returns (GetAgentConfigurationResponse);
 }
 
 // Agent registration and management messages
@@ -39,6 +40,7 @@ message RegisterAgentResponse {
   string agent_id = 2;
   string api_key = 3;
   string message = 4;
+  string grpc_endpoint = 5; // gRPC server endpoint for data plane
 }
 
 message ValidateApiKeyRequest {
@@ -98,23 +100,29 @@ message HeartbeatRequest {
   double uptime_hours = 5;
   double cpu_usage = 6;
   double memory_usage = 7;
-  int32 active_collectors = 8;
-  int32 logs_collected = 9;
-  int32 logs_forwarded = 10;
+  double disk_usage = 8;
+  string ip_address = 9;
+  int32 active_collectors = 10;
+  int32 logs_collected = 11;
+  int32 logs_forwarded = 12;
+  map<string, string> additional_info = 13;
 }
 
 message HeartbeatResponse {
   bool success = 1;
   string message = 2;
   bool configuration_changed = 3;
+  string config_version = 4;
 }
 
 message SystemMetricsRequest {
-  CpuMetricsData cpu = 1;
-  MemoryMetricsData memory = 2;
-  NetworkMetricsData network = 3;
-  repeated ProcessMetricsData processes = 4;
-  repeated DiskMetricsData disks = 5;
+  string agent_id = 1;
+  string api_key = 2;
+  CpuMetricsData cpu = 3;
+  MemoryMetricsData memory = 4;
+  NetworkMetricsData network = 5;
+  repeated ProcessMetricsData processes = 6;
+  repeated DiskMetricsData disks = 7;
 }
 
 message CpuMetricsData {

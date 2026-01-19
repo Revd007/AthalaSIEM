@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using AthalaSIEM.UniversalAgent.Core;
 using AthalaSIEM.UniversalAgent.Models;
 using Core = AthalaSIEM.UniversalAgent.Core;
+using LocalLogEntry = AthalaSIEM.UniversalAgent.Models.LogEntry;
 
 namespace AthalaSIEM.Agent.Collectors
 {
@@ -32,7 +33,7 @@ namespace AthalaSIEM.Agent.Collectors
         public long LogsCollected { get; private set; }
 
         private readonly ILogger<CommandExecutionCollector> _logger;
-        private readonly List<LogEntry> _collectedLogs = new List<LogEntry>();
+        private readonly List<LocalLogEntry> _collectedLogs = new List<LocalLogEntry>();
         private readonly List<CommandSchedule> _scheduledCommands = new();
         private readonly Dictionary<string, Timer> _commandTimers = new();
         private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -99,7 +100,7 @@ namespace AthalaSIEM.Agent.Collectors
                     if (LoadCommandSchedulesFromBackend(config))
                     {
                         SetupCommandTimers();
-                        _logger.LogInformation("✅ Command Execution updated: {Count} authorized commands", _scheduledCommands.Count);
+                        _logger.LogInformation(" Command Execution updated: {Count} authorized commands", _scheduledCommands.Count);
                     }
                     else
                     {
@@ -278,7 +279,7 @@ namespace AthalaSIEM.Agent.Collectors
 
                     LogCollected?.Invoke(this, new LogCollectedEventArgs 
                     { 
-                        Logs = new[] { result },
+                        Logs = new List<LocalLogEntry> { result },
                         Source = CollectorName,
                         CollectionTime = DateTime.UtcNow
                     });
@@ -301,7 +302,7 @@ namespace AthalaSIEM.Agent.Collectors
         /// </summary>
         /// <param name="schedule">Command schedule to execute.</param>
         /// <returns>Log entry with command output or null if failed.</returns>
-        private async Task<LogEntry?> ExecuteCommandSafelyAsync(CommandSchedule schedule)
+        private async Task<LocalLogEntry?> ExecuteCommandSafelyAsync(CommandSchedule schedule)
         {
             try
             {
@@ -342,7 +343,7 @@ namespace AthalaSIEM.Agent.Collectors
                 var endTime = DateTime.UtcNow;
                 var exitCode = process.ExitCode;
 
-                return new LogEntry
+                return new LocalLogEntry
                 {
                     Timestamp = startTime,
                     Source = "CommandExecution",
@@ -398,9 +399,9 @@ namespace AthalaSIEM.Agent.Collectors
         /// <param name="schedule">Command schedule that failed.</param>
         /// <param name="exception">Exception that occurred.</param>
         /// <returns>Error log entry.</returns>
-        private LogEntry CreateErrorLogEntry(CommandSchedule schedule, Exception exception)
+        private LocalLogEntry CreateErrorLogEntry(CommandSchedule schedule, Exception exception)
         {
-            return new LogEntry
+            return new LocalLogEntry
             {
                 Timestamp = DateTime.UtcNow,
                 Source = "CommandExecution",
@@ -455,11 +456,11 @@ namespace AthalaSIEM.Agent.Collectors
         }
 
         /// <inheritdoc />
-        public Task<IEnumerable<LogEntry>> GetLogsAsync(int batchSize = 100, CancellationToken cancellationToken = default)
+        public Task<IEnumerable<LocalLogEntry>> GetLogsAsync(int batchSize = 100, CancellationToken cancellationToken = default)
         {
             var logs = _collectedLogs.Take(batchSize).ToList();
             _collectedLogs.RemoveRange(0, logs.Count);
-            return Task.FromResult<IEnumerable<LogEntry>>(logs);
+            return Task.FromResult<IEnumerable<LocalLogEntry>>(logs);
         }
 
         /// <inheritdoc />

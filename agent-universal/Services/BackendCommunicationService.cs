@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -245,7 +246,7 @@ namespace AthalaSIEM.UniversalAgent.Services
             var managerPort = _configuration.GetValue<int>("SiemManager:ManagerPort");
             if (managerPort == 0)
             {
-                _logger.LogError("❌ SiemManager:ManagerPort is REQUIRED and not configured! Please provide your backend server port.");
+                _logger.LogError("SiemManager:ManagerPort is REQUIRED and not configured! Please provide your backend server port.");
                 throw new InvalidOperationException("SiemManager:ManagerPort configuration is required. Please specify your backend server port.");
             }
             var useHTTPS = _configuration.GetValue<bool>("SiemManager:UseHTTPS", false);
@@ -254,7 +255,7 @@ namespace AthalaSIEM.UniversalAgent.Services
             // Validate that Manager IP is provided - NO MORE DEFAULTS
             if (string.IsNullOrWhiteSpace(managerIP))
             {
-                _logger.LogError("❌ SiemManager:ManagerIP is REQUIRED and not configured! Please provide your backend server IP.");
+                _logger.LogError("SiemManager:ManagerIP is REQUIRED and not configured! Please provide your backend server IP.");
                 throw new InvalidOperationException("SiemManager:ManagerIP configuration is required. Please specify your backend server IP address.");
             }
             
@@ -263,7 +264,7 @@ namespace AthalaSIEM.UniversalAgent.Services
             _apiKey = _configuration[ConfigurationKeys.ApiKey] ?? "";
             _batchSize = _configuration.GetValue<int>(ConfigurationKeys.BatchSize, Defaults.BatchSize);
 
-            _logger.LogInformation("✅ Configuration loaded - Manager URL: {ManagerUrl}, AgentId: {AgentId}, ApiKey: {ApiKey}, BatchSize: {BatchSize}",
+            _logger.LogInformation(" Configuration loaded - Manager URL: {ManagerUrl}, AgentId: {AgentId}, ApiKey: {ApiKey}, BatchSize: {BatchSize}",
                 _managerUrl, _agentId, string.IsNullOrEmpty(_apiKey) ? "NOT SET" : "SET", _batchSize);
 
             // Validate configuration with configurable limits
@@ -424,16 +425,42 @@ namespace AthalaSIEM.UniversalAgent.Services
 
                 if (_isConnected && !string.IsNullOrEmpty(_agentId) && !string.IsNullOrEmpty(_apiKey))
                 {
-                    var heartbeatData = new
+                    // Get system metrics
+                    var (cpuUsage, memoryUsage, diskUsage) = GetSystemMetrics();
+                    var ipAddress = GetLocalIpAddress();
+                    
+                    // Build additional info JSON
+                    var additionalInfo = new
                     {
-                        AgentId = _agentId,
-                        Timestamp = DateTime.UtcNow,
-                        Status = "Healthy",
                         QueuedLogs = QueuedLogs,
-                        TotalLogsSent = TotalLogsSent
+                        TotalLogsSent = TotalLogsSent,
+                        UptimeHours = (DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime()).TotalHours,
+                        ActiveCollectors = 0, // TODO: Track active collectors
+                        LogsCollected = TotalLogsSent
+                    };
+                    
+                    // Backend expects AgentHeartbeatDto with camelCase properties
+                    // Status enum must be serialized as integer (3 = Online)
+                    // Backend uses: PropertyNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true
+                    var heartbeatDto = new
+                    {
+                        timestamp = DateTime.UtcNow,
+                        status = 3, // AgentStatus.Online = 3 (integer, not string)
+                        cpuUsage = cpuUsage,
+                        memoryUsage = memoryUsage,
+                        diskUsage = diskUsage,
+                        ipAddress = ipAddress ?? string.Empty,
+                        additionalInfo = JsonSerializer.Serialize(additionalInfo)
                     };
 
-                    var json = JsonSerializer.Serialize(heartbeatData);
+                    // Serialize with camelCase to match backend's JSON options
+                    // Note: Anonymous objects with lowercase property names will serialize correctly
+                    var options = new JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                        WriteIndented = false
+                    };
+                    var json = JsonSerializer.Serialize(heartbeatDto, options);
                     var content = new StringContent(json, Encoding.UTF8, "application/json");
 
                     var response = await _httpClient.PostAsync($"{_managerUrl}{string.Format(ApiEndpoints.Heartbeat, _agentId)}", content);
@@ -449,6 +476,10 @@ namespace AthalaSIEM.UniversalAgent.Services
                                 _agentId, string.IsNullOrEmpty(_apiKey) ? "NOT SET" : "SET");
                         }
                     }
+                    else
+                    {
+                        _logger.LogDebug("Heartbeat sent successfully");
+                    }
                 }
                 else
                 {
@@ -461,6 +492,69 @@ namespace AthalaSIEM.UniversalAgent.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error sending heartbeat");
+            }
+        }
+        
+        private (double cpuUsage, double memoryUsage, double diskUsage) GetSystemMetrics()
+        {
+            try
+            {
+                var process = Process.GetCurrentProcess();
+                var cpuUsage = 0.0;
+                var memoryUsage = 0.0;
+                var diskUsage = 0.0;
+                
+                // Get CPU usage (simplified - would need more sophisticated tracking for accurate CPU)
+                try
+                {
+                    var startTime = DateTime.UtcNow;
+                    var startCpu = process.TotalProcessorTime;
+                    Thread.Sleep(100);
+                    var endTime = DateTime.UtcNow;
+                    var endCpu = process.TotalProcessorTime;
+                    var cpuUsedMs = (endCpu - startCpu).TotalMilliseconds;
+                    var totalMsPassed = (endTime - startTime).TotalMilliseconds;
+                    cpuUsage = Math.Min(100.0, (cpuUsedMs / (Environment.ProcessorCount * totalMsPassed)) * 100.0);
+                }
+                catch
+                {
+                    cpuUsage = 0.0;
+                }
+                
+                // Get memory usage
+                try
+                {
+                    process.Refresh();
+                    var workingSet = process.WorkingSet64;
+                    var totalMemory = GC.GetTotalMemory(false);
+                    memoryUsage = Math.Min(100.0, (workingSet / (1024.0 * 1024.0 * 1024.0)) * 100.0); // Simplified
+                }
+                catch
+                {
+                    memoryUsage = 0.0;
+                }
+                
+                // Get disk usage (simplified - gets C: drive)
+                try
+                {
+                    var drive = new DriveInfo("C:");
+                    if (drive.IsReady)
+                    {
+                        var totalSpace = drive.TotalSize;
+                        var freeSpace = drive.AvailableFreeSpace;
+                        diskUsage = Math.Min(100.0, ((totalSpace - freeSpace) / (double)totalSpace) * 100.0);
+                    }
+                }
+                catch
+                {
+                    diskUsage = 0.0;
+                }
+                
+                return (cpuUsage, memoryUsage, diskUsage);
+            }
+            catch
+            {
+                return (0.0, 0.0, 0.0);
             }
         }
 
@@ -888,7 +982,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                         _configuration["Agent:RegistrationKey"] = tokenResponse.Token;
                         _configuration["Agent:ManagerUrl"] = backendUrl;
                         
-                        _logger.LogInformation("✅ Automatic token deployment successful! Token expires: {Expiry}", tokenResponse.ExpiresAt);
+                        _logger.LogInformation(" Automatic token deployment successful! Token expires: {Expiry}", tokenResponse.ExpiresAt);
                         return true;
                     }
                 }

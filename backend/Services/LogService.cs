@@ -633,7 +633,7 @@ namespace Backend.Services
 
             if (duplicateCount > 0)
             {
-                _logger.LogWarning("✅ Total duplicate IDs resolved: {Count} out of {Total} logs", 
+                _logger.LogWarning(" Total duplicate IDs resolved: {Count} out of {Total} logs", 
                     duplicateCount, logEntries.Count);
             }
 

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using AthalaSIEM.Agent;
 using Backend.Data.Repositories;
@@ -26,6 +27,7 @@ namespace Backend.Services
         private readonly IMediator _mediator;
         private readonly IAgentRepository _agentRepository;
         private readonly Backend.Domain.Interfaces.ILogRepository _logRepository;
+        private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
 
         public SiemService(
             ILogger<SiemService> logger,
@@ -34,7 +36,8 @@ namespace Backend.Services
             IAgentDeploymentTokenRepository tokenRepository,
             IMediator mediator,
             IAgentRepository agentRepository,
-            ILogRepository logRepository)
+            ILogRepository logRepository,
+            Microsoft.Extensions.Configuration.IConfiguration configuration)
         {
             _logger = logger;
             _legacyAgentRepository = legacyAgentRepository;
@@ -43,6 +46,7 @@ namespace Backend.Services
             _mediator = mediator;
             _agentRepository = agentRepository;
             _logRepository = logRepository;
+            _configuration = configuration;
         }
 
         public override async Task<RegisterAgentResponse> RegisterAgent(RegisterAgentRequest request, ServerCallContext context)
@@ -93,12 +97,16 @@ namespace Backend.Services
                 
                 _logger.LogInformation("Agent {AgentId} registered successfully", result.AgentId);
                 
+                // Get gRPC endpoint from configuration
+                var grpcUrl = _configuration["GrpcServer:Url"] ?? "http://localhost:9595";
+                
                 return new RegisterAgentResponse
                 {
                     Success = true,
                     AgentId = result.AgentId,
                     ApiKey = result.ApiKey,
-                    Message = "Agent registered successfully"
+                    Message = "Agent registered successfully",
+                    GrpcEndpoint = grpcUrl
                 };
             }
             catch (Exception ex)
@@ -391,6 +399,189 @@ namespace Backend.Services
                 ConfigurationJson = "{}",
                 Message = "Configuration retrieved"
             });
+        }
+
+        // Streaming RPC implementations
+        public override async Task<LogBatchResponse> StreamLogs(IAsyncStreamReader<AthalaSIEM.Agent.LogEntry> requestStream, ServerCallContext context)
+        {
+            var acceptedCount = 0;
+            var rejectedCount = 0;
+            string? agentId = null;
+            string? apiKey = null;
+
+            try
+            {
+                // Extract agent ID and API key from metadata
+                var metadata = context.RequestHeaders;
+                agentId = metadata.FirstOrDefault(m => m.Key == "x-agent-id")?.Value;
+                apiKey = metadata.FirstOrDefault(m => m.Key == "x-api-key")?.Value;
+
+                if (string.IsNullOrEmpty(agentId) || string.IsNullOrEmpty(apiKey))
+                {
+                    _logger.LogWarning("Missing agent ID or API key in gRPC metadata");
+                    return new LogBatchResponse
+                    {
+                        Success = false,
+                        Message = "Missing authentication in metadata"
+                    };
+                }
+
+                // Validate agent
+                var agent = await _agentRepository.GetByIdAsync(agentId);
+                if (agent == null || agent.ApiKey != apiKey)
+                {
+                    _logger.LogWarning("Invalid agent ID or API key in gRPC stream");
+                    return new LogBatchResponse
+                    {
+                        Success = false,
+                        Message = "Invalid authentication"
+                    };
+                }
+
+                await foreach (var log in requestStream.ReadAllAsync())
+                {
+                    try
+                    {
+                        var logEntry = new Domain.Entities.LogEntry
+                        {
+                            Id = log.Id ?? Guid.NewGuid().ToString(),
+                            AgentId = agentId,
+                            Timestamp = DateTime.TryParse(log.Timestamp, out var ts) ? ts : DateTime.UtcNow,
+                            ReceivedAt = DateTime.UtcNow,
+                            RawMessage = log.Message,
+                            Source = log.SourceType ?? log.Source,
+                            Category = log.SourceType,
+                            RawProperties = log.Metadata != null ? System.Text.Json.JsonSerializer.Serialize(log.Metadata) : null,
+                            Processed = false,
+                            IsNormalized = false
+                        };
+
+                        await _logRepository.AddAsync(logEntry);
+                        await _mediator.Publish(new LogIngestedEvent { LogEntry = logEntry });
+                        acceptedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error processing log entry in stream");
+                        rejectedCount++;
+                    }
+                }
+
+                // Update agent status
+                agent.LastHeartbeat = DateTime.UtcNow;
+                agent.Status = Backend.Domain.Entities.AgentStatus.Online;
+                await _agentRepository.UpdateAsync(agent);
+
+                _logger.LogInformation("Streamed log batch from agent {AgentId}: {Accepted} accepted, {Rejected} rejected",
+                    agentId, acceptedCount, rejectedCount);
+
+                return new LogBatchResponse
+                {
+                    Success = true,
+                    AcceptedCount = acceptedCount,
+                    RejectedCount = rejectedCount,
+                    Message = $"Processed {acceptedCount} logs, rejected {rejectedCount} logs"
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing log stream from agent {AgentId}", agentId);
+                return new LogBatchResponse
+                {
+                    Success = false,
+                    AcceptedCount = acceptedCount,
+                    RejectedCount = rejectedCount,
+                    Message = "Stream processing failed: " + ex.Message
+                };
+            }
+        }
+
+        public override async Task StreamHeartbeat(IAsyncStreamReader<HeartbeatRequest> requestStream, IServerStreamWriter<HeartbeatResponse> responseStream, ServerCallContext context)
+        {
+            try
+            {
+                var metadata = context.RequestHeaders;
+                var agentId = metadata.FirstOrDefault(m => m.Key == "x-agent-id")?.Value;
+                var apiKey = metadata.FirstOrDefault(m => m.Key == "x-api-key")?.Value;
+
+                await foreach (var request in requestStream.ReadAllAsync())
+                {
+                    try
+                    {
+                        var command = new SendHeartbeatCommand
+                        {
+                            AgentId = request.AgentId,
+                            ApiKey = request.ApiKey,
+                            HealthMetrics = new Dictionary<string, object>
+                            {
+                                ["cpu_usage"] = request.CpuUsage,
+                                ["memory_usage"] = request.MemoryUsage,
+                                ["disk_usage"] = request.DiskUsage,
+                                ["uptime_hours"] = request.UptimeHours,
+                                ["status"] = request.Status,
+                                ["active_collectors"] = request.ActiveCollectors,
+                                ["logs_collected"] = request.LogsCollected,
+                                ["logs_forwarded"] = request.LogsForwarded
+                            }
+                        };
+
+                        var result = await _mediator.Send(command);
+
+                        var response = new HeartbeatResponse
+                        {
+                            Success = result.Success,
+                            Message = result.Success ? "Heartbeat received" : result.ErrorMessage ?? "Heartbeat processing failed",
+                            ConfigurationChanged = result.Configuration != null && result.Configuration.Any(),
+                            ConfigVersion = result.Configuration?.GetValueOrDefault("version")?.ToString() ?? "1.0"
+                        };
+
+                        await responseStream.WriteAsync(response);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error processing heartbeat in stream");
+                        await responseStream.WriteAsync(new HeartbeatResponse
+                        {
+                            Success = false,
+                            Message = "Heartbeat processing failed: " + ex.Message
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in heartbeat stream");
+            }
+        }
+
+        public override async Task<SystemMetricsResponse> StreamSystemMetrics(IAsyncStreamReader<SystemMetricsRequest> requestStream, ServerCallContext context)
+        {
+            try
+            {
+                var metadata = context.RequestHeaders;
+                var agentId = metadata.FirstOrDefault(m => m.Key == "x-agent-id")?.Value;
+
+                await foreach (var request in requestStream.ReadAllAsync())
+                {
+                    // Process system metrics
+                    _logger.LogDebug("Received system metrics from agent {AgentId}", request.AgentId);
+                }
+
+                return new SystemMetricsResponse
+                {
+                    Success = true,
+                    Message = "System metrics received"
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing system metrics stream");
+                return new SystemMetricsResponse
+                {
+                    Success = false,
+                    Message = "Stream processing failed: " + ex.Message
+                };
+            }
         }
     }
 } 

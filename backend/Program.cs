@@ -499,15 +499,39 @@ using (var scope = app.Services.CreateScope())
     try
     {
         var context = services.GetRequiredService<ApplicationDbContext>();
-        context.Database.Migrate();
+        var logger = services.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Program>>();
+        
+        // Check if database exists and can connect
+        if (context.Database.CanConnect())
+        {
+            // Apply pending migrations
+            var pendingMigrations = context.Database.GetPendingMigrations().ToList();
+            if (pendingMigrations.Any())
+            {
+                logger.LogInformation("Applying {Count} pending migration(s): {Migrations}", 
+                    pendingMigrations.Count, string.Join(", ", pendingMigrations));
+                context.Database.Migrate();
+                logger.LogInformation("Database migrations applied successfully");
+            }
+            else
+            {
+                logger.LogInformation("Database is up to date - no pending migrations");
+            }
+        }
+        else
+        {
+            logger.LogWarning("Cannot connect to database. Skipping migrations.");
+        }
         
         // Seed database with roles and admin user
-        await SeedDatabase(context, services.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Program>>());
+        await SeedDatabase(context, logger);
     }
     catch (Exception ex)
     {
         var logger = services.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Program>>();
         logger.LogError(ex, "An error occurred while migrating the database");
+        // Don't throw - allow application to start even if migration fails
+        // This is useful for development when database might not be available
     }
 }
 

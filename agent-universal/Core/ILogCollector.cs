@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using AthalaSIEM.UniversalAgent.Models;
+using LocalLogEntry = AthalaSIEM.UniversalAgent.Models.LogEntry;
 
 namespace AthalaSIEM.UniversalAgent.Core
 {
@@ -60,7 +61,7 @@ namespace AthalaSIEM.UniversalAgent.Core
         /// <param name="batchSize">Maximum number of logs to retrieve</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Collection of log entries</returns>
-        Task<IEnumerable<LogEntry>> GetLogsAsync(int batchSize = 100, CancellationToken cancellationToken = default);
+        Task<IEnumerable<LocalLogEntry>> GetLogsAsync(int batchSize = 100, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Event fired when new logs are collected
@@ -95,7 +96,7 @@ namespace AthalaSIEM.UniversalAgent.Core
     /// </summary>
     public class LogCollectedEventArgs : EventArgs
     {
-        public IEnumerable<LogEntry> Logs { get; set; } = new List<LogEntry>();
+        public IEnumerable<LocalLogEntry> Logs { get; set; } = new List<LocalLogEntry>();
         public DateTime CollectionTime { get; set; } = DateTime.UtcNow;
         public string Source { get; set; } = string.Empty;
     }

@@ -376,11 +376,11 @@ namespace Backend.Services
                 
                 if (agent == null)
                 {
-                    _logger.LogWarning("❌ Agent not found during API key validation: {AgentId}", agentId);
+                    _logger.LogWarning("Agent not found during API key validation: {AgentId}", agentId);
                     return false;
                 }
                 
-                _logger.LogInformation("✅ Agent found - Name: {AgentName}, ApiKey match: {Match}", 
+                _logger.LogInformation(" Agent found - Name: {AgentName}, ApiKey match: {Match}", 
                     agent.Name, agent.ApiKey == apiKey);
                 
                 return agent.ApiKey == apiKey;

@@ -114,7 +114,7 @@ namespace Backend.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error processing Linux system metrics from agent {AgentId}", agentId);
+                _logger.LogError(ex, "Error processing Linux system metrics from agent {AgentId}", agentId);
                 return StatusCode(500, new { Error = "Internal server error processing system metrics" });
             }
         }
@@ -213,7 +213,7 @@ namespace Backend.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error processing Linux metrics batch from agent {AgentId}", agentId);
+                _logger.LogError(ex, "Error processing Linux metrics batch from agent {AgentId}", agentId);
                 return StatusCode(500, new { Error = "Internal server error processing metrics batch" });
             }
         }
@@ -290,7 +290,7 @@ namespace Backend.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error processing Linux FIM events from agent {AgentId}", agentId);
+                _logger.LogError(ex, "Error processing Linux FIM events from agent {AgentId}", agentId);
                 return StatusCode(500, new { Error = "Internal server error processing FIM events" });
             }
         }
@@ -369,7 +369,7 @@ namespace Backend.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error getting Linux agent configuration for {AgentId}", agentId);
+                _logger.LogError(ex, "Error getting Linux agent configuration for {AgentId}", agentId);
                 return StatusCode(500, new { Error = "Internal server error getting configuration" });
             }
         }
@@ -428,7 +428,7 @@ namespace Backend.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error updating Linux agent configuration for {AgentId}", agentId);
+                _logger.LogError(ex, "Error updating Linux agent configuration for {AgentId}", agentId);
                 return StatusCode(500, new { Error = "Internal server error updating configuration" });
             }
         }
@@ -485,7 +485,7 @@ namespace Backend.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error processing Linux agent health from {AgentId}", agentId);
+                _logger.LogError(ex, "Error processing Linux agent health from {AgentId}", agentId);
                 return StatusCode(500, new { Error = "Internal server error processing health data" });
             }
         }

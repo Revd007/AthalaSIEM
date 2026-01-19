@@ -11,6 +11,7 @@ using AthalaSIEM.UniversalAgent.Models;
 using AthalaSIEM.UniversalAgent.Services;
 using AthalaSIEM.UniversalAgent.DTOs;
 using Core = AthalaSIEM.UniversalAgent.Core;
+using LocalLogEntry = AthalaSIEM.UniversalAgent.Models.LogEntry;
 
 namespace AthalaSIEM.Agent.Collectors
 {
@@ -36,7 +37,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private readonly ILogger<FileIntegrityCollector> _logger;
         private readonly FIMConfigurationService _fimConfigService;
-        private readonly List<LogEntry> _collectedLogs = new List<LogEntry>();
+        private readonly List<LocalLogEntry> _collectedLogs = new List<LocalLogEntry>();
         private readonly Dictionary<string, FileSystemWatcher> _watchers = new();
         private readonly Dictionary<string, string> _fileHashes = new();
         private readonly List<string> _monitoredPaths = new();
@@ -116,7 +117,7 @@ namespace AthalaSIEM.Agent.Collectors
                 
                 if (fimConfigurations.Any())
                 {
-                    _logger.LogInformation("✅ Retrieved {Count} FIM configurations from backend API", fimConfigurations.Count);
+                    _logger.LogInformation(" Retrieved {Count} FIM configurations from backend API", fimConfigurations.Count);
                     
                     // Clear existing configuration
                     _monitoredPaths.Clear();
@@ -137,7 +138,7 @@ namespace AthalaSIEM.Agent.Collectors
                         await RestartMonitoringAsync();
                     }
                     
-                    _logger.LogInformation("✅ FIM configuration updated from backend API: {PathCount} monitoring paths", _monitoredPaths.Count);
+                    _logger.LogInformation(" FIM configuration updated from backend API: {PathCount} monitoring paths", _monitoredPaths.Count);
                     foreach (var path in _monitoredPaths)
                     {
                         _logger.LogInformation("📁 Monitoring path: {Path}", path);
@@ -147,13 +148,13 @@ namespace AthalaSIEM.Agent.Collectors
                 }
                 else
                 {
-                    _logger.LogWarning("⚠️ No FIM configurations found in backend API, falling back to legacy configuration");
+                    _logger.LogWarning("No FIM configurations found in backend API, falling back to legacy configuration");
                     return await UpdateFromLegacyConfigAsync(config, cancellationToken);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Failed to fetch FIM configuration from backend API, falling back to legacy configuration");
+                _logger.LogError(ex, "Failed to fetch FIM configuration from backend API, falling back to legacy configuration");
                 return await UpdateFromLegacyConfigAsync(config, cancellationToken);
             }
         }
@@ -163,7 +164,7 @@ namespace AthalaSIEM.Agent.Collectors
         /// </summary>
         private async Task ProcessFIMConfiguration(FIMConfigurationDto fimConfig)
         {
-            _logger.LogInformation("📋 Processing FIM configuration: {Name}", fimConfig.Name);
+            _logger.LogInformation(" Processing FIM configuration: {Name}", fimConfig.Name);
             
             foreach (var rule in fimConfig.Rules.Where(r => r.Enabled))
             {
@@ -181,7 +182,7 @@ namespace AthalaSIEM.Agent.Collectors
                 }
                 else
                 {
-                    _logger.LogWarning("⚠️ Invalid monitoring path in rule {RuleName}: {Path}", rule.Name, expandedPath);
+                    _logger.LogWarning("Invalid monitoring path in rule {RuleName}: {Path}", rule.Name, expandedPath);
                     await SendFIMRuleStatusToBackend(rule, "Invalid");
                 }
             }
@@ -228,7 +229,7 @@ namespace AthalaSIEM.Agent.Collectors
                 // Load monitoring paths from legacy configuration
                 if (!LoadMonitoringPathsFromBackend(config))
                 {
-                    _logger.LogWarning("⚠️ NO MONITORING PATHS provided. File Integrity Monitor will be disabled.");
+                    _logger.LogWarning("NO MONITORING PATHS provided. File Integrity Monitor will be disabled.");
                     _logger.LogInformation("💡 Configure monitoring paths via SIEM Web Interface:");
                     _logger.LogInformation("   • Go to FIM → Configurations → Create New Configuration");
                     _logger.LogInformation("   • Add paths you want to monitor (e.g., C:\\Windows\\System32\\drivers)");
@@ -249,7 +250,7 @@ namespace AthalaSIEM.Agent.Collectors
                     await RestartMonitoringAsync();
                 }
 
-                _logger.LogInformation("✅ Legacy FIM configuration applied: {PathCount} monitoring paths", _monitoredPaths.Count);
+                _logger.LogInformation(" Legacy FIM configuration applied: {PathCount} monitoring paths", _monitoredPaths.Count);
                 return true;
             }
             catch (Exception ex)
@@ -419,7 +420,7 @@ namespace AthalaSIEM.Agent.Collectors
                 SetupFileWatchers();
                 _scanTimer = new Timer(PerformFullScan, null, TimeSpan.Zero, TimeSpan.FromMinutes(_scanIntervalMinutes));
                 
-                _logger.LogInformation("✅ FIM monitoring restarted successfully");
+                _logger.LogInformation(" FIM monitoring restarted successfully");
                 await Task.CompletedTask;
             }
             catch (Exception ex)
@@ -498,7 +499,7 @@ namespace AthalaSIEM.Agent.Collectors
                     // Start periodic full scan
                     _scanTimer = new Timer(PerformFullScan, null, TimeSpan.Zero, TimeSpan.FromMinutes(_scanIntervalMinutes));
                     
-                    _logger.LogInformation("✅ File Integrity Monitor started - monitoring {Count} paths, scan interval: {Interval} minutes", 
+                    _logger.LogInformation(" File Integrity Monitor started - monitoring {Count} paths, scan interval: {Interval} minutes", 
                         _monitoredPaths.Count, _scanIntervalMinutes);
                 }
                 else
@@ -563,11 +564,11 @@ namespace AthalaSIEM.Agent.Collectors
         }
 
         /// <inheritdoc />
-        public Task<IEnumerable<LogEntry>> GetLogsAsync(int batchSize = 100, CancellationToken cancellationToken = default)
+        public Task<IEnumerable<LocalLogEntry>> GetLogsAsync(int batchSize = 100, CancellationToken cancellationToken = default)
         {
             var logs = _collectedLogs.Take(batchSize).ToList();
             _collectedLogs.RemoveRange(0, logs.Count);
-            return Task.FromResult<IEnumerable<LogEntry>>(logs);
+            return Task.FromResult<IEnumerable<LocalLogEntry>>(logs);
         }
 
         /// <inheritdoc />
@@ -658,7 +659,7 @@ namespace AthalaSIEM.Agent.Collectors
 
                     LogCollected?.Invoke(this, new LogCollectedEventArgs 
                     { 
-                        Logs = new[] { logEntry },
+                        Logs = new List<LocalLogEntry> { logEntry },
                         Source = CollectorName,
                         CollectionTime = DateTime.UtcNow
                     });
@@ -687,7 +688,7 @@ namespace AthalaSIEM.Agent.Collectors
 
                 LogCollected?.Invoke(this, new LogCollectedEventArgs 
                 { 
-                    Logs = new[] { logEntry },
+                    Logs = new List<LocalLogEntry> { logEntry },
                     Source = CollectorName,
                     CollectionTime = DateTime.UtcNow
                 });
@@ -816,14 +817,14 @@ namespace AthalaSIEM.Agent.Collectors
         /// <param name="changeType">The type of change (Created, Modified, Deleted, etc.).</param>
         /// <param name="oldPath">The old file path (for rename operations).</param>
         /// <returns>A log entry for the file integrity event.</returns>
-        private LogEntry? CreateFIMEvent(string filePath, string changeType, string? oldPath)
+        private LocalLogEntry? CreateFIMEvent(string filePath, string changeType, string? oldPath)
         {
             try
             {
                 var fileInfo = File.Exists(filePath) ? new FileInfo(filePath) : null;
                 var severity = DetermineSeverity(filePath, changeType);
 
-                var logEntry = new LogEntry
+                var logEntry = new LocalLogEntry
                 {
                     Id = LogEntryIdGenerator.GenerateId("FIM"),
                     Timestamp = DateTime.UtcNow,
@@ -862,7 +863,7 @@ namespace AthalaSIEM.Agent.Collectors
         /// <summary>
         /// Send FIM event to backend using FIMConfigurationService
         /// </summary>
-        private async Task SendFIMEventToBackend(LogEntry logEntry, FileInfo? fileInfo)
+        private async Task SendFIMEventToBackend(LocalLogEntry logEntry, FileInfo? fileInfo)
         {
             try
             {
@@ -908,7 +909,7 @@ namespace AthalaSIEM.Agent.Collectors
                 }
                 else
                 {
-                    _logger.LogWarning("⚠️ Failed to send FIM event to backend: {FilePath}", fimEvent.FilePath);
+                    _logger.LogWarning("Failed to send FIM event to backend: {FilePath}", fimEvent.FilePath);
                 }
             }
             catch (Exception ex)

@@ -59,17 +59,17 @@ public class CorrelationService : ICorrelationService
         };
     }
 
-    public async Task<IEnumerable<object>> GetRulesAsync(CancellationToken cancellationToken = default)
+    public Task<IEnumerable<object>> GetRulesAsync(CancellationToken cancellationToken = default)
     {
         // Return predefined rules (in production, these would come from database)
-        return new[]
+        return Task.FromResult<IEnumerable<object>>(new[]
         {
             new { Name = "Brute Force Attack", Description = "5+ failed logins from same IP", Threshold = 5, TimeWindow = 5 },
             new { Name = "Credential Stuffing", Description = "10+ failed logins for different users", Threshold = 10, TimeWindow = 10 },
             new { Name = "Privilege Escalation", Description = "Successful login after failures", Threshold = 1, TimeWindow = 15 },
             new { Name = "Port Scanning", Description = "20+ connection attempts to different ports", Threshold = 20, TimeWindow = 5 },
             new { Name = "Suspicious Process Execution", Description = "10+ process creations in short time", Threshold = 10, TimeWindow = 2 }
-        };
+        });
     }
 
     public async Task<CorrelationResult?> TriggerCorrelationAsync(string logEntryId, CancellationToken cancellationToken = default)

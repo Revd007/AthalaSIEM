@@ -75,19 +75,19 @@ namespace AthalaSIEM.UniversalAgent.Collectors
                 // Validate inotify availability
                 if (!await ValidateInotifyAvailabilityAsync())
                 {
-                    _logger.LogError("❌ inotify is not available on this system");
+                    _logger.LogError("inotify is not available on this system");
                     return false;
                 }
 
                 // Create initial file baselines
                 await CreateFileBaselinesAsync();
 
-                _logger.LogInformation("✅ Linux FIM Collector initialized successfully");
+                _logger.LogInformation(" Linux FIM Collector initialized successfully");
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Failed to initialize Linux FIM Collector");
+                _logger.LogError(ex, "Failed to initialize Linux FIM Collector");
                 CollectionError?.Invoke(this, new LogCollectionErrorEventArgs
                 {
                     Exception = ex,
@@ -128,12 +128,12 @@ namespace AthalaSIEM.UniversalAgent.Collectors
                 }
 
                 _isActive = true;
-                _logger.LogInformation("✅ Linux FIM Collector started successfully with {Count} active watchers", 
+                _logger.LogInformation(" Linux FIM Collector started successfully with {Count} active watchers", 
                     _watchers.Count + _inotifyProcesses.Count);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Failed to start Linux FIM Collector");
+                _logger.LogError(ex, "Failed to start Linux FIM Collector");
                 CollectionError?.Invoke(this, new LogCollectionErrorEventArgs
                 {
                     Exception = ex,
@@ -174,7 +174,7 @@ namespace AthalaSIEM.UniversalAgent.Collectors
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error stopping Linux FIM Collector");
+                _logger.LogError(ex, "Error stopping Linux FIM Collector");
                 CollectionError?.Invoke(this, new LogCollectionErrorEventArgs
                 {
                     Exception = ex,
@@ -283,7 +283,7 @@ namespace AthalaSIEM.UniversalAgent.Collectors
                 
                 if (process.ExitCode == 0)
                 {
-                    _logger.LogInformation("✅ inotifywatch is available for advanced monitoring");
+                    _logger.LogInformation(" inotifywatch is available for advanced monitoring");
                     return true;
                 }
 
@@ -425,12 +425,12 @@ namespace AthalaSIEM.UniversalAgent.Collectors
                 // Try to use inotify if available, otherwise fallback to FileSystemWatcher
                 if (await TryStartInotifyMonitoringAsync(path))
                 {
-                    _logger.LogDebug("✅ Started inotify monitoring for: {Path}", path);
+                    _logger.LogDebug(" Started inotify monitoring for: {Path}", path);
                 }
                 else
                 {
                     StartFileSystemWatcherMonitoring(path);
-                    _logger.LogDebug("✅ Started FileSystemWatcher monitoring for: {Path}", path);
+                    _logger.LogDebug(" Started FileSystemWatcher monitoring for: {Path}", path);
                 }
             }
             catch (Exception ex)
@@ -878,7 +878,7 @@ namespace AthalaSIEM.UniversalAgent.Collectors
                     await CreateBaselineForPathAsync(path);
                 }
 
-                _logger.LogInformation("✅ Baseline scan completed for {Count} files", _fileBaselines.Count);
+                _logger.LogInformation(" Baseline scan completed for {Count} files", _fileBaselines.Count);
             }
             catch (Exception ex)
             {

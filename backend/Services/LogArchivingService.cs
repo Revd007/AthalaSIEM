@@ -99,7 +99,7 @@ namespace Backend.Services
                     await PerformCleanupCycle();
                     
                     var duration = DateTime.UtcNow - startTime;
-                    _logger.LogInformation("✅ Archive cycle completed in {Duration}ms. Next cycle in {Interval}", 
+                    _logger.LogInformation(" Archive cycle completed in {Duration}ms. Next cycle in {Interval}", 
                         duration.TotalMilliseconds, _archiveInterval);
                     
                     await Task.Delay(_archiveInterval, stoppingToken);
@@ -110,7 +110,7 @@ namespace Backend.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "❌ Error in log archiving cycle - retrying in 5 minutes");
+                    _logger.LogError(ex, "Error in log archiving cycle - retrying in 5 minutes");
                     await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken);
                 }
             }
@@ -346,7 +346,7 @@ namespace Backend.Services
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "❌ Error archiving logs for source {Source}", source);
+                        _logger.LogError(ex, "Error archiving logs for source {Source}", source);
                     }
                 }
             }
@@ -365,12 +365,12 @@ namespace Backend.Services
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "❌ Error archiving logs for collector {CollectorType}", collectorType);
+                        _logger.LogError(ex, "Error archiving logs for collector {CollectorType}", collectorType);
                     }
                 }
             }
 
-            _logger.LogInformation("✅ Archiving cycle completed");
+            _logger.LogInformation(" Archiving cycle completed");
         }
 
         private Task PerformCleanupCycle()
@@ -420,7 +420,7 @@ namespace Backend.Services
                     }
                 }
 
-                _logger.LogInformation("✅ Cleanup cycle completed, deleted {Count} corrupt/temp files (archives preserved)", deletedCount);
+                _logger.LogInformation(" Cleanup cycle completed, deleted {Count} corrupt/temp files (archives preserved)", deletedCount);
             }
             catch (Exception ex)
             {
@@ -747,7 +747,7 @@ namespace Backend.Services
                 context.LogEntries.RemoveRange(logsToArchive);
                 await context.SaveChangesAsync();
 
-                _logger.LogInformation("✅ Successfully archived {Count} logs to {FileName} (file size: {FileSize})", 
+                _logger.LogInformation(" Successfully archived {Count} logs to {FileName} (file size: {FileSize})", 
                     logsToArchive.Count, archiveFileName, GetFileSize(archiveFilePath));
 
                 return true;
@@ -810,7 +810,7 @@ namespace Backend.Services
                     _logger.LogInformation("🗑️ Removing {Count} archived logs from database for {DeviceName}", agentLogs.Count, deviceName);
                     context.LogEntries.RemoveRange(agentLogs);
 
-                    _logger.LogInformation("✅ Successfully archived {Count} logs from {DeviceName}_{Source} to {DeviceDirectory}/{FileName}", 
+                    _logger.LogInformation(" Successfully archived {Count} logs from {DeviceName}_{Source} to {DeviceDirectory}/{FileName}", 
                         agentLogs.Count, deviceName, source, SanitizeDirectoryName(deviceName), archiveFileName);
                 }
 
@@ -818,7 +818,7 @@ namespace Backend.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error archiving logs for source {Source}", source);
+                _logger.LogError(ex, "Error archiving logs for source {Source}", source);
             }
         }
 

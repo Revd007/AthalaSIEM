@@ -141,7 +141,7 @@ namespace AthalaSIEM.UniversalAgent
             Console.WriteLine("🛡️ Athala SIEM Universal Agent v1.0.0");
             Console.WriteLine("Following ManageEngine EventLog Analyzer architecture patterns");
             Console.WriteLine();
-            Console.WriteLine("⚠️  IMPORTANT: Administrator privileges required for Security Event Log access!");
+            Console.WriteLine(" IMPORTANT: Administrator privileges required for Security Event Log access!");
             Console.WriteLine("    Without Security logs, this is NOT a functional SIEM agent.");
             Console.WriteLine();
             Console.WriteLine("Usage: athala-agent.exe [options]");
@@ -191,7 +191,7 @@ namespace AthalaSIEM.UniversalAgent
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Error running agent: {ex.Message}");
+                Console.WriteLine($"Error running agent: {ex.Message}");
                 Console.WriteLine($"Details: {ex}");
             }
         }
@@ -243,14 +243,14 @@ namespace AthalaSIEM.UniversalAgent
             // Validate required configuration
             if (string.IsNullOrEmpty(managerIP))
             {
-                Console.WriteLine("❌ CONFIGURATION ERROR: SIEM Manager IP not configured!");
+                Console.WriteLine("CONFIGURATION ERROR: SIEM Manager IP not configured!");
                 Console.WriteLine("💡 Please configure SiemManager:ManagerIP in appsettings.json or environment variable ATHALA_SiemManager__ManagerIP");
                 return;
             }
             
             if (managerPort == 0)
             {
-                Console.WriteLine("❌ CONFIGURATION ERROR: SIEM Manager Port not configured!");
+                Console.WriteLine("CONFIGURATION ERROR: SIEM Manager Port not configured!");
                 Console.WriteLine("💡 Please configure SiemManager:ManagerPort in appsettings.json or environment variable ATHALA_SiemManager__ManagerPort");
                 return;
             }
@@ -278,7 +278,7 @@ namespace AthalaSIEM.UniversalAgent
                 
                 if (response.IsSuccessStatusCode)
                 {
-                    Console.WriteLine("✅ Health check successful!");
+                    Console.WriteLine(" Health check successful!");
                     
                     // Test agent registration endpoint
                     Console.WriteLine("Testing agent registration...");
@@ -296,22 +296,22 @@ namespace AthalaSIEM.UniversalAgent
                     
                     if (regResponse.IsSuccessStatusCode)
                     {
-                        Console.WriteLine("✅ Agent registration test successful!");
+                        Console.WriteLine(" Agent registration test successful!");
                     }
                     else
                     {
-                        Console.WriteLine($"⚠️ Agent registration test failed: {regResponse.StatusCode}");
+                        Console.WriteLine($"Agent registration test failed: {regResponse.StatusCode}");
                     }
                 }
                 else
                 {
-                    Console.WriteLine($"❌ Health check failed: {response.StatusCode}");
+                    Console.WriteLine($"Health check failed: {response.StatusCode}");
                     Console.WriteLine($"Response: {response.Content.ReadAsStringAsync().Result}");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Connection test failed: {ex.Message}");
+                Console.WriteLine($"Connection test failed: {ex.Message}");
                 Console.WriteLine("💡 Possible issues:");
                 Console.WriteLine("   - SIEM Manager server is not running");
                 Console.WriteLine("   - Manager IP/Port not configured in appsettings.json");
@@ -323,7 +323,7 @@ namespace AthalaSIEM.UniversalAgent
         
         private static void ShowConfiguration()
         {
-            Console.WriteLine("📋 Current Configuration");
+            Console.WriteLine(" Current Configuration");
             Console.WriteLine("========================");
             
             try
@@ -336,20 +336,20 @@ namespace AthalaSIEM.UniversalAgent
 
                 var managerIP = configuration["SiemManager:ManagerIP"];
                 var managerPort = configuration.GetValue<int>("SiemManager:ManagerPort", 9595);
-                Console.WriteLine($"SIEM Manager IP: {managerIP ?? "⚠️ NOT CONFIGURED"}");
+                Console.WriteLine($"SIEM Manager IP: {managerIP ?? "NOT CONFIGURED"}");
                 Console.WriteLine($"SIEM Manager Port: {managerPort}");
                 Console.WriteLine($"Agent Name: {configuration["Agent:Name"] ?? Environment.MachineName}");
                 Console.WriteLine($"Agent ID: {configuration["Agent:Id"] ?? Environment.MachineName}");
-                Console.WriteLine($"API Key: {(string.IsNullOrEmpty(configuration["Agent:ApiKey"]) ? "⚠️ NOT CONFIGURED" : "✅ Configured")}");
+                Console.WriteLine($"API Key: {(string.IsNullOrEmpty(configuration["Agent:ApiKey"]) ? "NOT CONFIGURED" : " Configured")}");
                 Console.WriteLine($"Batch Size: {configuration["Agent:BatchSize"] ?? "100"}");
                 Console.WriteLine($"Batch Interval: {configuration["Agent:BatchIntervalSeconds"] ?? "30"} seconds");
                 Console.WriteLine();
                 
                 // Security status
                 Console.WriteLine("🔒 Security Configuration Status:");
-                Console.WriteLine($"   Manager IP: {(string.IsNullOrEmpty(managerIP) ? "❌ Missing" : "✅ Configured")}");
-                Console.WriteLine($"   API Key: {(string.IsNullOrEmpty(configuration["Agent:ApiKey"]) ? "❌ Missing" : "✅ Configured")}");
-                Console.WriteLine($"   Registration Key: {(string.IsNullOrEmpty(configuration["Agent:RegistrationKey"]) ? "❌ Missing" : "✅ Configured")}");
+                Console.WriteLine($"   Manager IP: {(string.IsNullOrEmpty(managerIP) ? "Missing" : " Configured")}");
+                Console.WriteLine($"   API Key: {(string.IsNullOrEmpty(configuration["Agent:ApiKey"]) ? "Missing" : " Configured")}");
+                Console.WriteLine($"   Registration Key: {(string.IsNullOrEmpty(configuration["Agent:RegistrationKey"]) ? "Missing" : " Configured")}");
                 Console.WriteLine();
                 
                 // Show collectors configuration
@@ -377,7 +377,7 @@ namespace AthalaSIEM.UniversalAgent
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Error reading configuration: {ex.Message}");
+                Console.WriteLine($"Error reading configuration: {ex.Message}");
             }
         }
 
@@ -554,13 +554,13 @@ namespace AthalaSIEM.UniversalAgent
                 }
                 else
                 {
-                    Console.WriteLine("❌ UAT tests failed. Check the output above for details.");
+                    Console.WriteLine("UAT tests failed. Check the output above for details.");
                     Environment.Exit(exitCode);
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ UAT execution failed: {ex.Message}");
+                Console.WriteLine($"UAT execution failed: {ex.Message}");
                 Console.WriteLine($"Details: {ex}");
                 Environment.Exit(1);
             }

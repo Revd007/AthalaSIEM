@@ -521,12 +521,12 @@ namespace AthalaSIEM.UniversalAgent.Core.Collectors
                     return false;
                 }
 
-                _logger.LogInformation("✅ Systemd journal reader initialized successfully");
+                _logger.LogInformation(" Systemd journal reader initialized successfully");
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Failed to initialize systemd journal reader");
+                _logger.LogError(ex, "Failed to initialize systemd journal reader");
                 return false;
             }
         }
@@ -568,11 +568,11 @@ namespace AthalaSIEM.UniversalAgent.Core.Collectors
                 // Start reading task
                 _readingTask = Task.Run(ReadJournalEntriesAsync, _cancellationTokenSource.Token);
 
-                _logger.LogInformation("✅ Systemd journal reader started successfully");
+                _logger.LogInformation(" Systemd journal reader started successfully");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Failed to start systemd journal reader");
+                _logger.LogError(ex, "Failed to start systemd journal reader");
                 lock (_lock)
                 {
                     _isRunning = false;
@@ -617,11 +617,11 @@ namespace AthalaSIEM.UniversalAgent.Core.Collectors
                     }
                 }
 
-                _logger.LogInformation("✅ Systemd journal reader stopped successfully");
+                _logger.LogInformation(" Systemd journal reader stopped successfully");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error stopping systemd journal reader");
+                _logger.LogError(ex, "Error stopping systemd journal reader");
             }
         }
 
@@ -679,7 +679,7 @@ namespace AthalaSIEM.UniversalAgent.Core.Collectors
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error in journal reading task");
+                _logger.LogError(ex, "Error in journal reading task");
             }
         }
 
