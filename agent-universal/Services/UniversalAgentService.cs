@@ -10,6 +10,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using AthalaSIEM.UniversalAgent.Core;
 using AthalaSIEM.UniversalAgent.Services;
+using AthalaSIEM.UniversalAgent.Services.Interfaces;
 using AthalaSIEM.UniversalAgent.Models;
 using AthalaSIEM.Agent.Collectors;
 using AthalaSIEM.UniversalAgent.Core.Collectors;
@@ -27,13 +28,19 @@ namespace AthalaSIEM.UniversalAgent
         private readonly IConfiguration _configuration;
         private readonly CollectorManager _collectorManager;
         private readonly LogProcessor _logProcessor;
-        private readonly BackendCommunicationService _communicationService;
+        private readonly BackendCommunicationService _httpCommunicationService;
+        private readonly GrpcCommunicationService _grpcCommunicationService;
         private readonly WindowsAuthenticationService _authenticationService;
         private readonly FIMConfigurationService _fimConfigService;
         private readonly Timer _statusTimer;
+        private readonly Timer _reconnectionTimer;
 
         private DateTime _startTime;
         private bool _isInitialized;
+        private IBackendCommunicationService? _activeCommunicationService;
+        private bool _useGrpc = true;
+        private int _reconnectionAttempts = 0;
+        private const int MAX_RECONNECTION_ATTEMPTS = 5;
 
         public UniversalAgentService(
             ILogger<UniversalAgentService> logger, 
@@ -41,7 +48,8 @@ namespace AthalaSIEM.UniversalAgent
             IConfiguration configuration,
             CollectorManager collectorManager,
             LogProcessor logProcessor,
-            BackendCommunicationService communicationService,
+            BackendCommunicationService httpCommunicationService,
+            GrpcCommunicationService grpcCommunicationService,
             WindowsAuthenticationService authenticationService,
             FIMConfigurationService fimConfigService)
         {
@@ -50,12 +58,16 @@ namespace AthalaSIEM.UniversalAgent
             _configuration = configuration;
             _collectorManager = collectorManager;
             _logProcessor = logProcessor;
-            _communicationService = communicationService;
+            _httpCommunicationService = httpCommunicationService;
+            _grpcCommunicationService = grpcCommunicationService;
             _authenticationService = authenticationService;
             _fimConfigService = fimConfigService;
 
             // Setup status reporting timer (every 5 minutes)
             _statusTimer = new Timer(ReportStatus, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
+            
+            // Setup reconnection timer (every 60 seconds to check connection and retry if needed)
+            _reconnectionTimer = new Timer(CheckAndReconnect, null, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -142,12 +154,44 @@ namespace AthalaSIEM.UniversalAgent
                     _logger.LogInformation("🔐 Skipping Windows Authentication - not running on Windows");
                 }
 
-                // Step 2: Initialize backend communication
+                // Step 2: Initialize backend communication (gRPC first, fallback to HTTP)
                 _logger.LogInformation("🔗 Step 2: Initializing backend communication...");
-                var commInitialized = await _communicationService.InitializeAsync();
+                bool commInitialized = false;
+                
+                // Try gRPC first if enabled
+                var useGrpc = _configuration.GetValue<bool>("Agent:UseGrpc", true);
+                if (useGrpc)
+                {
+                    _logger.LogInformation("Attempting gRPC connection first...");
+                    commInitialized = await _grpcCommunicationService.InitializeAsync();
+                    if (commInitialized)
+                    {
+                        _activeCommunicationService = _grpcCommunicationService;
+                        _useGrpc = true;
+                        _logger.LogInformation("✅ gRPC connection established successfully");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("gRPC connection failed, falling back to HTTP");
+                    }
+                }
+                
+                // Fallback to HTTP if gRPC failed or disabled
                 if (!commInitialized)
                 {
-                    _logger.LogError("Failed to initialize backend communication");
+                    _logger.LogInformation("Initializing HTTP communication...");
+                    commInitialized = await _httpCommunicationService.InitializeAsync();
+                    if (commInitialized)
+                    {
+                        _activeCommunicationService = _httpCommunicationService;
+                        _useGrpc = false;
+                        _logger.LogInformation("✅ HTTP connection established successfully");
+                    }
+                }
+                
+                if (!commInitialized)
+                {
+                    _logger.LogError("Failed to initialize backend communication (both gRPC and HTTP failed)");
                     throw new InvalidOperationException("Backend communication initialization failed");
                 }
 
@@ -332,12 +376,16 @@ namespace AthalaSIEM.UniversalAgent
 
             // LogProcessor events
             _logProcessor.LogProcessed += OnLogProcessed;
-            _logProcessor.CorrelationDetected += OnCorrelationDetected;
 
-            // Communication service events
-            _communicationService.LogsSent += OnLogsSent;
-            _communicationService.CommunicationError += OnCommunicationError;
-            _communicationService.ConnectionStatusChanged += OnConnectionStatusChanged;
+            // Communication service events (for both gRPC and HTTP)
+            _grpcCommunicationService.LogsSent += OnLogsSent;
+            _grpcCommunicationService.CommunicationError += OnCommunicationError;
+            _grpcCommunicationService.ConnectionStatusChanged += OnConnectionStatusChanged;
+            
+            _httpCommunicationService.LogsSent += OnLogsSent;
+            _httpCommunicationService.CommunicationError += OnCommunicationError;
+            _httpCommunicationService.ConnectionStatusChanged += OnConnectionStatusChanged;
+            _logProcessor.CorrelationDetected += OnCorrelationDetected;
         }
 
         /// <summary>
@@ -362,7 +410,7 @@ namespace AthalaSIEM.UniversalAgent
                         var processedBatch = await _logProcessor.ProcessLogBatchAsync(logs);
                         
                         // Queue processed logs for sending to backend
-                        _communicationService.QueueLogs(processedBatch.ProcessedLogs);
+                        _activeCommunicationService?.QueueLogs(processedBatch.ProcessedLogs);
                         
                         _logger.LogDebug("Processed {Count} logs in batch", processedBatch.ProcessedLogs.Count);
                     }
@@ -395,12 +443,20 @@ namespace AthalaSIEM.UniversalAgent
                 await _collectorManager.StopAllCollectorsAsync();
 
                 // Flush remaining logs
-                await _communicationService.FlushLogsAsync();
+                if (_activeCommunicationService != null)
+                {
+                    await _activeCommunicationService.FlushLogsAsync();
+                }
 
                 // Dispose resources
                 await _collectorManager.DisposeAsync();
                 await _logProcessor.DisposeAsync();
-                await _communicationService.DisposeAsync();
+                
+                // Dispose both communication services
+                await _grpcCommunicationService.DisposeAsync();
+                await _httpCommunicationService.DisposeAsync();
+                
+                _reconnectionTimer?.Dispose();
 
                 _logger.LogInformation("Agent pipeline shutdown complete");
             }
@@ -449,6 +505,79 @@ namespace AthalaSIEM.UniversalAgent
         {
             _logger.LogInformation("Backend connection status: {Status} - {Message}", 
                 e.IsConnected ? "CONNECTED" : "DISCONNECTED", e.StatusMessage);
+        }
+
+        /// <summary>
+        /// Check connection and attempt reconnection if needed
+        /// </summary>
+        private async void CheckAndReconnect(object? state)
+        {
+            try
+            {
+                if (_activeCommunicationService == null || !_activeCommunicationService.IsConnected)
+                {
+                    _reconnectionAttempts++;
+                    if (_reconnectionAttempts > MAX_RECONNECTION_ATTEMPTS)
+                    {
+                        _logger.LogWarning("Max reconnection attempts reached, switching communication method");
+                        
+                        // Switch from gRPC to HTTP or vice versa
+                        if (_useGrpc)
+                        {
+                            _logger.LogInformation("Switching from gRPC to HTTP fallback");
+                            _useGrpc = false;
+                            await _grpcCommunicationService.DisposeAsync();
+                            var httpInitialized = await _httpCommunicationService.InitializeAsync();
+                            if (httpInitialized)
+                            {
+                                _activeCommunicationService = _httpCommunicationService;
+                                _reconnectionAttempts = 0;
+                                _logger.LogInformation("HTTP fallback connection established");
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogInformation("Attempting gRPC reconnection");
+                            _useGrpc = true;
+                            var grpcInitialized = await _grpcCommunicationService.InitializeAsync();
+                            if (grpcInitialized)
+                            {
+                                _activeCommunicationService = _grpcCommunicationService;
+                                _reconnectionAttempts = 0;
+                                _logger.LogInformation("gRPC reconnection successful");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Attempting reconnection (attempt {Attempt}/{Max})", 
+                            _reconnectionAttempts, MAX_RECONNECTION_ATTEMPTS);
+                        
+                        if (_activeCommunicationService != null)
+                        {
+                            var reconnected = await _activeCommunicationService.InitializeAsync();
+                            if (reconnected)
+                            {
+                                _reconnectionAttempts = 0;
+                                _logger.LogInformation("Reconnection successful");
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // Connection is healthy, reset attempts
+                    if (_reconnectionAttempts > 0)
+                    {
+                        _logger.LogInformation("Connection restored, resetting reconnection attempts");
+                        _reconnectionAttempts = 0;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during reconnection check");
+            }
         }
 
         #endregion
@@ -553,7 +682,17 @@ namespace AthalaSIEM.UniversalAgent
             {
                 var uptime = DateTime.UtcNow - _startTime;
                 var collectorHealth = await _collectorManager.GetHealthStatusAsync();
-                var communicationHealth = _communicationService.GetHealthStatus();
+                var communicationHealth = _activeCommunicationService?.GetHealthStatus() ?? 
+                    new Models.CommunicationHealth 
+                    { 
+                        IsConnected = false, 
+                        ManagerUrl = "Not configured",
+                        QueuedLogs = 0,
+                        TotalLogsSent = 0,
+                        TotalSendErrors = 0,
+                        LastSuccessfulSend = DateTime.MinValue,
+                        LastHealthCheck = DateTime.UtcNow
+                    };
 
                 _logger.LogInformation(
                     "📊 Agent Status - Uptime: {Uptime}, Active Collectors: {ActiveCollectors}/{TotalCollectors}, " +

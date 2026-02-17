@@ -43,26 +43,26 @@ This document provides a dual-perspective analysis of the AthalaSIEM backend arc
 - No clear boundaries between layers (Services directly access DbContext)
 
 **Strengths:**
-- ✅ Uses ASP.NET Core 8 with modern patterns (async/await, DI)
-- ✅ PostgreSQL with EF Core provides solid data persistence
-- ✅ gRPC support for high-performance agent communication
-- ✅ JWT authentication implemented
-- ✅ Background services for monitoring and cleanup
-- ✅ Basic repository pattern for data access abstraction
-- ✅ Serilog for structured logging
+-  Uses ASP.NET Core 8 with modern patterns (async/await, DI)
+-  PostgreSQL with EF Core provides solid data persistence
+-  gRPC support for high-performance agent communication
+-  JWT authentication implemented
+-  Background services for monitoring and cleanup
+-  Basic repository pattern for data access abstraction
+-  Serilog for structured logging
 
 **Critical Weaknesses:**
-- ❌ **No log normalization layer** - logs stored as-is without ECS-like schema
-- ❌ **No correlation engine** - basic time-window correlation only
-- ❌ **No rule engine** - alert generation is ad-hoc, not rule-based
-- ❌ **No event streaming** - synchronous processing blocks ingestion
-- ❌ **No message queue** - cannot handle log bursts
-- ❌ **No detection pipeline** - logs go directly to database
-- ❌ **No MITRE ATT&CK mapping** - techniques stored but not actively used
-- ❌ **No enrichment pipeline** - threat intelligence not integrated into detection
-- ❌ **No alert deduplication** - will create duplicate alerts
-- ❌ **No severity scoring model** - hardcoded severity logic
-- ❌ **No explainable detection** - alerts lack "why this fired" metadata
+- **No log normalization layer** - logs stored as-is without ECS-like schema
+- **No correlation engine** - basic time-window correlation only
+- **No rule engine** - alert generation is ad-hoc, not rule-based
+- **No event streaming** - synchronous processing blocks ingestion
+- **No message queue** - cannot handle log bursts
+- **No detection pipeline** - logs go directly to database
+- **No MITRE ATT&CK mapping** - techniques stored but not actively used
+- **No enrichment pipeline** - threat intelligence not integrated into detection
+- **No alert deduplication** - will create duplicate alerts
+- **No severity scoring model** - hardcoded severity logic
+- **No explainable detection** - alerts lack "why this fired" metadata
 
 ### 1.2 Architectural Smells Identified
 
@@ -210,13 +210,13 @@ Agent → Ingestion → Parser → Normalizer → Enricher → Correlation → D
 - Comprehensive component library (232 files)
 
 **Frontend Strengths:**
-- ✅ Modern architecture with App Router
-- ✅ Type-safe API clients
-- ✅ Comprehensive UI components
-- ✅ Proper state management
-- ✅ Error handling and loading states
-- ✅ Responsive design
-- ✅ Professional UI/UX
+-  Modern architecture with App Router
+-  Type-safe API clients
+-  Comprehensive UI components
+-  Proper state management
+-  Error handling and loading states
+-  Responsive design
+-  Professional UI/UX
 
 **Frontend Maturity Score: 8/10** (Production-ready with minor polish needed)
 
@@ -229,14 +229,14 @@ Agent → Ingestion → Parser → Normalizer → Enricher → Correlation → D
 - Basic services architecture - Functional but immature
 
 **Backend Weaknesses:**
-- ❌ No detection pipeline
-- ❌ No correlation engine
-- ❌ No rule engine
-- ❌ No event streaming
-- ❌ No proper log normalization
-- ❌ No MITRE ATT&CK integration
-- ❌ No alert deduplication
-- ❌ No explainable detection
+- No detection pipeline
+- No correlation engine
+- No rule engine
+- No event streaming
+- No proper log normalization
+- No MITRE ATT&CK integration
+- No alert deduplication
+- No explainable detection
 
 **Backend Maturity Score: 3/10** (Not production-ready for SIEM workloads)
 
@@ -324,33 +324,33 @@ Agent → Ingestion → Parser → Normalizer → Enricher → Correlation → D
 ### 4.3 Detection Coverage Gaps
 
 **Windows Event Logs:**
-- ✅ Basic ingestion (if agent supports)
-- ❌ No specific event ID analysis (4624, 4625, 4672, etc.)
-- ❌ No authentication failure correlation
-- ❌ No privilege escalation detection
+-  Basic ingestion (if agent supports)
+- No specific event ID analysis (4624, 4625, 4672, etc.)
+- No authentication failure correlation
+- No privilege escalation detection
 
 **Sysmon:**
-- ❌ No Sysmon-specific parsing
-- ❌ No process creation correlation
-- ❌ No network connection analysis
-- ❌ No file creation monitoring
+- No Sysmon-specific parsing
+- No process creation correlation
+- No network connection analysis
+- No file creation monitoring
 
 **Authentication Logs:**
-- ❌ No failed login correlation
-- ❌ No account lockout detection
-- ❌ No suspicious login pattern detection
+- No failed login correlation
+- No account lockout detection
+- No suspicious login pattern detection
 
 **Network Logs:**
-- ❌ No network log ingestion
-- ❌ No connection correlation
-- ❌ No beacon detection
-- ❌ No C2 communication detection
+- No network log ingestion
+- No connection correlation
+- No beacon detection
+- No C2 communication detection
 
 **Application Logs:**
-- ✅ Basic ingestion
-- ❌ No application-specific parsing
-- ❌ No SQL injection detection
-- ❌ No XSS detection
+-  Basic ingestion
+- No application-specific parsing
+- No SQL injection detection
+- No XSS detection
 
 ---
 
@@ -866,13 +866,13 @@ backend/
 ### 8.1 .NET 8 for Core Backend
 
 **Justification:**
-- ✅ High performance (async/await, Span<T>)
-- ✅ Strong typing and null safety
-- ✅ Excellent tooling (Visual Studio, Rider)
-- ✅ Mature ecosystem (NuGet packages)
-- ✅ Cross-platform (Linux, Windows)
-- ✅ Good for long-running services
-- ✅ Strong concurrency support
+-  High performance (async/await, Span<T>)
+-  Strong typing and null safety
+-  Excellent tooling (Visual Studio, Rider)
+-  Mature ecosystem (NuGet packages)
+-  Cross-platform (Linux, Windows)
+-  Good for long-running services
+-  Strong concurrency support
 
 **Keep in .NET 8:**
 - Log ingestion and parsing
@@ -885,13 +885,13 @@ backend/
 ### 8.2 PostgreSQL for Data Storage
 
 **Justification:**
-- ✅ ACID compliance
-- ✅ JSON support (for flexible schemas)
-- ✅ Full-text search
-- ✅ Partitioning support
-- ✅ Read replicas
-- ✅ Self-hosted friendly
-- ✅ Cost-effective
+-  ACID compliance
+-  JSON support (for flexible schemas)
+-  Full-text search
+-  Partitioning support
+-  Read replicas
+-  Self-hosted friendly
+-  Cost-effective
 
 **Optimizations Needed:**
 - Table partitioning by time (monthly partitions)
@@ -902,11 +902,11 @@ backend/
 ### 8.3 Message Queue (RabbitMQ Recommended)
 
 **Justification:**
-- ✅ Handles log bursts
-- ✅ Decouples ingestion from processing
-- ✅ Backpressure handling
-- ✅ Self-hosted friendly
-- ✅ .NET client support
+-  Handles log bursts
+-  Decouples ingestion from processing
+-  Backpressure handling
+-  Self-hosted friendly
+-  .NET client support
 
 **Alternatives:**
 - Azure Service Bus (if using Azure)
@@ -916,9 +916,9 @@ backend/
 ### 8.4 Python Backend for ML
 
 **Justification:**
-- ✅ Better ML ecosystem (TensorFlow, PyTorch)
-- ✅ Easier data science workflows
-- ✅ Existing Python backend in codebase
+-  Better ML ecosystem (TensorFlow, PyTorch)
+-  Easier data science workflows
+-  Existing Python backend in codebase
 
 **Integration:**
 - Call Python backend via HTTP/gRPC
@@ -929,10 +929,10 @@ backend/
 ### 8.5 Go for Agents (Future Consideration)
 
 **Justification:**
-- ✅ Lower resource usage
-- ✅ Better for system-level operations
-- ✅ Single binary deployment
-- ✅ Fast startup time
+-  Lower resource usage
+-  Better for system-level operations
+-  Single binary deployment
+-  Fast startup time
 
 **Current State:**
 - .NET agents exist and work

@@ -25,10 +25,10 @@ The Communication Test in UAT environment is designed to test the agent's behavi
 - `Connection test failed` - Expected because no backend is running
 
 **What the Test Validates:**
-1. ✅ **Queue Functionality**: Agent can queue logs even when backend is offline
-2. ✅ **Graceful Degradation**: Agent continues working without backend
-3. ✅ **Error Handling**: Agent properly handles connection failures
-4. ✅ **Resource Management**: Queued logs don't cause memory issues
+1.  **Queue Functionality**: Agent can queue logs even when backend is offline
+2.  **Graceful Degradation**: Agent continues working without backend
+3.  **Error Handling**: Agent properly handles connection failures
+4.  **Resource Management**: Queued logs don't cause memory issues
 
 ### Why This Design?
 
@@ -211,9 +211,9 @@ agent-universal/
 
 #### UAT Communication Test Warnings
 - **Expected Behavior**: 
-  - `Connected=False` ✅ (No backend running)
-  - `QueuedLogs > 0` ✅ (Logs queued properly)
-  - `TotalLogsSent=0` ✅ (No logs sent)
+  - `Connected=False`  (No backend running)
+  - `QueuedLogs > 0`  (Logs queued properly)
+  - `TotalLogsSent=0`  (No logs sent)
 - **If seeing warnings**: Check that backend is not running during UAT
 
 ### Performance Benchmarks
@@ -290,9 +290,9 @@ Remember: **Communication Test showing `Connected=False` is expected behavior in
 
 ## Summary of Communication Test Fix
 
-✅ **FIXED**: UAT now correctly shows `Connected=False` in isolated environment  
-✅ **IMPROVED**: Better validation of UAT offline behavior  
-✅ **ENHANCED**: Clearer warnings and guidance for unexpected behavior  
+ **FIXED**: UAT now correctly shows `Connected=False` in isolated environment  
+ **IMPROVED**: Better validation of UAT offline behavior  
+ **ENHANCED**: Clearer warnings and guidance for unexpected behavior  
 
 **Expected UAT Communication Results**:
 - `Connected=False` (No backend connection)

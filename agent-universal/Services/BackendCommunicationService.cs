@@ -54,6 +54,7 @@ namespace AthalaSIEM.UniversalAgent.Services
         private DateTime _lastSuccessfulSend;
         private DateTime _lastConfigUpdate;
         private string _configurationVersion = "";
+        private bool _disposed = false;
 
         public bool IsConnected => _isConnected;
         public long QueuedLogs => _logQueue.Count;
@@ -259,7 +260,9 @@ namespace AthalaSIEM.UniversalAgent.Services
                 throw new InvalidOperationException("SiemManager:ManagerIP configuration is required. Please specify your backend server IP address.");
             }
             
-            _managerUrl = $"{protocol}://{managerIP}:{managerPort}";
+            // Support both IP:port format (common in SIEM tools) and full URL format
+            var managerUrlConfig = _configuration["Agent:ManagerUrl"] ?? $"{managerIP}:{managerPort}";
+            _managerUrl = EnsureUrlFormat(managerUrlConfig, protocol);
             _agentId = string.IsNullOrEmpty(_configuration[ConfigurationKeys.AgentId]) ? Environment.MachineName : _configuration[ConfigurationKeys.AgentId] ?? Environment.MachineName;
             _apiKey = _configuration[ConfigurationKeys.ApiKey] ?? "";
             _batchSize = _configuration.GetValue<int>(ConfigurationKeys.BatchSize, Defaults.BatchSize);
@@ -277,6 +280,22 @@ namespace AthalaSIEM.UniversalAgent.Services
                     _batchSize, Defaults.BatchSize, minBatchSize, maxBatchSize);
                 _batchSize = Defaults.BatchSize;
             }
+        }
+
+        private string EnsureUrlFormat(string address, string protocol)
+        {
+            if (string.IsNullOrEmpty(address))
+                return address;
+
+            // If already contains protocol (http:// or https://), return as-is
+            if (address.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
+                address.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                return address;
+            }
+
+            // If it's just IP:port or hostname:port, add protocol
+            return $"{protocol}://{address}";
         }
 
         private void ConfigureHttpClient()
@@ -314,7 +333,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                     Hostname = Environment.MachineName,
                     IpAddress = GetLocalIpAddress(),
                     Platform = Environment.OSVersion.Platform.ToString(),
-                    OsVersion = Environment.OSVersion.ToString(),
+                    OsVersion = GetWindowsVersion() ?? Environment.OSVersion.ToString(),
                     Version = Constants.Defaults.AgentVersion,
                     Capabilities = new List<string> { "WindowsEventLog", "FileIntegrity", "Registry", "LogProcessing" }
                 };
@@ -421,6 +440,10 @@ namespace AthalaSIEM.UniversalAgent.Services
         {
             try
             {
+                // Prevent execution during shutdown
+                if (_disposed)
+                    return;
+
                 await TestConnectionAsync();
 
                 if (_isConnected && !string.IsNullOrEmpty(_agentId) && !string.IsNullOrEmpty(_apiKey))
@@ -440,12 +463,13 @@ namespace AthalaSIEM.UniversalAgent.Services
                     };
                     
                     // Backend expects AgentHeartbeatDto with camelCase properties
-                    // Status enum must be serialized as string name (e.g., "Online") not integer
+                    // Status enum values: Pending=0, Active=1, Inactive=2, Online=3, Offline=4
                     // Backend uses: PropertyNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true
+                    // Backend doesn't use JsonStringEnumConverter, so we must send enum as integer
                     var heartbeatDto = new
                     {
                         Timestamp = DateTime.UtcNow,
-                        Status = "Online", // Send as string enum name, not integer
+                        Status = 3, // AgentStatus.Online = 3
                         CpuUsage = cpuUsage,
                         MemoryUsage = memoryUsage,
                         DiskUsage = diskUsage,
@@ -491,6 +515,80 @@ namespace AthalaSIEM.UniversalAgent.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error sending heartbeat");
+            }
+        }
+
+        /// <summary>
+        /// Get Windows version string (e.g., "Windows 10", "Windows 11", "Windows Server 2019")
+        /// </summary>
+        private string? GetWindowsVersion()
+        {
+            try
+            {
+                if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+                {
+                    return null;
+                }
+
+                // Use RuntimeInformation.OSDescription for better Windows version detection
+                var osDescription = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
+                
+                // Parse OS description to get version
+                if (osDescription.Contains("Microsoft Windows"))
+                {
+                    // Try to get more specific version from registry
+                    try
+                    {
+                        using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+                        if (key != null)
+                        {
+                            var productName = key.GetValue("ProductName")?.ToString() ?? "";
+                            var releaseId = key.GetValue("ReleaseId")?.ToString() ?? "";
+                            var displayVersion = key.GetValue("DisplayVersion")?.ToString() ?? "";
+                            
+                            if (!string.IsNullOrEmpty(productName))
+                            {
+                                // Map common product names
+                                if (productName.Contains("Windows 10"))
+                                {
+                                    return !string.IsNullOrEmpty(displayVersion) 
+                                        ? $"Windows 10 {displayVersion}" 
+                                        : !string.IsNullOrEmpty(releaseId)
+                                        ? $"Windows 10 Version {releaseId}"
+                                        : "Windows 10";
+                                }
+                                else if (productName.Contains("Windows 11"))
+                                {
+                                    return !string.IsNullOrEmpty(displayVersion)
+                                        ? $"Windows 11 {displayVersion}"
+                                        : "Windows 11";
+                                }
+                                else if (productName.Contains("Windows Server"))
+                                {
+                                    // Extract year from product name (e.g., "Windows Server 2019", "Windows Server 2022")
+                                    return productName.Replace("Microsoft ", "");
+                                }
+                                else
+                                {
+                                    return productName.Replace("Microsoft ", "");
+                                }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Fallback to OSDescription if registry access fails
+                    }
+                    
+                    // Fallback: Use OSDescription
+                    return osDescription.Replace("Microsoft ", "");
+                }
+                
+                return null;
+            }
+            catch
+            {
+                return null;
             }
         }
         
@@ -559,11 +657,24 @@ namespace AthalaSIEM.UniversalAgent.Services
 
         private async void ProcessLogBatch(object? state)
         {
-            await ProcessLogBatch(forceFlush: false);
+            try
+            {
+                if (_disposed)
+                    return;
+                    
+                await ProcessLogBatch(forceFlush: false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing log batch");
+            }
         }
 
         private async Task<bool> ProcessLogBatch(bool forceFlush)
         {
+            if (_disposed && !forceFlush)
+                return false;
+                
             if (!_isConnected && !forceFlush)
                 return false;
 
@@ -951,7 +1062,11 @@ namespace AthalaSIEM.UniversalAgent.Services
                 }
 
                 // Update manager URL for token fetch
-                _managerUrl = backendUrl.TrimEnd('/');
+                // Support both IP:port format and full URL format
+                var urlConfig = backendUrl.TrimEnd('/');
+                var useHTTPS = _configuration.GetValue<bool>("SiemManager:UseHTTPS", false);
+                var protocol = useHTTPS ? "https" : "http";
+                _managerUrl = EnsureUrlFormat(urlConfig, protocol);
                 ConfigureHttpClient();
 
                 // Fetch deployment token from backend
@@ -960,7 +1075,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                     hostname = Environment.MachineName,
                     ipAddress = GetLocalIpAddress(),
                     platform = Environment.OSVersion.Platform.ToString(),
-                    osVersion = Environment.OSVersion.VersionString,
+                    osVersion = GetWindowsVersion() ?? Environment.OSVersion.VersionString,
                     requestTime = DateTime.UtcNow
                 };
 
@@ -977,9 +1092,15 @@ namespace AthalaSIEM.UniversalAgent.Services
 
                     if (tokenResponse != null && !string.IsNullOrEmpty(tokenResponse.Token))
                     {
-                        // Update configuration with received token
+                        // Update configuration with received token - store in IP:port format
                         _configuration["Agent:RegistrationKey"] = tokenResponse.Token;
-                        _configuration["Agent:ManagerUrl"] = backendUrl;
+                        // Store in IP:port format (remove protocol if present)
+                        var managerUrlForConfig = backendUrl.TrimEnd('/');
+                        if (managerUrlForConfig.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+                            managerUrlForConfig = managerUrlForConfig.Substring(7);
+                        else if (managerUrlForConfig.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                            managerUrlForConfig = managerUrlForConfig.Substring(8);
+                        _configuration["Agent:ManagerUrl"] = managerUrlForConfig;
                         
                         _logger.LogInformation(" Automatic token deployment successful! Token expires: {Expiry}", tokenResponse.ExpiresAt);
                         return true;
@@ -1121,16 +1242,35 @@ namespace AthalaSIEM.UniversalAgent.Services
 
         public ValueTask DisposeAsync()
         {
+            if (_disposed)
+                return ValueTask.CompletedTask;
+                
+            _disposed = true;
+            
             try
             {
+                _logger.LogInformation("Shutting down BackendCommunicationService...");
+                
+                // Stop all timers gracefully
+                _heartbeatTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+                _batchTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+                _archivalTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+                _configUpdateTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+                
+                // Wait a short time for any in-flight operations to complete
+                Thread.Sleep(1000);
+                
+                // Now dispose timers
                 _heartbeatTimer?.Dispose();
                 _batchTimer?.Dispose();
                 _archivalTimer?.Dispose();
                 _configUpdateTimer?.Dispose();
-                _httpClient?.Dispose();
-                _sendSemaphore?.Dispose();
                 
-                _logger.LogInformation("BackendCommunicationService disposed");
+                // Dispose other resources
+                _sendSemaphore?.Dispose();
+                _httpClient?.Dispose();
+                
+                _logger.LogInformation("BackendCommunicationService disposed successfully");
             }
             catch (Exception ex)
             {

@@ -6,7 +6,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue)](https://www.typescriptlang.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-## 📋 Table of Contents
+##  Table of Contents
 
 - [Overview](#overview)
 - [Features](#features)
@@ -36,41 +36,41 @@ The AthalaSIEM Frontend is a modern, responsive web application built with Next.
 ## ✨ Features
 
 ### Dashboard & Monitoring
-- ✅ Real-time system health metrics
-- ✅ Agent status monitoring
-- ✅ Log volume visualization
-- ✅ Security posture scoring
-- ✅ Recent alerts and incidents
-- ✅ Performance metrics
+-  Real-time system health metrics
+-  Agent status monitoring
+-  Log volume visualization
+-  Security posture scoring
+-  Recent alerts and incidents
+-  Performance metrics
 
 ### Agent Management
-- ✅ Agent deployment and registration
-- ✅ Configuration management
-- ✅ Health monitoring
-- ✅ Log collection status
-- ✅ Agent metrics and statistics
+-  Agent deployment and registration
+-  Configuration management
+-  Health monitoring
+-  Log collection status
+-  Agent metrics and statistics
 
 ### Security Monitoring
-- ✅ Real-time event monitoring
-- ✅ Alert management and triage
-- ✅ Threat detection visualization
-- ✅ Incident response workflows
-- ✅ Compliance monitoring
+-  Real-time event monitoring
+-  Alert management and triage
+-  Threat detection visualization
+-  Incident response workflows
+-  Compliance monitoring
 
 ### User Management
-- ✅ User administration (Admin)
-- ✅ Role management
-- ✅ Password policy enforcement
-- ✅ Two-factor authentication (2FA)
-- ✅ Session management
-- ✅ User hardening settings
+-  User administration (Admin)
+-  Role management
+-  Password policy enforcement
+-  Two-factor authentication (2FA)
+-  Session management
+-  User hardening settings
 
 ### Analytics & Reporting
-- ✅ Custom security reports
-- ✅ Data visualization with charts
-- ✅ Trend analysis
-- ✅ Compliance reporting
-- ✅ Performance analytics
+-  Custom security reports
+-  Data visualization with charts
+-  Trend analysis
+-  Compliance reporting
+-  Performance analytics
 
 ## 🛠️ Tech Stack
 
@@ -108,7 +108,7 @@ The AthalaSIEM Frontend is a modern, responsive web application built with Next.
 - **clsx**: Conditional class names
 - **class-variance-authority**: Component variants
 
-## 📋 Prerequisites
+##  Prerequisites
 
 ### Required
 - Node.js 18+ (LTS recommended)

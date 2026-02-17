@@ -88,6 +88,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         public async Task StartAsync()
         {
+            await Task.CompletedTask;
             if (_isRunning) return;
 
             try
@@ -126,6 +127,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         public async Task StopAsync()
         {
+            await Task.CompletedTask;
             if (!_isRunning) return;
 
             try
@@ -368,6 +370,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task CollectAwsCloudTrailLogs()
         {
+            await Task.CompletedTask;
             try
             {
                 _logger.LogInformation("Collecting AWS CloudTrail logs");
@@ -396,6 +399,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task CollectAwsS3Logs()
         {
+            await Task.CompletedTask;
             try
             {
                 _logger.LogInformation("Collecting AWS S3 access logs from bucket: {Bucket}", _awsS3Bucket);
@@ -421,6 +425,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task CollectAzureActivityLogs()
         {
+            await Task.CompletedTask;
             try
             {
                 _logger.LogInformation("Collecting Azure Activity logs");
@@ -445,6 +450,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task CollectGcpAuditLogs()
         {
+            await Task.CompletedTask;
             try
             {
                 _logger.LogInformation("Collecting GCP Audit logs for project: {Project}", _gcpProjectId);

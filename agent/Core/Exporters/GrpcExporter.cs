@@ -68,9 +68,26 @@ public class GrpcExporter : IExporter
     {
         var ecs = evt.Ecs;
 
+        // CRITICAL: Extract human-readable message - try multiple sources
         var message = evt.RawEvent.GetValueOrDefault("message")?.ToString() 
-            ?? evt.RawEvent.GetValueOrDefault("raw_message")?.ToString() 
+            ?? evt.RawEvent.GetValueOrDefault("raw_message")?.ToString()
+            ?? evt.RawEvent.GetValueOrDefault("athala.raw_event")?.ToString()
             ?? string.Empty;
+
+        // If message is still empty, construct a descriptive one from available data
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            var eventId = evt.RawEvent.GetValueOrDefault("event_id")?.ToString() ?? "Unknown";
+            var sourceType = evt.Extensions.GetValueOrDefault("athala.source_type")?.ToString() ?? "Unknown";
+            var task = evt.RawEvent.GetValueOrDefault("task")?.ToString();
+            var level = ecs.LogLevel ?? "Information";
+            
+            message = $"Event {eventId} ({level}) from {sourceType}";
+            if (!string.IsNullOrEmpty(task))
+            {
+                message += $": {task}";
+            }
+        }
 
         var result = new Models.NormalizedLogEntry
         {
@@ -79,7 +96,7 @@ public class GrpcExporter : IExporter
             Source = ecs.EventCategory ?? "Unknown",
             SourceType = evt.Extensions.GetValueOrDefault("athala.source_type")?.ToString() ?? "Unknown",
             Level = ecs.LogLevel ?? "Information",
-            Message = message,
+            Message = message, // Now guaranteed to have a value
             AgentId = ecs.AgentId ?? string.Empty,
             Hostname = ecs.HostName ?? string.Empty,
             AdditionalFields = new Dictionary<string, string>()

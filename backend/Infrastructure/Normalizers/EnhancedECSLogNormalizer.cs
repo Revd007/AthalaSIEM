@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Backend.Domain.Entities;
 using Backend.Domain.ValueObjects;
+using Backend.Services;
 
 namespace Backend.Infrastructure.Normalizers;
 
@@ -12,14 +13,22 @@ namespace Backend.Infrastructure.Normalizers;
 /// - source_ip (extracted or inferred)
 /// - event_type (categorized)
 /// - severity (mapped from log level)
+/// - MITRE ATT&CK techniques mapped
 /// </summary>
 public class EnhancedECSLogNormalizer : ILogNormalizer
 {
     private readonly ILogger<EnhancedECSLogNormalizer> _logger;
+    private readonly WindowsEventLogParser _parser;
+    private readonly MitreAttackMapper _mitreMapper;
 
-    public EnhancedECSLogNormalizer(ILogger<EnhancedECSLogNormalizer> logger)
+    public EnhancedECSLogNormalizer(
+        ILogger<EnhancedECSLogNormalizer> logger,
+        WindowsEventLogParser parser,
+        MitreAttackMapper mitreMapper)
     {
         _logger = logger;
+        _parser = parser;
+        _mitreMapper = mitreMapper;
     }
 
     public Task<ECSLogFields?> NormalizeAsync(LogEntry logEntry, CancellationToken cancellationToken = default)
@@ -62,11 +71,94 @@ public class EnhancedECSLogNormalizer : ILogNormalizer
                 }
             }
 
+            // Enhanced parsing using WindowsEventLogParser for Windows Event Logs
+            if (!string.IsNullOrEmpty(logEntry.Source) &&
+                (logEntry.Source.Contains("Windows", StringComparison.OrdinalIgnoreCase) ||
+                 logEntry.Source.Contains("EventLog", StringComparison.OrdinalIgnoreCase)))
+            {
+                var parsedFields = _parser.Parse(logEntry);
+                
+                // Map parsed fields to ECS (only if not already set)
+                if (string.IsNullOrEmpty(ecsFields.SourceIp) && !string.IsNullOrEmpty(parsedFields.SourceAddress))
+                    ecsFields.SourceIp = parsedFields.SourceAddress;
+                if (!ecsFields.SourcePort.HasValue && parsedFields.SourcePort.HasValue)
+                    ecsFields.SourcePort = parsedFields.SourcePort;
+                if (string.IsNullOrEmpty(ecsFields.DestinationIp) && !string.IsNullOrEmpty(parsedFields.DestinationAddress))
+                    ecsFields.DestinationIp = parsedFields.DestinationAddress;
+                if (!ecsFields.DestinationPort.HasValue && parsedFields.DestinationPort.HasValue)
+                    ecsFields.DestinationPort = parsedFields.DestinationPort;
+                if (string.IsNullOrEmpty(ecsFields.ProcessName) && !string.IsNullOrEmpty(parsedFields.ProcessName))
+                    ecsFields.ProcessName = parsedFields.ProcessName;
+                if (string.IsNullOrEmpty(ecsFields.ProcessName) && !string.IsNullOrEmpty(parsedFields.ApplicationName))
+                    ecsFields.ProcessName = parsedFields.ApplicationName;
+                if (!ecsFields.ProcessId.HasValue && parsedFields.ProcessId.HasValue)
+                    ecsFields.ProcessId = parsedFields.ProcessId;
+                if (string.IsNullOrEmpty(ecsFields.ProcessCommandLine) && !string.IsNullOrEmpty(parsedFields.CommandLine))
+                    ecsFields.ProcessCommandLine = parsedFields.CommandLine;
+                if (string.IsNullOrEmpty(ecsFields.UserName) && !string.IsNullOrEmpty(parsedFields.UserName))
+                    ecsFields.UserName = parsedFields.UserName;
+                if (string.IsNullOrEmpty(ecsFields.UserDomain) && !string.IsNullOrEmpty(parsedFields.Domain))
+                    ecsFields.UserDomain = parsedFields.Domain;
+                if (string.IsNullOrEmpty(ecsFields.FilePath) && !string.IsNullOrEmpty(parsedFields.FilePath))
+                    ecsFields.FilePath = parsedFields.FilePath;
+                if (string.IsNullOrEmpty(ecsFields.EventAction) && !string.IsNullOrEmpty(parsedFields.EventAction))
+                    ecsFields.EventAction = parsedFields.EventAction;
+                if (string.IsNullOrEmpty(ecsFields.EventType) && !string.IsNullOrEmpty(parsedFields.EventType))
+                    ecsFields.EventType = parsedFields.EventType;
+                if (string.IsNullOrEmpty(ecsFields.EventOutcome) && !string.IsNullOrEmpty(parsedFields.EventOutcome))
+                    ecsFields.EventOutcome = parsedFields.EventOutcome;
+                
+                // Map protocol if available
+                if (string.IsNullOrEmpty(ecsFields.Protocol) && !string.IsNullOrEmpty(parsedFields.ApplicationName))
+                {
+                    var appLower = parsedFields.ApplicationName.ToLowerInvariant();
+                    if (appLower.Contains("tcp")) ecsFields.Protocol = "TCP";
+                    else if (appLower.Contains("udp")) ecsFields.Protocol = "UDP";
+                    else if (appLower.Contains("icmp")) ecsFields.Protocol = "ICMP";
+                }
+            }
+
             // Parse message for additional patterns
             ParseMessage(logEntry.RawMessage, ecsFields);
 
             // Source-specific parsing
             ParseBySource(logEntry, ecsFields);
+
+            // MITRE ATT&CK mapping
+            var mitreTechniques = _mitreMapper.MapToTechniques(logEntry);
+            if (mitreTechniques.Count > 0)
+            {
+                ecsFields.SiemTechniqueId = string.Join(",", mitreTechniques.Select(t => t.TechniqueId));
+                
+                // Set severity based on highest MITRE technique severity (if higher than current)
+                var highestSeverity = mitreTechniques
+                    .Select(t => t.Severity)
+                    .OrderByDescending(s => s == "High" ? 3 : s == "Medium" ? 2 : 1)
+                    .FirstOrDefault();
+                
+                var mitreSeverity = highestSeverity switch
+                {
+                    "High" => 7,
+                    "Medium" => 4,
+                    _ => 2
+                };
+                
+                // Use higher severity between MITRE and existing
+                if (mitreSeverity > ecsFields.SiemSeverity)
+                    ecsFields.SiemSeverity = mitreSeverity;
+
+                // Store MITRE metadata
+                if (ecsFields.Metadata == null)
+                    ecsFields.Metadata = new Dictionary<string, object>();
+                
+                ecsFields.Metadata["mitre_techniques"] = mitreTechniques.Select(t => new
+                {
+                    t.TechniqueId,
+                    t.TechniqueName,
+                    t.Tactic,
+                    t.Severity
+                }).ToList();
+            }
 
             // Ensure event_type is set (fallback)
             if (string.IsNullOrEmpty(ecsFields.EventType))

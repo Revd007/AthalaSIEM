@@ -19,9 +19,29 @@
     <Property Id="ARPPRODUCTICON" Value="AthalaSIEMIcon" />
     <Property Id="ARPHELPLINK" Value="https://github.com/athala/siem" />
     <Property Id="ARPURLINFOABOUT" Value="https://athala.io" />
+    
+    <!-- WixUI_InstallDir requires this property to link to the installation directory -->
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+
+    <!-- Installer Properties for Configuration (IP:port format like other SIEM tools) -->
+    <!-- Optional properties can be set via command line - use SetProperty for defaults -->
+    <Property Id="BACKENDURL" Admin="yes" />
+    <Property Id="GRPCURL" Admin="yes" />
+    <Property Id="BACKENDPORT" Value="9595" />
+    <Property Id="GRPCPORT" Value="50051" />
+    <Property Id="AGENTNAME" Admin="yes" />
+    <Property Id="DEPLOYMENTTOKEN" Secure="yes" Admin="yes" />
+    <Property Id="USEHTTPS" Value="0" />
+    <Property Id="USEGRPC" Value="1" />
+    
+    <!-- Set default values for optional properties if not provided (Execute sequence only) -->
+    <!-- Use Before to ensure defaults are set before CA_* properties are set -->
+    <SetProperty Id="BACKENDURL" Value="[COMPUTERNAME]:9595" Before="CostFinalize" Sequence="execute" Condition="BACKENDURL = &quot;&quot;" />
+    <SetProperty Id="GRPCURL" Value="[COMPUTERNAME]:50051" Before="CostFinalize" Sequence="execute" Condition="GRPCURL = &quot;&quot;" />
+    <SetProperty Id="AGENTNAME" Value="[COMPUTERNAME]-Agent" Before="CostFinalize" Sequence="execute" Condition="AGENTNAME = &quot;&quot;" />
 
     <!-- Installation Directory -->
-    <StandardDirectory Id="ProgramFiles6432Folder">
+    <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="CompanyDir" Name="Athala Security">
         <Directory Id="INSTALLDIR" Name="SIEM Universal Agent">
         </Directory>
@@ -38,6 +58,8 @@
               Source="..\bin\Release\net8.0\win-x64\publish\athala-agent.dll" />
         <File Id="AppSettings" 
               Source="..\bin\Release\net8.0\win-x64\publish\appsettings.json" />
+        <File Id="ConfigureScript" 
+              Source="..\bin\Release\net8.0\win-x64\publish\ConfigureAppSettings.ps1" />
         <File Id="RuntimeConfig" 
               Source="..\bin\Release\net8.0\win-x64\publish\athala-agent.runtimeconfig.json" />
         <File Id="DepsJson" 
@@ -55,13 +77,14 @@
                         Account="LocalSystem"
                         ErrorControl="normal"
                         Interactive="no"
-                        Arguments="--service" />
+                        />
         <ServiceControl Id="ServiceControl"
-                        Start="install"
+                        Name="AthalaSIEMUniversalAgent"
                         Stop="both"
                         Remove="uninstall"
-                        Name="AthalaSIEMUniversalAgent"
                         Wait="yes" />
+                        <!-- Removed Start="install" to prevent auto-start during installation -->
+                        <!-- Service starts on demand or manually after config is complete -->
       </Component>
     </ComponentGroup>
 
@@ -114,20 +137,32 @@
               Source="..\bin\Release\net8.0\win-x64\publish\Microsoft.Extensions.Configuration.Json.dll" />
         <File Id="MExtConfigurationFileExtDLL" 
               Source="..\bin\Release\net8.0\win-x64\publish\Microsoft.Extensions.Configuration.FileExtensions.dll" />
+        <File Id="MExtConfigurationEnvironmentVariablesDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\Microsoft.Extensions.Configuration.EnvironmentVariables.dll" />
+        <File Id="MExtConfigurationCommandLineDLL"
+              Source="..\bin\Release\net8.0\win-x64\publish\Microsoft.Extensions.Configuration.CommandLine.dll" />
+        <File Id="MExtConfigurationUserSecretsDLL"
+              Source="..\bin\Release\net8.0\win-x64\publish\Microsoft.Extensions.Configuration.UserSecrets.dll" />
+        <File Id="MExtPrimitivesDLL"
+              Source="..\bin\Release\net8.0\win-x64\publish\Microsoft.Extensions.Primitives.dll" />
       </Component>
 
       <Component Id="DIAndHostingLibs" Directory="INSTALLDIR" Guid="56789012-5678-5678-5678-567890123456">
-        <File Id="MExtDependencyInjectionDLL" 
+        <File Id="MExtDependencyInjectionDLL"
               Source="..\bin\Release\net8.0\win-x64\publish\Microsoft.Extensions.DependencyInjection.dll"
               KeyPath="yes" />
-        <File Id="MExtDIAbstractionsDLL" 
+        <File Id="MExtDIAbstractionsDLL"
               Source="..\bin\Release\net8.0\win-x64\publish\Microsoft.Extensions.DependencyInjection.Abstractions.dll" />
-        <File Id="MExtHostingDLL" 
+        <File Id="MExtHostingDLL"
               Source="..\bin\Release\net8.0\win-x64\publish\Microsoft.Extensions.Hosting.dll" />
-        <File Id="MExtHostingAbstractionsDLL" 
+        <File Id="MExtHostingAbstractionsDLL"
               Source="..\bin\Release\net8.0\win-x64\publish\Microsoft.Extensions.Hosting.Abstractions.dll" />
-        <File Id="MExtHostingWindowsServicesDLL" 
+        <File Id="MExtHostingWindowsServicesDLL"
               Source="..\bin\Release\net8.0\win-x64\publish\Microsoft.Extensions.Hosting.WindowsServices.dll" />
+        <File Id="MExtFileProvidersAbstractionsDLL"
+              Source="..\bin\Release\net8.0\win-x64\publish\Microsoft.Extensions.FileProviders.Abstractions.dll" />
+        <File Id="MExtFileProvidersPhysicalDLL"
+              Source="..\bin\Release\net8.0\win-x64\publish\Microsoft.Extensions.FileProviders.Physical.dll" />
       </Component>
 
       <Component Id="LoggingLibs" Directory="INSTALLDIR" Guid="67890123-6789-6789-6789-678901234567">
@@ -155,6 +190,10 @@
               Source="..\bin\Release\net8.0\win-x64\publish\System.Diagnostics.EventLog.Messages.dll" />
         <File Id="SystemDiagnosticsProcessDLL" 
               Source="..\bin\Release\net8.0\win-x64\publish\System.Diagnostics.Process.dll" />
+        <File Id="SystemDiagnosticsDiagnosticSourceDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.Diagnostics.DiagnosticSource.dll" />
+        <File Id="SystemDiagnosticsTracingDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.Diagnostics.Tracing.dll" />
         <File Id="SystemManagementDLL" 
               Source="..\bin\Release\net8.0\win-x64\publish\System.Management.dll" />
       </Component>
@@ -203,6 +242,10 @@
               Source="..\bin\Release\net8.0\win-x64\publish\System.Collections.dll" />
         <File Id="SystemRuntimeDLL" 
               Source="..\bin\Release\net8.0\win-x64\publish\System.Runtime.dll" />
+        <File Id="SystemRuntimeInteropServicesDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.Runtime.InteropServices.dll" />
+        <File Id="SystemRuntimeInteropServicesRuntimeInformationDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.Runtime.InteropServices.RuntimeInformation.dll" />
         <File Id="SystemLinqDLL" 
               Source="..\bin\Release\net8.0\win-x64\publish\System.Linq.dll" />
         <File Id="SystemIODLL" 
@@ -273,7 +316,77 @@
       </Component>
     </ComponentGroup>
 
+    <!-- Remaining .NET Runtime DLLs - Include ALL remaining DLL files -->
+    <!-- This component catches all DLLs not explicitly listed above -->
+    <ComponentGroup Id="RemainingRuntimeDlls">
+      <Component Id="RemainingDlls" Directory="INSTALLDIR" Guid="33333333-3333-3333-3333-333333333333">
+        <!-- Include all remaining System.*.dll files -->
+        <File Id="SystemAppContextDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.AppContext.dll"
+              KeyPath="yes" />
+        <File Id="SystemCollectionsConcurrentDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.Collections.Concurrent.dll" />
+        <File Id="SystemCollectionsImmutableDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.Collections.Immutable.dll" />
+        <File Id="SystemCollectionsNonGenericDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.Collections.NonGeneric.dll" />
+        <File Id="SystemCollectionsSpecializedDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.Collections.Specialized.dll" />
+        <File Id="SystemDynamicRuntimeDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.Dynamic.Runtime.dll" />
+        <File Id="SystemIOCompressionBrotliDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.IO.Compression.Brotli.dll" />
+        <File Id="SystemIOCompressionFileSystemDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.IO.Compression.FileSystem.dll" />
+        <File Id="SystemIOCompressionZipFileDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.IO.Compression.ZipFile.dll" />
+        <File Id="SystemIOFileSystemAccessControlDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.IO.FileSystem.AccessControl.dll" />
+        <File Id="SystemIOFileSystemDriveInfoDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.IO.FileSystem.DriveInfo.dll" />
+        <File Id="SystemIOFileSystemPrimitivesDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.IO.FileSystem.Primitives.dll" />
+        <File Id="SystemIOFileSystemWatcherDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.IO.FileSystem.Watcher.dll" />
+        <File Id="SystemIOIsolatedStorageDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.IO.IsolatedStorage.dll" />
+        <File Id="SystemIOMemoryMappedFilesDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.IO.MemoryMappedFiles.dll" />
+        <File Id="SystemIOPipesDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.IO.Pipes.dll" />
+        <File Id="SystemIOPipesAccessControlDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.IO.Pipes.AccessControl.dll" />
+        <File Id="SystemIOUnmanagedMemoryStreamDLL" 
+              Source="..\bin\Release\net8.0\win-x64\publish\System.IO.UnmanagedMemoryStream.dll" />
+        <!-- Add more critical System.* DLLs as needed -->
+      </Component>
+    </ComponentGroup>
 
+    <!-- Custom Action to Configure appsettings.json after installation (IP:port format) -->
+    <!-- Store properties for deferred custom action (properties can't be accessed directly in deferred actions) -->
+    <!-- Simplified: Pass properties as-is, let PowerShell script handle defaults -->
+    <SetProperty Id="CA_InstallPath" Value="[INSTALLDIR]" After="CostFinalize" Sequence="execute" />
+    <SetProperty Id="CA_BackendUrl" Value="[BACKENDURL]" After="CostFinalize" Sequence="execute" />
+    <SetProperty Id="CA_GrpcUrl" Value="[GRPCURL]" After="CostFinalize" Sequence="execute" />
+    <SetProperty Id="CA_BackendPort" Value="[BACKENDPORT]" After="CostFinalize" Sequence="execute" />
+    <SetProperty Id="CA_GrpcPort" Value="[GRPCPORT]" After="CostFinalize" Sequence="execute" />
+    <SetProperty Id="CA_AgentName" Value="[AGENTNAME]" After="CostFinalize" Sequence="execute" />
+    <SetProperty Id="CA_DeploymentToken" Value="[DEPLOYMENTTOKEN]" After="CostFinalize" Sequence="execute" />
+    <SetProperty Id="CA_UseHTTPS" Value="[USEHTTPS]" After="CostFinalize" Sequence="execute" />
+    <SetProperty Id="CA_UseGrpc" Value="[USEGRPC]" After="CostFinalize" Sequence="execute" />
+    
+    <CustomAction Id="ConfigureAppSettings"
+                  Directory="INSTALLDIR"
+                  Execute="deferred"
+                  Impersonate="no"
+                  ExeCommand="powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -WindowStyle Hidden -File [INSTALLDIR]ConfigureAppSettings.ps1 -InstallPath [CA_InstallPath] -BackendUrl [CA_BackendUrl] -GrpcUrl [CA_GrpcUrl] -BackendPort [CA_BackendPort] -GrpcPort [CA_GrpcPort] -AgentName [CA_AgentName] -DeploymentToken [CA_DeploymentToken] -UseHTTPS [CA_UseHTTPS] -UseGrpc [CA_UseGrpc]"
+                  Return="ignore" />
+
+    <!-- Schedule Custom Action -->
+    <!-- Configure appsettings.json BEFORE service is installed/started -->
+    <InstallExecuteSequence>
+      <Custom Action="ConfigureAppSettings" Before="InstallServices" />
+    </InstallExecuteSequence>
 
     <!-- Features -->
     <Feature Id="Complete" Level="1">
@@ -282,10 +395,72 @@
       <ComponentGroupRef Id="MicrosoftExtensionsFiles" />
       <ComponentGroupRef Id="SystemLibrariesFiles" />
       <ComponentGroupRef Id="GrpcDependencies" />
+      <ComponentGroupRef Id="RemainingRuntimeDlls" />
     </Feature>
 
-            <!-- Simple UI -->
-    <ui:WixUI Id="WixUI_Minimal" />
+    <!-- Custom UI with Configuration Dialog -->
+    <UI>
+      <ui:WixUI Id="WixUI_InstallDir" />
+      
+      <!-- Navigate from Welcome to Config Dialog -->
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="ConfigDlg" />
+      
+      <!-- Navigate from Config Dialog back to Welcome -->
+      <Publish Dialog="ConfigDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" />
+      
+      <!-- Navigate from Config Dialog to InstallDir Dialog -->
+      <Publish Dialog="ConfigDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" />
+      
+      <!-- Navigate from InstallDir Dialog back to Config -->
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="ConfigDlg" />
+      
+      <!-- Custom Configuration Dialog -->
+      <Dialog Id="ConfigDlg" Width="370" Height="270" Title="AthalaSIEM Agent Configuration">
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes">
+          <Text Value="{\WixUI_Font_Title}Backend Configuration" />
+        </Control>
+        
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="320" Height="30" Transparent="yes" NoPrefix="yes">
+          <Text Value="Enter the backend server connection details (IP:port format like Wazuh or Splunk)." />
+        </Control>
+        
+        <!-- Backend URL/IP -->
+        <Control Id="BackendUrlLabel" Type="Text" X="25" Y="60" Width="100" Height="15" NoPrefix="yes">
+          <Text Value="Backend IP/URL:" />
+        </Control>
+        <Control Id="BackendUrlEdit" Type="Edit" X="130" Y="58" Width="200" Height="18" Property="BACKENDURL" />
+        
+        <!-- Backend Port -->
+        <Control Id="BackendPortLabel" Type="Text" X="25" Y="90" Width="100" Height="15" NoPrefix="yes">
+          <Text Value="Backend Port:" />
+        </Control>
+        <Control Id="BackendPortEdit" Type="Edit" X="130" Y="88" Width="200" Height="18" Property="BACKENDPORT" />
+        
+        <!-- gRPC URL/IP -->
+        <Control Id="GrpcUrlLabel" Type="Text" X="25" Y="120" Width="100" Height="15" NoPrefix="yes">
+          <Text Value="gRPC IP/URL:" />
+        </Control>
+        <Control Id="GrpcUrlEdit" Type="Edit" X="130" Y="118" Width="200" Height="18" Property="GRPCURL" />
+        
+        <!-- Agent Name -->
+        <Control Id="AgentNameLabel" Type="Text" X="25" Y="150" Width="100" Height="15" NoPrefix="yes">
+          <Text Value="Agent Name:" />
+        </Control>
+        <Control Id="AgentNameEdit" Type="Edit" X="130" Y="148" Width="200" Height="18" Property="AGENTNAME" />
+        
+        <!-- Deployment Token (optional) -->
+        <Control Id="DeploymentTokenLabel" Type="Text" X="25" Y="180" Width="100" Height="15" NoPrefix="yes">
+          <Text Value="Deployment Token:" />
+        </Control>
+        <Control Id="DeploymentTokenEdit" Type="Edit" X="130" Y="178" Width="200" Height="18" Property="DEPLOYMENTTOKEN" Password="yes" />
+        
+        <!-- Navigation Buttons -->
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="Back" />
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Next" />
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel" />
+      </Dialog>
+    </UI>
+    
     <WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf" />
 
   </Package>

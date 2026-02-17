@@ -19,8 +19,9 @@ namespace AthalaSIEM.Agent.Collectors
     {
         private readonly ILogger<LogNormalizer> _logger;
         private readonly IEncryptionService _encryptionService;
+        private readonly IAgentIdentityService _identityService;
         private readonly string _hostname;
-        private readonly string _agentId;
+        private string? _cachedAgentId;
         
         // Common patterns for normalized fields
         private static readonly Regex IpAddressRegex = new Regex(@"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", RegexOptions.Compiled);
@@ -32,13 +33,36 @@ namespace AthalaSIEM.Agent.Collectors
         /// </summary>
         /// <param name="logger">Logger instance</param>
         /// <param name="encryptionService">Encryption service for computing hashes</param>
-        public LogNormalizer(ILogger<LogNormalizer> logger, IEncryptionService encryptionService)
+        /// <param name="identityService">Agent identity service for resolving AgentId</param>
+        public LogNormalizer(ILogger<LogNormalizer> logger, IEncryptionService encryptionService, IAgentIdentityService identityService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _encryptionService = encryptionService ?? throw new ArgumentNullException(nameof(encryptionService));
+            _identityService = identityService ?? throw new ArgumentNullException(nameof(identityService));
             
             _hostname = Dns.GetHostName();
-            _agentId = Environment.GetEnvironmentVariable("ATHALA_AGENT_ID") ?? string.Empty;
+        }
+        
+        /// <summary>
+        /// Resolves the agent ID lazily from the identity service.
+        /// Caches after first successful resolution to avoid repeated async calls.
+        /// </summary>
+        private string GetAgentId()
+        {
+            if (!string.IsNullOrEmpty(_cachedAgentId))
+                return _cachedAgentId;
+
+            try
+            {
+                _cachedAgentId = _identityService.GetAgentIdAsync().GetAwaiter().GetResult();
+            }
+            catch
+            {
+                // Agent may not be registered yet; return empty and try again next time
+                return string.Empty;
+            }
+
+            return _cachedAgentId ?? string.Empty;
         }
         
         /// <summary>
@@ -53,29 +77,50 @@ namespace AthalaSIEM.Agent.Collectors
                 
             try
             {
+                // Normalize content for hashing and extraction - collectors may send null/empty body
+                var content = rawLog.Content ?? string.Empty;
+
                 var normalizedLog = new NormalizedLogEntry
                 {
                     Id = Guid.NewGuid().ToString("N"),
-                    SourceHost = rawLog.SourceHost,
-                    SourceType = rawLog.SourceType,
+                    AgentId = GetAgentId(),
+                    Source = !string.IsNullOrEmpty(rawLog.Source) ? rawLog.Source : rawLog.SourceType ?? "Unknown",
+                    SourceHost = rawLog.SourceHost ?? string.Empty,
+                    SourceType = rawLog.SourceType ?? "Unknown",
+                    Hostname = _hostname,
                     Timestamp = rawLog.Timestamp,
-                    RawContent = rawLog.Content,
-                    Severity = MapSeverityLevel(rawLog.Severity),
+                    RawContent = content,
+                    Message = content.Length > 500 ? content[..500] : content,
+                    Level = MapSeverityLevel(rawLog.Severity ?? rawLog.LogLevel),
+                    Severity = MapSeverityLevel(rawLog.Severity ?? rawLog.LogLevel),
                     Category = DetermineCategory(rawLog),
                     CollectorType = rawLog.CollectorType,
                     SourceIdentifier = rawLog.SourceIdentifier
                 };
                 
-                // Extract additional fields
+                // Propagate structured metadata from the collector (EventID, Computer, LogName, etc.)
                 var additionalFields = new Dictionary<string, string>();
-                ExtractAdditionalFields(rawLog.Content, additionalFields);
-                if (additionalFields.Count > 0)
+                if (rawLog.Metadata != null)
                 {
-                    normalizedLog.AdditionalFields = additionalFields;
+                    foreach (var kvp in rawLog.Metadata)
+                    {
+                        additionalFields[kvp.Key] = kvp.Value;
+                    }
+                    // Map well-known keys for gRPC metadata compatibility
+                    if (rawLog.Metadata.TryGetValue("Computer", out var computer))
+                        additionalFields["machine_name"] = computer;
+                    if (rawLog.Metadata.TryGetValue("EventID", out var evtId))
+                        additionalFields["event_id"] = evtId;
+                    if (rawLog.Metadata.TryGetValue("EventLog", out var evtLog))
+                        additionalFields["log_name"] = evtLog;
                 }
+
+                // Extract content-based fields (IPs, emails, URLs, usernames)
+                ExtractAdditionalFields(content, additionalFields);
+                normalizedLog.AdditionalFields = additionalFields;
                 
-                // Compute hash for integrity checking
-                normalizedLog.ContentHash = _encryptionService.ComputeHash(Encoding.UTF8.GetBytes(rawLog.Content));
+                // Compute hash for integrity checking (AesEncryptionService accepts null/empty and returns well-known hash)
+                normalizedLog.ContentHash = _encryptionService.ComputeHash(Encoding.UTF8.GetBytes(content));
                 
                 return normalizedLog;
             }

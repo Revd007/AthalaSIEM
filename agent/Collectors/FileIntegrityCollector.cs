@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -43,7 +44,9 @@ namespace AthalaSIEM.Agent.Collectors
         private int _batchIntervalSeconds = 10;
         private int _maxBufferSize = 1000;
         private bool _enableDetailedLogging = false;
+#pragma warning disable CS0414
         private bool _enablePerformanceOptimization = true;
+#pragma warning restore CS0414
         private bool _enableThreatIntelligence = true;
         private bool _enableMultiCollectorIntegration = true;
         
@@ -125,6 +128,7 @@ namespace AthalaSIEM.Agent.Collectors
         /// </summary>
         public async Task StartAsync()
         {
+            await Task.CompletedTask;
             if (_isRunning) return;
 
             try
@@ -162,6 +166,7 @@ namespace AthalaSIEM.Agent.Collectors
         /// </summary>
         public async Task StopAsync()
         {
+            await Task.CompletedTask;
             if (!_isRunning) return;
 
             try
@@ -310,6 +315,58 @@ namespace AthalaSIEM.Agent.Collectors
             {
                 bool.TryParse(_settings.Properties["EnableMultiCollectorIntegration"], out _enableMultiCollectorIntegration);
             }
+
+            // Default Protection Paths: if no paths configured, auto-monitor critical system directories
+            if (_monitoredPaths.Count == 0 && _criticalPaths.Count == 0)
+            {
+                _logger.LogInformation("No FIM paths configured. Applying default critical path monitoring.");
+                var defaultPaths = GetDefaultCriticalPaths();
+                _monitoredPaths.AddRange(defaultPaths);
+                _criticalPaths.AddRange(defaultPaths);
+                _logger.LogInformation("Default FIM paths: {Paths}", string.Join(", ", defaultPaths));
+            }
+        }
+
+        /// <summary>
+        /// Returns a list of platform-appropriate default critical paths to monitor.
+        /// Only includes paths that actually exist on this system.
+        /// </summary>
+        private static List<string> GetDefaultCriticalPaths()
+        {
+            var paths = new List<string>();
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                var candidates = new[]
+                {
+                    @"C:\Windows\System32\drivers\etc",
+                    @"C:\ProgramData\AthalaSIEM",
+                    @"C:\inetpub\wwwroot",
+                    // Note: C:\Windows\System32\config is excluded due to restricted access
+                    // even for administrators (contains system profile cache directories)
+                };
+                foreach (var p in candidates)
+                {
+                    if (Directory.Exists(p))
+                        paths.Add(p);
+                }
+            }
+            else
+            {
+                var candidates = new[]
+                {
+                    "/etc",
+                    "/var/log",
+                    "/opt/athalasiem",
+                };
+                foreach (var p in candidates)
+                {
+                    if (Directory.Exists(p))
+                        paths.Add(p);
+                }
+            }
+
+            return paths;
         }
 
         private void InitializePathCategories()
@@ -694,13 +751,35 @@ namespace AthalaSIEM.Agent.Collectors
                 }
                 else if (Directory.Exists(path))
                 {
-                    var files = Directory.GetFiles(path, "*", SearchOption.AllDirectories);
-                    foreach (var file in files)
+                    // Use EnumerationOptions to handle access denied gracefully
+                    // Note: We don't skip System/Hidden files as they may be security-critical
+                    var enumerationOptions = new EnumerationOptions
                     {
-                        if (ShouldExcludeFile(file)) continue;
-                        await ScanFileAsync(file);
+                        RecurseSubdirectories = true,
+                        IgnoreInaccessible = true // Skip directories we can't access (e.g., system profile cache)
+                    };
+
+                    try
+                    {
+                        var files = Directory.GetFiles(path, "*", enumerationOptions);
+                        foreach (var file in files)
+                        {
+                            if (ShouldExcludeFile(file)) continue;
+                            await ScanFileAsync(file);
+                        }
+                    }
+                    catch (UnauthorizedAccessException uae)
+                    {
+                        // Some subdirectories may be inaccessible even to administrators
+                        // Log as warning, not error, and continue
+                        _logger.LogWarning(uae, "Access denied to some subdirectories in {Path}. Skipping inaccessible directories.", path);
                     }
                 }
+            }
+            catch (UnauthorizedAccessException uae)
+            {
+                // Path itself is inaccessible - log warning and skip
+                _logger.LogWarning(uae, "Access denied to path {Path}. Skipping this path.", path);
             }
             catch (Exception ex)
             {
@@ -710,6 +789,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task ScanFileAsync(string filePath)
         {
+            await Task.CompletedTask;
             try
             {
                 var fileInfo = new FileInfo(filePath);

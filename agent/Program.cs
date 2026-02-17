@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
@@ -11,6 +11,7 @@ using AthalaSIEM.Agent.Models;
 using AthalaSIEM.Agent.Collectors;
 using AthalaSIEM.Agent.Communication;
 using AthalaSIEM.Agent.Security;
+using Grpc.Core;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
@@ -31,6 +32,9 @@ namespace AthalaSIEM.Agent
         /// </summary>
         public static async Task Main(string[] args)
         {
+            // Enable HTTP/2 over HTTP (without TLS) for gRPC
+            AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnconditionalHttp2Mode", true);
+            AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
             // Get the directory of the executable - this is always correct
             string executablePath = AppContext.BaseDirectory;
             
@@ -122,7 +126,7 @@ namespace AthalaSIEM.Agent
 ""Agent"": {
   ""AgentName"": ""AthalaSIEM Agent"",
   ""BackendApiUrl"": ""http://localhost:9595"",
-  ""BackendGrpcUrl"": ""http://localhost:9595""
+  ""BackendGrpcUrl"": ""http://localhost:50051""
 }
 }";
                     File.WriteAllText(fallbackConfigPath, minimalConfig);
@@ -158,7 +162,7 @@ namespace AthalaSIEM.Agent
   ""Agent"": {
     ""AgentName"": ""AthalaSIEM Agent"",
     ""BackendApiUrl"": ""http://localhost:9595"",
-    ""BackendGrpcUrl"": ""http://localhost:9595""
+    ""BackendGrpcUrl"": ""http://localhost:50051""
   }
 }";
                             File.WriteAllText(fallbackPath, minimalConfig);
@@ -458,6 +462,7 @@ namespace AthalaSIEM.Agent
         /// </summary>
         private static async Task ShowConfigurationUI(IServiceProvider services, string token = "")
         {
+            await Task.CompletedTask;
             var logger = services.GetRequiredService<ILogger<Program>>();
             logger.LogInformation("Configuration UI requested{0}", 
                 !string.IsNullOrEmpty(token) ? " with deployment token" : "");
@@ -504,7 +509,8 @@ namespace AthalaSIEM.Agent
                 .UseContentRoot(AppContext.BaseDirectory) // Force content root to be the executable directory
                 .UseWindowsService(options =>
                 {
-                    options.ServiceName = "AthalaSIEM Agent";
+                    // MUST match the service Name in AgentInstaller.wxs (no space)
+                    options.ServiceName = "AthalaSIEMAgent";
                 })
                 .ConfigureHostConfiguration(config => 
                 {
@@ -538,9 +544,11 @@ namespace AthalaSIEM.Agent
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
-                    // Configure settings
-                    var agentSettings = hostContext.Configuration.GetSection("Agent").Get<AgentSettings>();
+                    // Configure settings - bind BOTH direct singleton AND IOptions<AgentSettings>
+                    var agentSection = hostContext.Configuration.GetSection("Agent");
+                    var agentSettings = agentSection.Get<AgentSettings>();
                     services.AddSingleton(agentSettings ?? new AgentSettings());
+                    services.Configure<AgentSettings>(agentSection);
 
                     // Register agent identity service first since it provides the agent ID
                     services.AddSingleton<IAgentIdentityService, AgentIdentityService>();
@@ -646,23 +654,19 @@ namespace AthalaSIEM.Agent
                         }
                     }
 
-                    // Register gRPC client
+                    // Register gRPC client (insecure channel when UseInsecureGrpcChannel is true)
                     services.AddGrpcClient<SiemService.SiemServiceClient>((services, options) =>
                     {
                         var settings = hostContext.Configuration.GetSection("Agent").Get<AgentSettings>();
-                        options.Address = new Uri(settings?.BackendGrpcUrl ?? "http://localhost:9595");
-                    })
-                    .ConfigurePrimaryHttpMessageHandler(() =>
-                    {
-                        return new HttpClientHandler
-                        {
-                            ServerCertificateCustomValidationCallback = 
-                                HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-                        };
+                        var grpcUrl = settings?.BackendGrpcUrl ?? "http://localhost:50051";
+                        if (settings?.UseInsecureGrpcChannel == true && grpcUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                            grpcUrl = "http://" + grpcUrl.Substring(8);
+                        options.Address = new Uri(grpcUrl);
                     })
                     .ConfigureChannel(options =>
                     {
-                        // Configure for HTTP/2 gRPC communication
+                        options.Credentials = ChannelCredentials.Insecure;
+                        options.UnsafeUseInsecureChannelCallCredentials = true;
                         options.HttpHandler = new SocketsHttpHandler
                         {
                             KeepAlivePingDelay = TimeSpan.FromSeconds(60),
@@ -670,9 +674,6 @@ namespace AthalaSIEM.Agent
                             PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
                             EnableMultipleHttp2Connections = true
                         };
-                        
-                        // Allow insecure connections for development
-                        options.UnsafeUseInsecureChannelCallCredentials = true;
                     })
                     .AddPolicyHandler(GetRetryPolicy());
 
@@ -809,9 +810,11 @@ namespace AthalaSIEM.Agent
 
         private static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
         {
-            // Configure settings
-            var agentSettings = configuration.GetSection("Agent").Get<AgentSettings>();
+            // Configure settings - bind BOTH direct singleton AND IOptions<AgentSettings>
+            var agentSection = configuration.GetSection("Agent");
+            var agentSettings = agentSection.Get<AgentSettings>();
             services.AddSingleton(agentSettings ?? new AgentSettings());
+            services.Configure<AgentSettings>(agentSection);
 
             // Register agent identity service first since it provides the agent ID
             services.AddSingleton<IAgentIdentityService, AgentIdentityService>();
@@ -917,23 +920,19 @@ namespace AthalaSIEM.Agent
                 }
             }
 
-            // Register gRPC client
+            // Register gRPC client (insecure channel when UseInsecureGrpcChannel is true)
             services.AddGrpcClient<SiemService.SiemServiceClient>((services, options) =>
             {
                 var settings = configuration.GetSection("Agent").Get<AgentSettings>();
-                options.Address = new Uri(settings?.BackendGrpcUrl ?? "http://localhost:9595");
-            })
-            .ConfigurePrimaryHttpMessageHandler(() =>
-            {
-                return new HttpClientHandler
-                {
-                    ServerCertificateCustomValidationCallback = 
-                        HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
-                };
+                var grpcUrl = settings?.BackendGrpcUrl ?? "http://localhost:50051";
+                if (settings?.UseInsecureGrpcChannel == true && grpcUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    grpcUrl = "http://" + grpcUrl.Substring(8);
+                options.Address = new Uri(grpcUrl);
             })
             .ConfigureChannel(options =>
             {
-                // Configure for HTTP/2 gRPC communication
+                options.Credentials = ChannelCredentials.Insecure;
+                options.UnsafeUseInsecureChannelCallCredentials = true;
                 options.HttpHandler = new SocketsHttpHandler
                 {
                     KeepAlivePingDelay = TimeSpan.FromSeconds(60),
@@ -941,9 +940,6 @@ namespace AthalaSIEM.Agent
                     PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
                     EnableMultipleHttp2Connections = true
                 };
-                
-                // Allow insecure connections for development
-                options.UnsafeUseInsecureChannelCallCredentials = true;
             })
             .AddPolicyHandler(GetRetryPolicy());
         }

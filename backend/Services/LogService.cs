@@ -205,23 +205,26 @@ namespace Backend.Services
             // Get total count
             var totalCount = await queryable.CountAsync();
 
-            // Apply sorting
-            if (!string.IsNullOrEmpty(query.SortBy))
+            // Apply sorting - support both SortBy/SortOrder and SortField/SortDirection
+            var sortField = query.SortField ?? query.SortBy ?? "Timestamp";
+            var sortOrder = query.SortDirection ?? query.SortOrder ?? "desc";
+            
+            if (!string.IsNullOrEmpty(sortField))
             {
-                switch (query.SortBy.ToLower())
+                switch (sortField.ToLower())
                 {
                     case "timestamp":
-                        queryable = query.SortOrder?.ToLower() == "asc" 
+                        queryable = sortOrder?.ToLower() == "asc" 
                             ? queryable.OrderBy(l => l.Timestamp)
                             : queryable.OrderByDescending(l => l.Timestamp);
                         break;
                     case "level":
-                        queryable = query.SortOrder?.ToLower() == "asc" 
+                        queryable = sortOrder?.ToLower() == "asc" 
                             ? queryable.OrderBy(l => l.Level)
                             : queryable.OrderByDescending(l => l.Level);
                         break;
                     case "source":
-                        queryable = query.SortOrder?.ToLower() == "asc" 
+                        queryable = sortOrder?.ToLower() == "asc" 
                             ? queryable.OrderBy(l => l.Source)
                             : queryable.OrderByDescending(l => l.Source);
                         break;
@@ -235,16 +238,17 @@ namespace Backend.Services
                 queryable = queryable.OrderByDescending(l => l.Timestamp);
             }
 
-            // Apply pagination
+            // Apply pagination - use ToListAsync first, then map (to avoid EF Core projection issue)
             var logs = await queryable
                 .Skip(query.Offset)
                 .Take(query.Limit)
-                .Select(l => MapToLogEntryDto(l))
                 .ToListAsync();
+
+            var mappedLogs = logs.Select(l => MapToLogEntryDto(l)).ToList();
 
             return new PaginatedResult<LogEntryDto>
             {
-                Items = logs,
+                Items = mappedLogs,
                 TotalCount = totalCount,
                 Page = (query.Offset / query.Limit) + 1,
                 PageSize = query.Limit
@@ -289,20 +293,23 @@ namespace Backend.Services
         /// <returns>Log summary statistics</returns>
         public async Task<LogSummaryDto> GetLogSummaryAsync(DateTime startTime, DateTime endTime)
         {
-            var logs = _context.LogEntries.Where(l => l.Timestamp >= startTime && l.Timestamp <= endTime);
+            var logsQuery = _context.LogEntries.Where(l => l.Timestamp >= startTime && l.Timestamp <= endTime);
 
-            var totalLogs = await logs.CountAsync();
-            var logsByLevel = await logs.GroupBy(l => l.Level)
-                .Select(g => new { Level = g.Key, Count = g.Count() })
-                .ToDictionaryAsync(x => x.Level, x => x.Count);
+            var totalLogs = await logsQuery.CountAsync();
+            
+            // Get logs by level - fetch all and group in memory to avoid EF projection issues
+            var allLogs = await logsQuery.ToListAsync();
+            var logsByLevel = allLogs
+                .GroupBy(l => l.Level ?? "Unknown")
+                .ToDictionary(g => g.Key, g => g.Count());
 
-            var logsBySource = await logs.GroupBy(l => l.Source)
-                .Select(g => new { Source = g.Key, Count = g.Count() })
-                .ToDictionaryAsync(x => x.Source, x => x.Count);
+            var logsBySource = allLogs
+                .GroupBy(l => l.Source ?? "Unknown")
+                .ToDictionary(g => g.Key, g => g.Count());
 
-            var logsByAgent = await logs.GroupBy(l => l.AgentId)
-                .Select(g => new { AgentId = g.Key, Count = g.Count() })
-                .ToDictionaryAsync(x => x.AgentId, x => x.Count);
+            var logsByAgent = allLogs
+                .GroupBy(l => l.AgentId ?? "Unknown")
+                .ToDictionary(g => g.Key, g => g.Count());
 
             var criticalCount = logsByLevel.GetValueOrDefault("Critical", 0) + logsByLevel.GetValueOrDefault("Error", 0);
             var errorCount = logsByLevel.GetValueOrDefault("Error", 0);
@@ -312,8 +319,8 @@ namespace Backend.Services
             var timeSpan = endTime - startTime;
             var logsPerHour = timeSpan.TotalHours > 0 ? totalLogs / timeSpan.TotalHours : 0;
 
-            // Get hourly breakdown
-            var hourlyBreakdown = await logs
+            // Get hourly breakdown in memory
+            var hourlyBreakdown = allLogs
                 .GroupBy(l => new { 
                     Year = l.Timestamp.Year, 
                     Month = l.Timestamp.Month, 
@@ -324,10 +331,10 @@ namespace Backend.Services
                 {
                     Hour = new DateTime(g.Key.Year, g.Key.Month, g.Key.Day, g.Key.Hour, 0, 0),
                     Count = g.Count(),
-                    ByLevel = g.GroupBy(l => l.Level).ToDictionary(lg => lg.Key, lg => lg.Count())
+                    ByLevel = g.GroupBy(lg => lg.Level ?? "Unknown").ToDictionary(lg => lg.Key, lg => lg.Count())
                 })
                 .OrderBy(h => h.Hour)
-                .ToListAsync();
+                .ToList();
 
             return new LogSummaryDto
             {
@@ -481,10 +488,9 @@ namespace Backend.Services
             var logs = await _context.LogEntries
                 .OrderByDescending(l => l.Timestamp)
                 .Take(limit)
-                .Select(l => MapToLogEntryDto(l))
                 .ToListAsync();
                 
-            return logs;
+            return logs.Select(l => MapToLogEntryDto(l)).ToList();
         }
 
         /// <summary>
@@ -498,10 +504,9 @@ namespace Backend.Services
                 .Where(l => l.Level == "Critical" || l.Level == "Error")
                 .OrderByDescending(l => l.Timestamp)
                 .Take(limit)
-                .Select(l => MapToLogEntryDto(l))
                 .ToListAsync();
                 
-            return logs;
+            return logs.Select(l => MapToLogEntryDto(l)).ToList();
         }
 
         /// <summary>

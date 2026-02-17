@@ -73,7 +73,7 @@ export const logService = {
         id: dto.id,
         agentId: dto.agentId || '',
         timestamp: typeof dto.timestamp === 'string' ? dto.timestamp : new Date(dto.timestamp).toISOString(),
-        source: dto.source || dto.category || 'Unknown',
+        source: dto.source || 'Unknown',
         level: dto.level || 'Information',
         message: dto.message || '',
         severity: severity,
@@ -81,9 +81,11 @@ export const logService = {
         processId: dto.processId,
         processName: dto.processName,
         threadId: dto.threadId,
-        machineName: dto.machineName || dto.computerName || '',
-        ipAddress: dto.ipAddress || dto.clientIp || '',
-        username: dto.username || dto.userId || '',
+        machineName: dto.machineName || (dto as any).computerName || '',
+        ipAddress: dto.ipAddress || (dto as any).clientIp || '',
+        username: dto.username || (dto as any).userId || '',
+        category: dto.category || '',
+        properties: dto.properties || {},
       };
     });
     

@@ -53,13 +53,26 @@ public class LogNormalizationWorker : BackgroundService
                 // Collect batch
                 while (batch.Count < BatchSize && DateTime.UtcNow < batchTimeout)
                 {
+                    if (stoppingToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
                     if (_channel.Reader.TryRead(out var logEntry))
                     {
                         batch.Add(logEntry);
                     }
                     else
                     {
-                        await Task.Delay(100, stoppingToken);
+                        try
+                        {
+                            await Task.Delay(100, stoppingToken);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // Expected when application is shutting down
+                            break;
+                        }
                     }
                 }
 
@@ -108,12 +121,15 @@ public class LogNormalizationWorker : BackgroundService
                     
                     if (existingNormalizedLog == null)
                     {
+                        // Ensure DateTime values are UTC (PostgreSQL requirement)
+                        DateTime EnsureUtc(DateTime dt) => dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
+                        
                         // Create new normalized log entry
                         var normalizedLog = new NormalizedLog
                         {
                             Id = Guid.NewGuid().ToString(),
                             LogEntryId = logEntry.Id,
-                            Timestamp = ecsFields.Timestamp,
+                            Timestamp = EnsureUtc(ecsFields.Timestamp),
                             AgentId = ecsFields.AgentId,
                             AgentName = ecsFields.AgentName,
                             HostName = ecsFields.HostName,
@@ -150,15 +166,18 @@ public class LogNormalizationWorker : BackgroundService
                             MetadataJson = ecsFields.Metadata != null
                                 ? System.Text.Json.JsonSerializer.Serialize(ecsFields.Metadata)
                                 : null,
-                            CreatedAt = DateTime.UtcNow
+                            CreatedAt = DateTime.UtcNow // Already UTC
                         };
 
                         normalizedLogsToSave.Add(normalizedLog);
                     }
                     else
                     {
+                        // Ensure DateTime values are UTC (PostgreSQL requirement)
+                        DateTime EnsureUtc(DateTime dt) => dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
+                        
                         // Update existing normalized log
-                        existingNormalizedLog.Timestamp = ecsFields.Timestamp;
+                        existingNormalizedLog.Timestamp = EnsureUtc(ecsFields.Timestamp);
                         existingNormalizedLog.SourceIp = ecsFields.SourceIp;
                         existingNormalizedLog.DestinationIp = ecsFields.DestinationIp;
                         existingNormalizedLog.EventType = ecsFields.EventType;
@@ -176,10 +195,47 @@ public class LogNormalizationWorker : BackgroundService
                         await normalizedLogRepository.UpdateAsync(existingNormalizedLog, cancellationToken);
                     }
 
-                    // Update log entry
+                    // Update log entry with normalization results
                     logEntry.NormalizedFields = ecsFields;
                     logEntry.IsNormalized = true;
                     logEntry.NormalizedAt = DateTime.UtcNow;
+
+                    // Merge enriched fields (MITRE, IPs, etc.) into the raw log's Properties
+                    // so they are accessible via the LogEntryDto.Properties on the frontend
+                    try
+                    {
+                        var existingProps = new Dictionary<string, object>();
+                        if (!string.IsNullOrEmpty(logEntry.RawProperties))
+                        {
+                            var parsed = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(logEntry.RawProperties);
+                            if (parsed != null) existingProps = parsed;
+                        }
+
+                        if (!string.IsNullOrEmpty(ecsFields.SourceIp))
+                            existingProps["sourceIp"] = ecsFields.SourceIp;
+                        if (!string.IsNullOrEmpty(ecsFields.DestinationIp))
+                            existingProps["destinationIp"] = ecsFields.DestinationIp;
+                        if (ecsFields.SourcePort.HasValue)
+                            existingProps["sourcePort"] = ecsFields.SourcePort.Value;
+                        if (ecsFields.DestinationPort.HasValue)
+                            existingProps["destinationPort"] = ecsFields.DestinationPort.Value;
+                        if (!string.IsNullOrEmpty(ecsFields.UserName))
+                            existingProps["userName"] = ecsFields.UserName;
+                        if (!string.IsNullOrEmpty(ecsFields.ProcessName))
+                            existingProps["processName"] = ecsFields.ProcessName;
+                        if (!string.IsNullOrEmpty(ecsFields.EventType))
+                            existingProps["eventType"] = ecsFields.EventType;
+                        if (!string.IsNullOrEmpty(ecsFields.SiemTechniqueId))
+                            existingProps["siemTechniqueId"] = ecsFields.SiemTechniqueId;
+                        if (ecsFields.Metadata != null && ecsFields.Metadata.ContainsKey("mitre_techniques"))
+                            existingProps["mitre_techniques"] = ecsFields.Metadata["mitre_techniques"];
+
+                        logEntry.RawProperties = System.Text.Json.JsonSerializer.Serialize(existingProps);
+                    }
+                    catch (Exception propEx)
+                    {
+                        _logger.LogDebug(propEx, "Non-critical: failed to merge enriched properties for log {LogId}", logEntry.Id);
+                    }
 
                     await logRepository.UpdateAsync(logEntry, cancellationToken);
 

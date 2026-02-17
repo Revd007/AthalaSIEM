@@ -114,6 +114,8 @@ export interface LogEntry {
   ipAddress?: string;
   username?: string;
   severity: Severity;
+  category?: string;
+  properties?: Record<string, any>;
 }
 
 export interface LogQueryParams {

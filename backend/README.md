@@ -6,7 +6,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-14+-blue)](https://www.postgresql.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-## 📋 Table of Contents
+##  Table of Contents
 
 - [Overview](#overview)
 - [Features](#features)
@@ -39,36 +39,36 @@ The AthalaSIEM Backend is a production-grade ASP.NET Core 8.0 application that p
 ## ✨ Features
 
 ### Core Functionality
-- ✅ REST API for frontend and agent communication
-- ✅ gRPC for high-performance agent communication
-- ✅ PostgreSQL database with Entity Framework Core
-- ✅ JWT authentication with refresh tokens
-- ✅ Role-based access control (Admin, User, Analyst)
-- ✅ Background services for monitoring and cleanup
-- ✅ Structured logging with Serilog
-- ✅ Health checks and metrics
+-  REST API for frontend and agent communication
+-  gRPC for high-performance agent communication
+-  PostgreSQL database with Entity Framework Core
+-  JWT authentication with refresh tokens
+-  Role-based access control (Admin, User, Analyst)
+-  Background services for monitoring and cleanup
+-  Structured logging with Serilog
+-  Health checks and metrics
 
 ### Agent Management
-- ✅ Agent registration and authentication
-- ✅ Configuration management
-- ✅ Health monitoring and heartbeat tracking
-- ✅ Installer package generation
-- ✅ Deployment token management
+-  Agent registration and authentication
+-  Configuration management
+-  Health monitoring and heartbeat tracking
+-  Installer package generation
+-  Deployment token management
 
 ### Log Processing
-- ✅ High-throughput log ingestion
-- ✅ Log normalization and enrichment
-- ✅ Real-time alert generation
-- ✅ Log archiving and retention
-- ✅ Advanced search and filtering
+-  High-throughput log ingestion
+-  Log normalization and enrichment
+-  Real-time alert generation
+-  Log archiving and retention
+-  Advanced search and filtering
 
 ### Security
-- ✅ JWT token authentication
-- ✅ Password hashing (BCrypt)
-- ✅ Two-factor authentication (2FA)
-- ✅ Password policy enforcement
-- ✅ Session management
-- ✅ User hardening settings
+-  JWT token authentication
+-  Password hashing (BCrypt)
+-  Two-factor authentication (2FA)
+-  Password policy enforcement
+-  Session management
+-  User hardening settings
 
 ## 🏗️ Architecture
 
@@ -123,7 +123,7 @@ The AthalaSIEM Backend is a production-grade ASP.NET Core 8.0 application that p
 5. **DTOs**: Data transfer objects
 6. **Infrastructure**: External service integrations
 
-## 📋 Prerequisites
+##  Prerequisites
 
 ### Required
 - .NET 8.0 SDK (for development) or Runtime (for production)

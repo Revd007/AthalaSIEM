@@ -1,51 +1,26 @@
 'use client'
 
-import React, { useMemo } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
-import { useQuery } from '@tanstack/react-query';
-import { logService } from '@/services/log-service';
-import { Skeleton } from '@/components/ui/skeleton';
+import React from 'react'
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
+import { useEventsDistribution, useSeverityDistribution } from '@/services/analytics-service'
+import { Skeleton } from '@/components/ui/skeleton'
 
-const COLORS = ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899'];
+const COLORS = ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316']
 
 export function SecurityEvents() {
-  // Check if user is authenticated before making API calls
-  const isAuthenticated = typeof window !== 'undefined' && !!localStorage.getItem('token');
-  
-  const { data: logsData, isLoading } = useQuery({
-    queryKey: ['security-events-distribution'],
-    queryFn: async () => {
-      const end = new Date();
-      const start = new Date();
-      start.setDate(start.getDate() - 7); // Last 7 days
-      return await logService.getLogs({
-        startDate: start.toISOString(),
-        endDate: end.toISOString(),
-        limit: 10000
-      });
-    },
-    enabled: isAuthenticated, // Only run query if authenticated
-    refetchInterval: 60000, // Refresh every minute
-  });
+  const { data: categoryData, isLoading: catLoading } = useEventsDistribution()
+  const { data: severityData, isLoading: sevLoading } = useSeverityDistribution()
 
-  const distributionData = useMemo(() => {
-    if (!logsData?.items) return [];
+  const isLoading = catLoading || sevLoading
 
-    const categoryCounts: Record<string, number> = {};
-    
-    logsData.items.forEach((log) => {
-      const category = log.source || log.category || 'Other';
-      categoryCounts[category] = (categoryCounts[category] || 0) + 1;
-    });
-
-    // Get top 6 categories
-    const sorted = Object.entries(categoryCounts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 6)
-      .map(([name, value]) => ({ name, value }));
-
-    return sorted;
-  }, [logsData]);
+  // Prefer category distribution; fall back to severity if only one category exists
+  const distributionData = React.useMemo(() => {
+    if (categoryData && categoryData.length > 1) return categoryData
+    if (severityData && severityData.length > 0) {
+      return severityData.map(s => ({ name: s.name, value: s.value }))
+    }
+    return categoryData ?? []
+  }, [categoryData, severityData])
 
   if (isLoading) {
     return (
@@ -53,7 +28,7 @@ export function SecurityEvents() {
         <h2 className="text-lg font-semibold mb-4">Security Events Distribution</h2>
         <Skeleton className="h-80 w-full" />
       </div>
-    );
+    )
   }
 
   if (distributionData.length === 0) {
@@ -61,10 +36,10 @@ export function SecurityEvents() {
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
         <h2 className="text-lg font-semibold mb-4">Security Events Distribution</h2>
         <div className="h-80 flex items-center justify-center text-gray-500">
-          No events data available
+          No events data — logs will appear as they are ingested
         </div>
       </div>
-    );
+    )
   }
 
   return (
@@ -81,16 +56,17 @@ export function SecurityEvents() {
               outerRadius={80}
               paddingAngle={5}
               dataKey="value"
+              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
             >
-              {distributionData.map((entry, index) => (
+              {distributionData.map((_, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Pie>
-            <Tooltip />
+            <Tooltip formatter={(value: number) => [`${value} events`, 'Count']} />
             <Legend />
           </PieChart>
         </ResponsiveContainer>
       </div>
     </div>
-  );
+  )
 }

@@ -4,7 +4,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recha
 import { useEventsDistribution } from '@/services/analytics-service'
 import { Skeleton } from '@/components/ui/skeleton'
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316']
 
 export function EventsDistribution() {
   const { data, isLoading } = useEventsDistribution()
@@ -13,12 +13,20 @@ export function EventsDistribution() {
     return <Skeleton className="h-64 w-full" />
   }
 
-  const chartData = data || [
-    { name: 'Authentication', value: 45 },
-    { name: 'Network', value: 30 },
-    { name: 'System', value: 15 },
-    { name: 'Application', value: 10 }
-  ]
+  const chartData = data && data.length > 0 ? data : []
+
+  if (chartData.length === 0) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          Events Distribution
+        </h3>
+        <div className="flex items-center justify-center h-64 text-gray-400">
+          No event data available yet — logs will appear as they are ingested
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
@@ -43,7 +51,7 @@ export function EventsDistribution() {
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Pie>
-            <Tooltip 
+            <Tooltip
               formatter={(value: number) => [`${value} events`, 'Count']}
             />
             <Legend />

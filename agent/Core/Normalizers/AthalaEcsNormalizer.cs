@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using AthalaSIEM.Agent.Security;
 using Microsoft.Extensions.Logging;
 using AthalaSIEM.Agent.Core.Pipeline;
 
@@ -10,21 +11,22 @@ namespace AthalaSIEM.Agent.Core.Normalizers;
 
 public class AthalaEcsNormalizer : INormalizer
 {
+    private const string PlaceholderAgentId = "unregistered-agent";
     private readonly ILogger<AthalaEcsNormalizer> _logger;
-    private readonly string _agentId;
     private readonly string _agentName;
     private readonly string _hostName;
+    private readonly IAgentIdentityService? _identityService;
 
     public AthalaEcsNormalizer(
         ILogger<AthalaEcsNormalizer> logger,
-        string agentId,
         string agentName,
-        string hostName)
+        string hostName,
+        IAgentIdentityService? identityService = null)
     {
         _logger = logger;
-        _agentId = agentId;
         _agentName = agentName;
         _hostName = hostName;
+        _identityService = identityService;
     }
 
     public string Name => "AthalaEcsNormalizer";
@@ -34,12 +36,30 @@ public class AthalaEcsNormalizer : INormalizer
         return Task.Run(() => NormalizeInternal(parsedEvent), cancellationToken);
     }
 
+    /// <summary>
+    /// Resolve agent ID lazily so we do not call GetAgentIdAsync at DI/startup (avoids "Cannot get agent ID" before registration).
+    /// </summary>
+    private string GetCurrentAgentId()
+    {
+        if (_identityService == null)
+            return PlaceholderAgentId;
+        try
+        {
+            var id = _identityService.GetAgentIdAsync().GetAwaiter().GetResult();
+            return !string.IsNullOrEmpty(id) ? id : PlaceholderAgentId;
+        }
+        catch
+        {
+            return PlaceholderAgentId;
+        }
+    }
+
     private INormalizedEvent NormalizeInternal(IParsedEvent parsedEvent)
     {
         var ecs = new AthalaEcsFields
         {
             Timestamp = parsedEvent.Timestamp,
-            AgentId = _agentId,
+            AgentId = GetCurrentAgentId(),
             AgentName = _agentName,
             HostName = _hostName,
             HostOs = GetHostOs()
@@ -52,6 +72,18 @@ public class AthalaEcsNormalizer : INormalizer
             ["athala.source_type"] = parsedEvent.SourceType,
             ["athala.pipeline_stage"] = "normalized"
         };
+
+        // CRITICAL: Extract and preserve human-readable message
+        string? humanReadableMessage = null;
+        if (parsedEvent.StructuredData.TryGetValue("message", out var msgObj))
+        {
+            humanReadableMessage = msgObj?.ToString();
+        }
+        // Fallback: check raw_message
+        if (string.IsNullOrEmpty(humanReadableMessage) && parsedEvent.StructuredData.TryGetValue("raw_message", out var rawMsgObj))
+        {
+            humanReadableMessage = rawMsgObj?.ToString();
+        }
 
         foreach (var kvp in parsedEvent.StructuredData)
         {
@@ -66,7 +98,16 @@ public class AthalaEcsNormalizer : INormalizer
             MapToEcs(ecs, key, value, kvp.Value);
         }
 
-        rawEvent["athala.raw_event"] = System.Text.Encoding.UTF8.GetString(parsedEvent.OriginalRawEvent.RawData);
+        // Ensure message is always in RawEvent for frontend display
+        if (!string.IsNullOrEmpty(humanReadableMessage) && !rawEvent.ContainsKey("message"))
+        {
+            rawEvent["message"] = humanReadableMessage;
+        }
+
+        var rawBytes = parsedEvent.OriginalRawEvent?.RawData;
+        rawEvent["athala.raw_event"] = (rawBytes != null && rawBytes.Length > 0)
+            ? System.Text.Encoding.UTF8.GetString(rawBytes)
+            : string.Empty;
 
         return new NormalizedEvent
         {

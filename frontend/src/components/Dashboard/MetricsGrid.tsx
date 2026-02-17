@@ -1,115 +1,74 @@
 'use client'
 
-import React from 'react';
-import { AlertCircle, Shield, Activity, Network, Users, Clock } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
-import { Skeleton } from '@/components/ui/skeleton';
-import { useAlerts } from '@/services/alert-service';
-import { logService } from '@/services/log-service';
-import { agentService } from '@/services/agent-service';
-
-interface MetricsData {
-  eventsPerSecond: number;
-  criticalAlerts: number;
-  threatsBlocked: number;
-  activeUsers: number;
-  networkLoad: number;
-  avgResponse: number;
-  eventsChange?: number;
-  alertsChange?: number;
-  threatsChange?: number;
-  usersChange?: number;
-  networkChange?: number;
-  responseChange?: number;
-}
+import React from 'react'
+import { AlertCircle, Shield, Activity, Network, Users, Clock } from 'lucide-react'
+import { useDashboardSummary } from '@/services/analytics-service'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export function MetricsGrid() {
-  // Check if user is authenticated before making API calls
-  const isAuthenticated = typeof window !== 'undefined' && !!localStorage.getItem('token');
-  
-  // Fetch alerts for critical alerts count
-  const { data: alertsData } = useAlerts({ 
-    severity: 'critical',
-    limit: 1000,
-    status: 'new',
-    enabled: isAuthenticated
-  });
+  const { data: summary, isLoading } = useDashboardSummary()
 
-  // Fetch recent logs for events/sec calculation
-  const { data: logsData } = useQuery({
-    queryKey: ['recent-logs-metrics'],
-    queryFn: async () => {
-      const end = new Date();
-      const start = new Date();
-      start.setHours(start.getHours() - 1);
-      return await logService.getLogs({
-        startDate: start.toISOString(),
-        endDate: end.toISOString(),
-        limit: 10000
-      });
-    },
-    enabled: isAuthenticated, // Only run query if authenticated
-    refetchInterval: 30000,
-  });
-
-  // Fetch agents for active users count
-  const { data: agentsData } = useQuery({
-    queryKey: ['agents-metrics'],
-    queryFn: () => agentService.getAgents(),
-    enabled: isAuthenticated, // Only run query if authenticated
-    refetchInterval: 30000,
-  });
-
-  const criticalAlerts = alertsData?.items?.length ?? 0;
-  const totalLogs = logsData?.totalCount ?? 0;
-  const eventsPerSecond = totalLogs > 0 ? Math.round(totalLogs / 3600) : 0;
-  const activeAgents = agentsData?.filter(a => a.status === 'Online').length ?? 0;
+  const eps = summary?.eventsPerSecond ?? 0
+  const criticalAlerts = summary?.criticalCount ?? 0
+  const activeAgents = summary?.onlineAgents ?? 0
+  const totalLogs1h = summary?.totalLogs1h ?? 0
+  const totalLogs24h = summary?.totalLogs24h ?? 0
+  const totalAlerts = summary?.totalAlerts ?? 0
 
   const metrics = [
-    { 
-      label: 'Events/sec', 
-      value: eventsPerSecond.toLocaleString(), 
-      icon: Activity, 
-      change: '+0%', 
-      color: 'blue' 
+    {
+      label: 'Events/sec',
+      value: eps.toFixed(1),
+      icon: Activity,
+      detail: `${totalLogs1h.toLocaleString()} in 1h`,
+      color: 'blue'
     },
-    { 
-      label: 'Critical Alerts', 
-      value: criticalAlerts.toString(), 
-      icon: AlertCircle, 
-      change: '+0%', 
-      color: 'red' 
+    {
+      label: 'Critical / Errors',
+      value: criticalAlerts.toLocaleString(),
+      icon: AlertCircle,
+      detail: `${totalAlerts} alerts`,
+      color: 'red'
     },
-    { 
-      label: 'Active Agents', 
-      value: activeAgents.toString(), 
-      icon: Users, 
-      change: '+0%', 
-      color: 'purple' 
+    {
+      label: 'Active Agents',
+      value: `${activeAgents}/${summary?.totalAgents ?? 0}`,
+      icon: Users,
+      detail: 'online / total',
+      color: 'purple'
     },
-    { 
-      label: 'Total Logs (1h)', 
-      value: totalLogs.toLocaleString(), 
-      icon: Shield, 
-      change: '+0%', 
-      color: 'green' 
+    {
+      label: 'Total Logs (24h)',
+      value: totalLogs24h > 1000 ? `${(totalLogs24h / 1000).toFixed(1)}K` : totalLogs24h.toLocaleString(),
+      icon: Shield,
+      detail: `${totalLogs1h.toLocaleString()} last hour`,
+      color: 'green'
     },
-    { 
-      label: 'Network Load', 
-      value: 'N/A', 
-      icon: Network, 
-      change: '+0%', 
-      color: 'orange' 
+    {
+      label: 'Network Load',
+      value: `${eps.toFixed(1)}/s`,
+      icon: Network,
+      detail: 'events per second',
+      color: 'orange'
     },
-    { 
-      label: 'Avg Response', 
-      value: 'N/A', 
-      icon: Clock, 
-      change: '+0%', 
-      color: 'indigo' 
+    {
+      label: 'Avg Response',
+      value: '<1s',
+      icon: Clock,
+      detail: 'agent → backend',
+      color: 'indigo'
     },
-  ];
+  ]
+
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[1, 2, 3, 4, 5, 6].map(i => (
+          <Skeleton key={i} className="h-28 w-full rounded-lg" />
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -124,16 +83,11 @@ export function MetricsGrid() {
               <metric.icon className={`w-6 h-6 text-${metric.color}-500`} />
             </div>
           </div>
-          {metric.change && (
-            <div className="flex items-center mt-4">
-              <span className={`text-sm ${metric.change.startsWith('+') ? 'text-green-500' : 'text-red-500'}`}>
-                {metric.change}
-              </span>
-              <span className="text-sm text-gray-500 dark:text-gray-400 ml-2">vs last hour</span>
-            </div>
-          )}
+          <div className="flex items-center mt-4">
+            <span className="text-sm text-gray-500 dark:text-gray-400">{metric.detail}</span>
+          </div>
         </div>
       ))}
     </div>
-  );
+  )
 }

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
@@ -61,47 +63,129 @@ namespace AthalaSIEM.Agent.Services
         /// <returns>A task representing the asynchronous operation</returns>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            _logger.LogInformation("═══════════════════════════════════════════════════════════");
             _logger.LogInformation("Athala SIEM Agent starting at: {time}", DateTimeOffset.Now);
+            _logger.LogInformation("═══════════════════════════════════════════════════════════");
 
-            try
+            // Check admin privileges (Windows only)
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                // Register agent if not already registered
-                _isRegistered = await _identityService.IsRegisteredAsync();
-                if (!_isRegistered)
+                try
                 {
-                    _logger.LogInformation("Agent not registered. Attempting registration...");
-                    var registrationResult = await _identityService.RegisterAgentAsync();
-                    
-                    _isRegistered = registrationResult.Success;
-                    
-                    if (!_isRegistered)
+                    using var identity = WindowsIdentity.GetCurrent();
+                    var principal = new WindowsPrincipal(identity);
+                    var isAdmin = principal.IsInRole(WindowsBuiltInRole.Administrator);
+                    if (isAdmin)
                     {
-                        _logger.LogWarning("Agent registration failed: {ErrorMessage}", registrationResult.Message);
-                        _logger.LogWarning("Will retry on next startup.");
+                        _logger.LogInformation("Running with Administrator privileges. All event logs accessible.");
                     }
                     else
                     {
-                        _logger.LogInformation("Agent registered successfully with ID: {AgentId}", registrationResult.AgentId);
+                        _logger.LogWarning(
+                            "Running WITHOUT Administrator privileges. Security event log will NOT be accessible. " +
+                            "To collect Security logs, run as Administrator or install as a Windows Service with LocalSystem account.");
                     }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Could not determine privilege level");
+                }
+            }
+
+            try
+            {
+                _logger.LogInformation("Step 1: Checking agent identity status...");
+                
+                // Force reload identity from disk so we never use stale in-memory state
+                var hasValidIdentity = await _identityService.HasValidIdentityAsync();
+                _isRegistered = await _identityService.IsRegisteredAsync();
+                
+                _logger.LogInformation("Step 1 Result: HasValidIdentity={HasValid}, IsRegistered={IsRegistered}",
+                    hasValidIdentity, _isRegistered);
+
+                if (!_isRegistered)
+                {
+                    _logger.LogInformation("═══════════════════════════════════════════════════════════");
+                    _logger.LogInformation("Step 2: Agent is NOT registered. Starting registration flow...");
+                    _logger.LogInformation("═══════════════════════════════════════════════════════════");
+                    await AttemptRegistrationAsync();
+                    
+                    // Re-check after registration attempt
+                    _isRegistered = await _identityService.IsRegisteredAsync();
+                    _logger.LogInformation("Step 2 Result: After registration attempt, IsRegistered={IsRegistered}", _isRegistered);
                 }
                 else
                 {
-                    _logger.LogInformation("Agent already registered.");
-                    
-                    // Validate API key
+                    _logger.LogInformation("Agent already registered. Validating API key...");
                     bool isApiKeyValid = await _identityService.ValidateApiKeyAsync();
                     if (!isApiKeyValid)
                     {
                         _logger.LogWarning("API key validation failed. Attempting to rotate API key...");
-                        await _identityService.RotateApiKeyAsync();
+                        bool rotated = await _identityService.RotateApiKeyAsync();
+                        if (!rotated)
+                        {
+                            // RotateApiKey clears identity when it fails, so check again
+                            _isRegistered = await _identityService.IsRegisteredAsync();
+                            _logger.LogInformation("After failed rotation: IsRegistered={IsRegistered}", _isRegistered);
+                            if (!_isRegistered)
+                            {
+                                _logger.LogInformation("Identity cleared after rotation failure. Attempting re-registration...");
+                                await AttemptRegistrationAsync();
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogInformation("API key rotated successfully.");
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogInformation("API key is valid.");
                     }
                 }
+
+                // Ready gate: do not start collectors until agent is registered
+                const int registrationRetrySeconds = 30;
+                const int maxRegistrationRetries = 20; // ~10 minutes
+                int registrationRetries = 0;
+
+                while (!_isRegistered && !stoppingToken.IsCancellationRequested)
+                {
+                    _logger.LogWarning(
+                        "Agent not registered. Collectors will not start until registration succeeds. Retry in {Seconds}s (attempt {Attempt}/{Max}).",
+                        registrationRetrySeconds, registrationRetries + 1, maxRegistrationRetries);
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(registrationRetrySeconds), stoppingToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                    await AttemptRegistrationAsync();
+                    _isRegistered = await _identityService.IsRegisteredAsync();
+                    registrationRetries++;
+                    if (registrationRetries >= maxRegistrationRetries)
+                    {
+                        _logger.LogError("Registration failed after {Count} attempts. Agent will keep retrying every {Seconds}s until service is stopped.",
+                            maxRegistrationRetries, registrationRetrySeconds);
+                        registrationRetries = 0; // Continue retrying indefinitely
+                    }
+                }
+
+                if (!_isRegistered)
+                {
+                    _logger.LogWarning("Service stopping before registration completed. No collectors started.");
+                    return;
+                }
+
+                _logger.LogInformation("Agent registered. Starting health monitoring and log collectors.");
 
                 // Start health monitoring
                 _healthMonitor.StartMonitoring();
                 _logger.LogInformation("Health monitoring started.");
 
-                // Initialize log collectors
+                // Initialize log collectors (FileIntegrity, WindowsEventLog, etc.)
                 await InitializeLogCollectorsAsync();
 
                 // Setup heartbeat timer
@@ -145,6 +229,99 @@ namespace AthalaSIEM.Agent.Services
         }
 
         /// <summary>
+        /// Attempts to register the agent with the backend (with token first, then without)
+        /// </summary>
+        private async Task AttemptRegistrationAsync()
+        {
+            _logger.LogInformation("=== STARTING AGENT REGISTRATION PROCESS ===");
+            
+            try
+            {
+                // Try with deployment token first
+                var token = _settings.Value?.DeploymentToken?.Trim();
+                _logger.LogInformation("Checking deployment token: {HasToken}", !string.IsNullOrEmpty(token) ? "PRESENT in config" : "NOT SET in config");
+                
+                if (!string.IsNullOrEmpty(token))
+                {
+                    _logger.LogInformation("Attempting registration with deployment token (length: {TokenLength} chars)...", token.Length);
+                    try
+                    {
+                        var result = await _identityService.RegisterWithTokenAsync(token);
+                        _isRegistered = result.Success;
+                        
+                        if (_isRegistered)
+                        {
+                            _logger.LogInformation("✓ SUCCESS: Agent registered with token. AgentId: {AgentId}", result.AgentId);
+                            
+                            // Verify registration persisted
+                            var verifyRegistered = await _identityService.IsRegisteredAsync();
+                            _logger.LogInformation("Registration verification: IsRegistered={IsRegistered}", verifyRegistered);
+                            
+                            if (!verifyRegistered)
+                            {
+                                _logger.LogError("⚠ WARNING: Registration succeeded but IsRegisteredAsync() returned false. Identity may not have been saved.");
+                            }
+                            
+                            return;
+                        }
+                        else
+                        {
+                            _logger.LogWarning("✗ FAILED: Registration with token failed. Error: {ErrorMessage}", result.Message);
+                        }
+                    }
+                    catch (Exception tokenEx)
+                    {
+                        _logger.LogError(tokenEx, "✗ EXCEPTION during token registration: {ErrorMessage}", tokenEx.Message);
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("No deployment token configured, skipping token-based registration.");
+                }
+
+                // Fallback: register without token
+                _logger.LogInformation("Attempting registration WITHOUT token (standard registration)...");
+                try
+                {
+                    var fallbackResult = await _identityService.RegisterAgentAsync();
+                    _isRegistered = fallbackResult.Success;
+                    
+                    if (_isRegistered)
+                    {
+                        _logger.LogInformation("✓ SUCCESS: Agent registered without token. AgentId: {AgentId}", fallbackResult.AgentId);
+                        
+                        // Verify registration persisted
+                        var verifyRegistered = await _identityService.IsRegisteredAsync();
+                        _logger.LogInformation("Registration verification: IsRegistered={IsRegistered}", verifyRegistered);
+                        
+                        if (!verifyRegistered)
+                        {
+                            _logger.LogError("⚠ WARNING: Registration succeeded but IsRegisteredAsync() returned false. Identity may not have been saved.");
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogError("✗ FAILED: Agent registration failed. Error: {ErrorMessage}. Agent will retry on next startup.", fallbackResult.Message);
+                    }
+                }
+                catch (Exception fallbackEx)
+                {
+                    _logger.LogError(fallbackEx, "✗ EXCEPTION during standard registration: {ErrorMessage}", fallbackEx.Message);
+                    _isRegistered = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "✗ CRITICAL EXCEPTION in registration process: {ErrorMessage}", ex.Message);
+                _isRegistered = false;
+            }
+            finally
+            {
+                _logger.LogInformation("=== REGISTRATION PROCESS COMPLETED. Final status: IsRegistered={IsRegistered} ===", _isRegistered);
+            }
+        }
+
+        /// <summary>
         /// Initializes the log collectors
         /// </summary>
         /// <returns>A task representing the asynchronous operation</returns>
@@ -161,8 +338,31 @@ namespace AthalaSIEM.Agent.Services
                 }
                 _activeCollectors.Clear();
 
+                // Resolve collector list: use settings, or default Windows collectors if empty on Windows
+                var collectorList = _settings.Value?.Collectors ?? new List<CollectorSettings>();
+                _logger.LogInformation("Collectors from config: {Count} configured", collectorList.Count);
+                if (collectorList.Count == 0 && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    _logger.LogInformation("No collectors configured. Using default Windows Event Log collector.");
+                    collectorList = new List<CollectorSettings>
+                    {
+                        new CollectorSettings
+                        {
+                            Type = "WindowsEventLog",
+                            Enabled = true,
+                            IntervalSeconds = 10,
+                            Properties = new Dictionary<string, string>
+                            {
+                                ["EventLogs"] = "Application,System,Security",
+                                ["CollectionMode"] = "Polling",
+                                ["MaxEvents"] = "100"
+                            }
+                        }
+                    };
+                }
+
                 // Create and start collectors based on settings
-                foreach (var collectorSetting in _settings.Value.Collectors)
+                foreach (var collectorSetting in collectorList)
                 {
                     if (!collectorSetting.Enabled)
                     {
@@ -248,7 +448,7 @@ namespace AthalaSIEM.Agent.Services
             {
                 if (!_isRegistered)
                 {
-                    _logger.LogWarning("Agent not registered. Skipping heartbeat.");
+                    _logger.LogDebug("Agent not registered. Skipping heartbeat. Registration will be retried on config refresh.");
                     return;
                 }
 
@@ -285,8 +485,20 @@ namespace AthalaSIEM.Agent.Services
             {
                 if (!_isRegistered)
                 {
-                    _logger.LogWarning("Agent not registered. Skipping configuration refresh.");
-                    return;
+                    // Silently retry registration instead of just logging a warning
+                    _logger.LogDebug("Agent not registered. Attempting re-registration before config refresh...");
+                    _isRegistered = await _identityService.IsRegisteredAsync();
+                    if (!_isRegistered)
+                    {
+                        await AttemptRegistrationAsync();
+                        _isRegistered = await _identityService.IsRegisteredAsync();
+                    }
+
+                    if (!_isRegistered)
+                    {
+                        _logger.LogWarning("Agent still not registered. Skipping configuration refresh. Will retry next cycle.");
+                        return;
+                    }
                 }
 
                 _logger.LogInformation("Refreshing agent configuration...");
@@ -295,7 +507,6 @@ namespace AthalaSIEM.Agent.Services
                 if (newConfig != null)
                 {
                     _logger.LogInformation("Received updated configuration. Reinitializing collectors...");
-                    // TODO: Update local configuration
                     await InitializeLogCollectorsAsync();
                 }
                 else

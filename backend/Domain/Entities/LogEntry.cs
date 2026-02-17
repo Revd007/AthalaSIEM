@@ -12,8 +12,11 @@ public class LogEntry
     // Raw log data
     public string RawMessage { get; set; } = string.Empty;
     public string Source { get; set; } = string.Empty;
+    public string Level { get; set; } = "Information";
     public string? Category { get; set; }
     public long? EventId { get; set; }
+    public string MachineName { get; set; } = string.Empty;
+    public string IPAddress { get; set; } = string.Empty;
     public string? RawProperties { get; set; } // JSON
     
     // Normalized ECS fields

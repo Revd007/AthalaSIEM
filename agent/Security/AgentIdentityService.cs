@@ -21,11 +21,8 @@ namespace AthalaSIEM.Agent.Security
         private readonly AgentSettings _settings;
         private readonly IEncryptionService _encryptionService;
         private readonly object _identityLock = new object();
-        private readonly string _identityFilePath;
-        private AgentIdentity _agentIdentity = new AgentIdentity {
-            AgentId = string.Empty,
-            ApiKey = string.Empty
-        };
+        private string _identityFilePath; // Not readonly - can be changed to fallback location
+        private AgentIdentity? _agentIdentity;
 
         public AgentIdentityService(
             ILogger<AgentIdentityService> logger,
@@ -38,18 +35,9 @@ namespace AthalaSIEM.Agent.Security
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _encryptionService = encryptionService ?? throw new ArgumentNullException(nameof(encryptionService));
 
-            // Set up identity file path in a standard location
-            string appDataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-                "AthalaSIEM");
-            
-            // Ensure the directory exists
-            if (!Directory.Exists(appDataFolder))
-            {
-                Directory.CreateDirectory(appDataFolder);
-            }
-
-            _identityFilePath = Path.Combine(appDataFolder, "agent_identity.json");
+            // Set up identity file path with fallback locations
+            _identityFilePath = GetIdentityFilePath();
+            _logger.LogInformation("Using identity file path: {IdentityFilePath}", _identityFilePath);
             
             // Try to load existing identity
             try
@@ -63,12 +51,72 @@ namespace AthalaSIEM.Agent.Security
         }
 
         /// <summary>
-        /// Checks if the agent is registered with the backend
+        /// Gets the identity file path, trying multiple locations with fallback
+        /// </summary>
+        private string GetIdentityFilePath()
+        {
+            // Try locations in order of preference:
+            // 1. ProgramData\AthalaSIEM (standard Windows location)
+            // 2. AppData\Local\AthalaSIEM (user-specific, usually writable)
+            // 3. Executable directory (last resort)
+            
+            var locations = new[]
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "AthalaSIEM"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AthalaSIEM"),
+                Path.Combine(AppContext.BaseDirectory, "Data")
+            };
+
+            foreach (var location in locations)
+            {
+                try
+                {
+                    if (!Directory.Exists(location))
+                    {
+                        Directory.CreateDirectory(location);
+                        _logger.LogDebug("Created directory: {Directory}", location);
+                    }
+
+                    // Test write permission by creating a temp file
+                    string testFile = Path.Combine(location, ".write_test");
+                    try
+                    {
+                        File.WriteAllText(testFile, "test");
+                        File.Delete(testFile);
+                        
+                        // This location is writable, use it
+                        string identityFile = Path.Combine(location, "agent_identity.json");
+                        _logger.LogInformation("Selected identity file location: {IdentityFile} (directory: {Directory})", identityFile, location);
+                        return identityFile;
+                    }
+                    catch (Exception writeEx)
+                    {
+                        _logger.LogWarning(writeEx, "Cannot write to {Directory}, trying next location...", location);
+                        continue;
+                    }
+                }
+                catch (Exception dirEx)
+                {
+                    _logger.LogWarning(dirEx, "Cannot create directory {Directory}, trying next location...", location);
+                    continue;
+                }
+            }
+
+            // If all locations failed, use ProgramData anyway (will fail with clear error)
+            string fallback = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "AthalaSIEM", "agent_identity.json");
+            _logger.LogWarning("All identity file locations failed. Using fallback: {FallbackPath}", fallback);
+            return fallback;
+        }
+
+        /// <summary>
+        /// Checks if the agent is registered with the backend (has valid identity file with AgentId and ApiKey).
         /// </summary>
         /// <returns>True if the agent is registered, otherwise false</returns>
         public Task<bool> IsRegisteredAsync()
         {
-            return Task.FromResult(_agentIdentity != null);
+            return Task.FromResult(_agentIdentity != null
+                && !string.IsNullOrEmpty(_agentIdentity.AgentId)
+                && !string.IsNullOrEmpty(_agentIdentity.ApiKey));
         }
 
         /// <summary>
@@ -78,7 +126,9 @@ namespace AthalaSIEM.Agent.Security
         public Task<bool> HasValidIdentityAsync()
         {
             LoadAgentIdentity();
-            return Task.FromResult(!string.IsNullOrEmpty(_agentIdentity.AgentId) && !string.IsNullOrEmpty(_agentIdentity.ApiKey));
+            return Task.FromResult(_agentIdentity != null
+                && !string.IsNullOrEmpty(_agentIdentity.AgentId)
+                && !string.IsNullOrEmpty(_agentIdentity.ApiKey));
         }
 
         /// <inheritdoc/>
@@ -100,31 +150,67 @@ namespace AthalaSIEM.Agent.Security
 
                 try
                 {
-                // Send registration request
-                var response = await _client.RegisterAgentAsync(request);
-                    
-                if (response != null && !string.IsNullOrEmpty(response.AgentId))
-                {
-                    // Create new agent identity
-                    _agentIdentity = new AgentIdentity
+                    // Send registration request via gRPC
+                    _logger.LogInformation("Sending gRPC RegisterAgent to backend...");
+                    var response = await _client.RegisterAgentAsync(request);
+
+                    // Log exactly what the backend returned so we can debug any mismatch
+                    _logger.LogInformation(
+                        "Backend RegisterAgent response: Success={Success}, AgentId='{AgentId}', ApiKey={HasApiKey}, Message='{Message}'",
+                        response?.Success,
+                        response?.AgentId ?? "(null)",
+                        !string.IsNullOrEmpty(response?.ApiKey) ? "PRESENT" : "EMPTY",
+                        response?.Message ?? "(null)");
+
+                    if (response != null && response.Success && !string.IsNullOrEmpty(response.AgentId))
                     {
-                        AgentId = response.AgentId,
-                            // Use the API key from the response or generate a fallback if empty
-                            ApiKey = !string.IsNullOrEmpty(response.ApiKey) ? response.ApiKey : GenerateFallbackApiKey(response.AgentId),
-                        RegisteredAt = DateTime.UtcNow,
-                        LastSeenAt = DateTime.UtcNow
-                    };
+                        // Create new agent identity
+                        _agentIdentity = new AgentIdentity
+                        {
+                            AgentId = response.AgentId,
+                            ApiKey = !string.IsNullOrEmpty(response.ApiKey)
+                                ? response.ApiKey
+                                : GenerateFallbackApiKey(response.AgentId),
+                            RegisteredAt = DateTime.UtcNow,
+                            LastSeenAt = DateTime.UtcNow
+                        };
 
-                    // Save agent identity
-                    SaveAgentIdentity();
+                        // Save agent identity (with retry and fallback)
+                        SaveAgentIdentity();
 
-                    _logger.LogInformation("Agent registered successfully with ID: {AgentId}", _agentIdentity.AgentId);
+                        // CRITICAL: Verify file was created - if not, registration is not persistent
+                        if (File.Exists(_identityFilePath))
+                        {
+                            var fileInfo = new FileInfo(_identityFilePath);
+                            _logger.LogInformation(
+                                "Agent registered successfully with ID: {AgentId}. Identity file saved to: {IdentityFilePath} (size: {Size} bytes)",
+                                _agentIdentity.AgentId, _identityFilePath, fileInfo.Length);
+                        }
+                        else
+                        {
+                            _logger.LogError(
+                                "CRITICAL: Agent registered but identity file was NOT saved to {IdentityFilePath}. " +
+                                "Registration will be LOST on restart! Check file permissions and disk space.",
+                                _identityFilePath);
+                        }
+
                         return AgentRegistrationResult.CreateSuccess(_agentIdentity.AgentId, _agentIdentity.ApiKey);
-                }
-                else
-                {
-                    _logger.LogError("Failed to register agent: Invalid response from backend");
-                        return AgentRegistrationResult.CreateFailure("Invalid response from backend");
+                    }
+                    else
+                    {
+                        // Log exactly WHY registration failed
+                        string reason;
+                        if (response == null)
+                            reason = "Response was null (backend unreachable or returned empty)";
+                        else if (!response.Success)
+                            reason = $"Backend returned Success=false: {response.Message ?? "no message"}";
+                        else if (string.IsNullOrEmpty(response.AgentId))
+                            reason = $"Backend returned Success=true but AgentId is empty: {response.Message ?? "no message"}";
+                        else
+                            reason = "Unknown reason";
+
+                        _logger.LogError("Failed to register agent: {Reason}", reason);
+                        return AgentRegistrationResult.CreateFailure(reason);
                     }
                 }
                 catch (Exception ex)
@@ -141,10 +227,22 @@ namespace AthalaSIEM.Agent.Security
                         LastSeenAt = DateTime.UtcNow
                     };
 
-                    // Save the local identity
+                    // Save the local identity (with retry and fallback)
                     SaveAgentIdentity();
                     
-                    _logger.LogInformation("Agent created locally with fallback ID: {AgentId}", _agentIdentity.AgentId);
+                    // CRITICAL: Verify file was created
+                    if (File.Exists(_identityFilePath))
+                    {
+                        var fileInfo = new FileInfo(_identityFilePath);
+                        _logger.LogInformation("Agent created locally with fallback ID: {AgentId}. Identity file saved to: {IdentityFilePath} (size: {Size} bytes)", 
+                            _agentIdentity.AgentId, _identityFilePath, fileInfo.Length);
+                    }
+                    else
+                    {
+                        _logger.LogError("CRITICAL: Agent created locally but identity file was NOT saved to {IdentityFilePath}. " +
+                            "Registration will be LOST on restart! Check file permissions and disk space.", _identityFilePath);
+                    }
+                    
                     return AgentRegistrationResult.CreateSuccess(_agentIdentity.AgentId, _agentIdentity.ApiKey);
                 }
             }
@@ -162,9 +260,10 @@ namespace AthalaSIEM.Agent.Security
             {
                 _logger.LogInformation("Registering agent with backend at {ServerUrl}:{ServerPort}", serverUrl, serverPort);
                 
-                // Update settings
+                // Update settings: REST and gRPC can use different ports (e.g. REST 9595, gRPC 50051)
                 _settings.BackendApiUrl = $"{(serverPort == 443 ? "https" : "http")}://{serverUrl}:{serverPort}";
-                _settings.BackendGrpcUrl = _settings.BackendApiUrl;
+                var grpcPort = serverPort == 9595 ? 50051 : serverPort;
+                _settings.BackendGrpcUrl = $"{(serverPort == 443 ? "https" : "http")}://{serverUrl}:{grpcPort}";
                 _settings.AgentName = agentName;
                 
                 // Then proceed with standard registration
@@ -203,10 +302,18 @@ namespace AthalaSIEM.Agent.Security
 
                 try
                 {
-                    // Send token registration request
+                    // Send token registration request via gRPC
+                    _logger.LogInformation("Sending gRPC RegisterAgent (with token) to backend...");
                     var response = await _client.RegisterAgentAsync(request);
-                    
-                    if (response != null && !string.IsNullOrEmpty(response.AgentId))
+
+                    _logger.LogInformation(
+                        "Backend RegisterAgent (token) response: Success={Success}, AgentId='{AgentId}', ApiKey={HasApiKey}, Message='{Message}'",
+                        response?.Success,
+                        response?.AgentId ?? "(null)",
+                        !string.IsNullOrEmpty(response?.ApiKey) ? "PRESENT" : "EMPTY",
+                        response?.Message ?? "(null)");
+
+                    if (response != null && response.Success && !string.IsNullOrEmpty(response.AgentId))
                     {
                         // Create new agent identity
                         _agentIdentity = new AgentIdentity
@@ -217,17 +324,41 @@ namespace AthalaSIEM.Agent.Security
                             LastSeenAt = DateTime.UtcNow
                         };
 
-                        // Save agent identity
+                        // Save agent identity (with retry and fallback)
                         SaveAgentIdentity();
 
-                        _logger.LogInformation("Agent registered successfully with token. Agent ID: {AgentId}", _agentIdentity.AgentId);
+                        // CRITICAL: Verify file was created
+                        if (File.Exists(_identityFilePath))
+                        {
+                            var fileInfo = new FileInfo(_identityFilePath);
+                            _logger.LogInformation(
+                                "Agent registered successfully with token. Agent ID: {AgentId}. Identity file saved to: {IdentityFilePath} (size: {Size} bytes)",
+                                _agentIdentity.AgentId, _identityFilePath, fileInfo.Length);
+                        }
+                        else
+                        {
+                            _logger.LogError(
+                                "CRITICAL: Agent registered but identity file was NOT saved to {IdentityFilePath}. " +
+                                "Registration will be LOST on restart! Check file permissions and disk space.",
+                                _identityFilePath);
+                        }
+
                         return AgentRegistrationResult.CreateSuccess(_agentIdentity.AgentId, _agentIdentity.ApiKey);
                     }
                     else
                     {
-                        string errorMessage = response?.Message ?? "Invalid response from backend";
-                        _logger.LogError("Failed to register agent with token: {ErrorMessage}", errorMessage);
-                        return AgentRegistrationResult.CreateFailure(errorMessage);
+                        string reason;
+                        if (response == null)
+                            reason = "Response was null (backend unreachable or returned empty)";
+                        else if (!response.Success)
+                            reason = $"Backend returned Success=false: {response.Message ?? "no message"}";
+                        else if (string.IsNullOrEmpty(response.AgentId))
+                            reason = $"Backend returned Success=true but AgentId is empty: {response.Message ?? "no message"}";
+                        else
+                            reason = "Unknown reason";
+
+                        _logger.LogError("Failed to register agent with token: {Reason}", reason);
+                        return AgentRegistrationResult.CreateFailure(reason);
                     }
                 }
                 catch (Exception ex)
@@ -346,7 +477,26 @@ namespace AthalaSIEM.Agent.Security
                 }
                 else
                 {
-                    _logger.LogError("Failed to rotate API key: Invalid response from backend");
+                    var msg = response?.Message ?? "Backend returned no new API key";
+                    _logger.LogError("Failed to rotate API key: {Message}", msg);
+
+                    // Rotation failed - clear local identity so the agent can re-register.
+                    // This handles ALL failure modes: agent not found, invalid key, invalid response, etc.
+                    try
+                    {
+                        if (File.Exists(_identityFilePath))
+                        {
+                            File.Delete(_identityFilePath);
+                            _logger.LogWarning("Deleted identity file after failed rotation.");
+                        }
+                        lock (_identityLock) { _agentIdentity = null; }
+                        _logger.LogWarning("Local identity cleared after failed API key rotation. Re-registration will be attempted.");
+                    }
+                    catch (Exception clearEx)
+                    {
+                        _logger.LogWarning(clearEx, "Could not clear identity file after failed rotation");
+                    }
+
                     return false;
                 }
             }
@@ -361,7 +511,11 @@ namespace AthalaSIEM.Agent.Security
         {
             if (!File.Exists(_identityFilePath))
             {
-                _logger.LogInformation("Agent identity file not found at {IdentityFilePath}", _identityFilePath);
+                _logger.LogInformation("Agent identity file not found at {IdentityFilePath}. This is normal on first run - agent will register and create the file.", _identityFilePath);
+                lock (_identityLock)
+                {
+                    _agentIdentity = null;
+                }
                 return;
             }
 
@@ -370,8 +524,9 @@ namespace AthalaSIEM.Agent.Security
                 // Read encrypted identity file
                 byte[] encryptedJson = File.ReadAllBytes(_identityFilePath);
                 
-                // Decrypt identity
-                byte[] decryptedJson = _encryptionService.Decrypt(encryptedJson, Encoding.UTF8.GetBytes(GenerateMachineSpecificKey()));
+                // Decrypt identity using machine-specific key (32 bytes)
+                byte[] machineKey = GenerateMachineSpecificKey();
+                byte[] decryptedJson = _encryptionService.Decrypt(encryptedJson, machineKey);
                 string json = Encoding.UTF8.GetString(decryptedJson);
                 
                 // Deserialize identity
@@ -383,20 +538,55 @@ namespace AthalaSIEM.Agent.Security
                     }) ?? new AgentIdentity { AgentId = string.Empty, ApiKey = string.Empty };
                 }
 
-                if (_agentIdentity != null)
+                if (_agentIdentity != null && !string.IsNullOrEmpty(_agentIdentity.AgentId) && !string.IsNullOrEmpty(_agentIdentity.ApiKey))
                 {
                     _logger.LogInformation("Successfully loaded agent identity with ID: {AgentId}", _agentIdentity.AgentId);
                 }
                 else
                 {
-                    _logger.LogWarning("Loaded agent identity is null");
+                    _logger.LogWarning("Loaded agent identity is invalid (empty AgentId or ApiKey). Will re-register.");
+                    lock (_identityLock)
+                    {
+                        _agentIdentity = null;
+                    }
+                }
+            }
+            catch (ArgumentException argEx) when (argEx.Message.Contains("Key must be 32 bytes") || argEx.ParamName == "key")
+            {
+                // File was encrypted with old key format (Base64 string converted to bytes = >32 bytes)
+                // Delete the corrupt file so agent can create a new one with correct format
+                _logger.LogWarning("Identity file was encrypted with incompatible key format (old version). Deleting corrupt file: {IdentityFilePath}", _identityFilePath);
+                try
+                {
+                    File.Delete(_identityFilePath);
+                    _logger.LogInformation("Deleted corrupt identity file. Agent will create a new identity on registration.");
+                }
+                catch (Exception deleteEx)
+                {
+                    _logger.LogWarning(deleteEx, "Could not delete corrupt identity file. Please delete manually: {IdentityFilePath}", _identityFilePath);
+                }
+                lock (_identityLock)
+                {
+                    _agentIdentity = null;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading agent identity from {IdentityFilePath}", _identityFilePath);
-                _agentIdentity = new AgentIdentity { AgentId = string.Empty, ApiKey = string.Empty };
-                throw;
+                // Other decryption errors - file might be corrupted or encrypted with different key
+                _logger.LogWarning(ex, "Error decrypting identity file (possibly corrupted or wrong key). Deleting file: {IdentityFilePath}", _identityFilePath);
+                try
+                {
+                    File.Delete(_identityFilePath);
+                    _logger.LogInformation("Deleted corrupt identity file. Agent will create a new identity on registration.");
+                }
+                catch (Exception deleteEx)
+                {
+                    _logger.LogWarning(deleteEx, "Could not delete corrupt identity file. Please delete manually: {IdentityFilePath}", _identityFilePath);
+                }
+                lock (_identityLock)
+                {
+                    _agentIdentity = null;
+                }
             }
         }
 
@@ -408,34 +598,187 @@ namespace AthalaSIEM.Agent.Security
                 return;
             }
 
-            try
+            const int maxRetries = 3;
+            int retryCount = 0;
+            
+            while (retryCount < maxRetries)
             {
-                // Serialize identity
-                string json;
-                lock (_identityLock)
+                try
                 {
-                    json = JsonSerializer.Serialize(_agentIdentity, new JsonSerializerOptions
+                    // Serialize identity
+                    string json;
+                    lock (_identityLock)
                     {
-                        WriteIndented = true
-                    });
+                        json = JsonSerializer.Serialize(_agentIdentity, new JsonSerializerOptions
+                        {
+                            WriteIndented = true
+                        });
+                    }
+                    
+                    // Encrypt identity using machine-specific key (32 bytes)
+                    byte[] jsonBytes = Encoding.UTF8.GetBytes(json);
+                    byte[] machineKey = GenerateMachineSpecificKey();
+                    byte[] encryptedJson = _encryptionService.Encrypt(jsonBytes, machineKey);
+                    
+                    // Ensure directory exists
+                    string? directory = Path.GetDirectoryName(_identityFilePath);
+                    if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                        _logger.LogDebug("Created directory for identity file: {Directory}", directory);
+                    }
+                    
+                    // Write to file
+                    File.WriteAllBytes(_identityFilePath, encryptedJson);
+                    
+                    // CRITICAL: Verify file was actually written
+                    if (!File.Exists(_identityFilePath))
+                    {
+                        throw new IOException($"File was not created after write operation: {_identityFilePath}");
+                    }
+                    
+                    // Verify file size matches
+                    var fileInfo = new FileInfo(_identityFilePath);
+                    if (fileInfo.Length != encryptedJson.Length)
+                    {
+                        throw new IOException($"File size mismatch. Expected {encryptedJson.Length} bytes, got {fileInfo.Length} bytes.");
+                    }
+                    
+                    _logger.LogInformation("Agent identity saved successfully to: {IdentityFilePath} (size: {Size} bytes)", 
+                        _identityFilePath, encryptedJson.Length);
+                    return; // Success - exit retry loop
                 }
-                
-                // Encrypt identity
-                byte[] jsonBytes = Encoding.UTF8.GetBytes(json);
-                byte[] encryptedJson = _encryptionService.Encrypt(jsonBytes, Encoding.UTF8.GetBytes(GenerateMachineSpecificKey()));
-                
-                // Write to file
-                File.WriteAllBytes(_identityFilePath, encryptedJson);
-                
-                _logger.LogDebug("Agent identity saved successfully");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to save agent identity");
+                catch (UnauthorizedAccessException uaEx)
+                {
+                    _logger.LogError(uaEx, "Permission denied writing to {IdentityFilePath}. Attempt {Attempt}/{MaxRetries}. Error: {ErrorMessage}", 
+                        _identityFilePath, retryCount + 1, maxRetries, uaEx.Message);
+                    
+                    if (retryCount == maxRetries - 1)
+                    {
+                        // Last attempt failed - try fallback location
+                        _logger.LogWarning("All attempts failed. Trying fallback location...");
+                        TrySaveToFallbackLocation();
+                        return;
+                    }
+                    
+                    retryCount++;
+                    System.Threading.Thread.Sleep(500 * retryCount); // Exponential backoff
+                }
+                catch (DirectoryNotFoundException dirEx)
+                {
+                    _logger.LogWarning(dirEx, "Directory not found for {IdentityFilePath}. Attempt {Attempt}/{MaxRetries}. Creating directory...", 
+                        _identityFilePath, retryCount + 1, maxRetries);
+                    
+                    try
+                    {
+                        string? directory = Path.GetDirectoryName(_identityFilePath);
+                        if (!string.IsNullOrEmpty(directory))
+                        {
+                            Directory.CreateDirectory(directory);
+                            retryCount++; // Retry write after creating directory
+                            continue;
+                        }
+                    }
+                    catch (Exception createDirEx)
+                    {
+                        string? dirName = Path.GetDirectoryName(_identityFilePath);
+                        _logger.LogError(createDirEx, "Failed to create directory: {Directory}", dirName ?? "unknown");
+                    }
+                    
+                    if (retryCount == maxRetries - 1)
+                    {
+                        TrySaveToFallbackLocation();
+                        return;
+                    }
+                    
+                    retryCount++;
+                }
+                catch (IOException ioEx)
+                {
+                    _logger.LogWarning(ioEx, "IO error saving identity file. Attempt {Attempt}/{MaxRetries}. Error: {ErrorMessage}", 
+                        retryCount + 1, maxRetries, ioEx.Message);
+                    
+                    if (retryCount == maxRetries - 1)
+                    {
+                        TrySaveToFallbackLocation();
+                        return;
+                    }
+                    
+                    retryCount++;
+                    System.Threading.Thread.Sleep(500 * retryCount);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Unexpected error saving agent identity to {IdentityFilePath}. Attempt {Attempt}/{MaxRetries}. Error: {ErrorMessage}", 
+                        _identityFilePath, retryCount + 1, maxRetries, ex.Message);
+                    
+                    if (retryCount == maxRetries - 1)
+                    {
+                        TrySaveToFallbackLocation();
+                        return;
+                    }
+                    
+                    retryCount++;
+                    System.Threading.Thread.Sleep(500 * retryCount);
+                }
             }
         }
 
-        private string GenerateMachineSpecificKey()
+        /// <summary>
+        /// Tries to save identity to a fallback location if primary location fails
+        /// </summary>
+        private void TrySaveToFallbackLocation()
+        {
+            if (_agentIdentity == null) return;
+            
+            var fallbackLocations = new[]
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AthalaSIEM"),
+                Path.Combine(AppContext.BaseDirectory, "Data"),
+                Path.GetTempPath()
+            };
+
+            foreach (var location in fallbackLocations)
+            {
+                try
+                {
+                    if (!Directory.Exists(location))
+                    {
+                        Directory.CreateDirectory(location);
+                    }
+
+                    string fallbackPath = Path.Combine(location, "agent_identity.json");
+                    
+                    // Serialize and encrypt
+                    string json = JsonSerializer.Serialize(_agentIdentity, new JsonSerializerOptions { WriteIndented = true });
+                    byte[] jsonBytes = Encoding.UTF8.GetBytes(json);
+                    byte[] machineKey = GenerateMachineSpecificKey();
+                    byte[] encryptedJson = _encryptionService.Encrypt(jsonBytes, machineKey);
+                    
+                    File.WriteAllBytes(fallbackPath, encryptedJson);
+                    
+                    if (File.Exists(fallbackPath))
+                    {
+                        // Update the file path for future operations
+                        _identityFilePath = fallbackPath;
+                        _logger.LogWarning("Saved identity to fallback location: {FallbackPath}. Future operations will use this location.", fallbackPath);
+                        return;
+                    }
+                }
+                catch (Exception fallbackEx)
+                {
+                    _logger.LogWarning(fallbackEx, "Failed to save to fallback location: {Location}", location);
+                    continue;
+                }
+            }
+            
+            _logger.LogError("CRITICAL: Failed to save agent identity to all locations (primary and fallbacks). Identity will be lost on restart!");
+        }
+
+        /// <summary>
+        /// Generates a machine-specific encryption key (32 bytes for AES-256)
+        /// </summary>
+        private byte[] GenerateMachineSpecificKey()
         {
             try
             {
@@ -466,15 +809,16 @@ namespace AthalaSIEM.Agent.Security
                     catch { /* Ignore errors */ }
                 }
                 
-                // Compute hash
+                // Compute SHA256 hash - this produces exactly 32 bytes (perfect for AES-256)
                 byte[] hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(sb.ToString()));
-                return Convert.ToBase64String(hashBytes);
+                return hashBytes; // Return raw bytes, not Base64 string
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error generating machine-specific key, using fallback");
-                // Fallback to a fixed key
-                return "AthalaSIEM-Agent-FixedKey-NotSecure";
+                // Fallback: Use SHA256 of a fixed string to ensure exactly 32 bytes
+                using var sha = SHA256.Create();
+                return sha.ComputeHash(Encoding.UTF8.GetBytes("AthalaSIEM-Agent-FixedKey-NotSecure"));
             }
         }
 

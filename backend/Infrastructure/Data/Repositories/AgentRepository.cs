@@ -107,6 +107,12 @@ public class AgentRepository : IAgentRepository
 
     private Models.AgentModels MapToModel(Agent agent)
     {
+        // Ensure all DateTime values are UTC (PostgreSQL requirement)
+        static DateTime? EnsureUtcNullable(DateTime? dt) => dt.HasValue 
+            ? (dt.Value.Kind == DateTimeKind.Utc ? dt.Value : dt.Value.ToUniversalTime())
+            : null;
+        static DateTime EnsureUtc(DateTime dt) => dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
+
         return new Models.AgentModels
         {
             Id = agent.Id,
@@ -117,22 +123,28 @@ public class AgentRepository : IAgentRepository
             Version = agent.AgentVersion ?? string.Empty,
             ApiKey = agent.ApiKey,
             Status = MapStatus(agent.Status),
-            LastHeartbeat = agent.LastHeartbeat,
-            CreatedAt = agent.CreatedAt,
-            UpdatedAt = agent.UpdatedAt
+            LastHeartbeat = EnsureUtcNullable(agent.LastHeartbeat),
+            CreatedAt = EnsureUtc(agent.CreatedAt),
+            UpdatedAt = EnsureUtc(agent.UpdatedAt)
         };
     }
 
     private void UpdateModel(Models.AgentModels model, Agent agent)
     {
+        // Ensure all DateTime values are UTC (PostgreSQL requirement)
+        static DateTime? EnsureUtcNullable(DateTime? dt) => dt.HasValue 
+            ? (dt.Value.Kind == DateTimeKind.Utc ? dt.Value : dt.Value.ToUniversalTime())
+            : null;
+        static DateTime EnsureUtc(DateTime dt) => dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
+
         model.Name = agent.Name;
         model.Hostname = agent.Hostname;
         model.IpAddress = agent.IpAddress;
         model.OperatingSystem = agent.OperatingSystem ?? string.Empty;
         model.Version = agent.AgentVersion ?? string.Empty;
         model.Status = MapStatus(agent.Status);
-        model.LastHeartbeat = agent.LastHeartbeat;
-        model.UpdatedAt = agent.UpdatedAt;
+        model.LastHeartbeat = EnsureUtcNullable(agent.LastHeartbeat);
+        model.UpdatedAt = EnsureUtc(agent.UpdatedAt);
     }
 
     private AgentStatus MapStatus(Models.AgentStatus status)

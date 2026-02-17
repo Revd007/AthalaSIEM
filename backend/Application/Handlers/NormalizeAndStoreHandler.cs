@@ -44,12 +44,15 @@ public class NormalizeAndStoreHandler : INotificationHandler<LogIngestedEvent>
                 return;
             }
 
+            // Ensure DateTime values are UTC (PostgreSQL requirement)
+            DateTime EnsureUtc(DateTime dt) => dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
+            
             // Store normalized log
             var normalizedLog = new NormalizedLog
             {
                 Id = Guid.NewGuid().ToString(),
                 LogEntryId = logEntry.Id,
-                Timestamp = ecsFields.Timestamp,
+                Timestamp = EnsureUtc(ecsFields.Timestamp),
                 AgentId = ecsFields.AgentId,
                 AgentName = ecsFields.AgentName,
                 HostName = ecsFields.HostName,

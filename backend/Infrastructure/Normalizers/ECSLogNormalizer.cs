@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using Backend.Domain.Entities;
 using Backend.Domain.ValueObjects;
+using Backend.Services;
 
 namespace Backend.Infrastructure.Normalizers;
 
@@ -10,13 +11,19 @@ public class ECSLogNormalizer : ILogNormalizer
 {
         private readonly ILogger<ECSLogNormalizer> _logger;
         private readonly Backend.Infrastructure.Data.Repositories.INormalizedLogRepository _normalizedLogRepository;
+        private readonly WindowsEventLogParser _parser;
+        private readonly MitreAttackMapper _mitreMapper;
 
     public ECSLogNormalizer(
         ILogger<ECSLogNormalizer> logger,
-        Backend.Infrastructure.Data.Repositories.INormalizedLogRepository normalizedLogRepository)
+        Backend.Infrastructure.Data.Repositories.INormalizedLogRepository normalizedLogRepository,
+        WindowsEventLogParser parser,
+        MitreAttackMapper mitreMapper)
     {
         _logger = logger;
         _normalizedLogRepository = normalizedLogRepository;
+        _parser = parser;
+        _mitreMapper = mitreMapper;
     }
 
     public Task<ECSLogFields?> NormalizeAsync(LogEntry logEntry, CancellationToken cancellationToken = default)
@@ -29,6 +36,37 @@ public class ECSLogNormalizer : ILogNormalizer
                 AgentId = logEntry.AgentId,
                 HostName = ExtractHostName(logEntry),
             };
+
+            // Enhanced parsing using WindowsEventLogParser
+            if (logEntry.Source.Contains("Windows", StringComparison.OrdinalIgnoreCase) ||
+                logEntry.Source.Contains("EventLog", StringComparison.OrdinalIgnoreCase))
+            {
+                var parsedFields = _parser.Parse(logEntry);
+                
+                // Map parsed fields to ECS
+                ecsFields.SourceIp = parsedFields.SourceAddress;
+                ecsFields.SourcePort = parsedFields.SourcePort;
+                ecsFields.DestinationIp = parsedFields.DestinationAddress;
+                ecsFields.DestinationPort = parsedFields.DestinationPort;
+                ecsFields.ProcessName = parsedFields.ProcessName ?? parsedFields.ApplicationName;
+                ecsFields.ProcessId = parsedFields.ProcessId;
+                ecsFields.ProcessCommandLine = parsedFields.CommandLine;
+                ecsFields.UserName = parsedFields.UserName;
+                ecsFields.UserDomain = parsedFields.Domain;
+                ecsFields.FilePath = parsedFields.FilePath;
+                ecsFields.EventAction = parsedFields.EventAction;
+                ecsFields.EventCategory = parsedFields.EventType;
+                ecsFields.EventOutcome = parsedFields.EventOutcome;
+                
+                // Map protocol if available
+                if (!string.IsNullOrEmpty(parsedFields.ApplicationName))
+                {
+                    var appLower = parsedFields.ApplicationName.ToLowerInvariant();
+                    if (appLower.Contains("tcp")) ecsFields.Protocol = "TCP";
+                    else if (appLower.Contains("udp")) ecsFields.Protocol = "UDP";
+                    else if (appLower.Contains("icmp")) ecsFields.Protocol = "ICMP";
+                }
+            }
 
             // Parse properties if available
             if (!string.IsNullOrEmpty(logEntry.RawProperties))
@@ -47,11 +85,43 @@ public class ECSLogNormalizer : ILogNormalizer
                 }
             }
 
-            // Parse message for common patterns
+            // Parse message for common patterns (fallback)
             ParseMessage(logEntry.RawMessage, ecsFields);
 
             // Source-specific parsing
             ParseBySource(logEntry, ecsFields);
+
+            // MITRE ATT&CK mapping
+            var mitreTechniques = _mitreMapper.MapToTechniques(logEntry);
+            if (mitreTechniques.Count > 0)
+            {
+                ecsFields.SiemTechniqueId = string.Join(",", mitreTechniques.Select(t => t.TechniqueId));
+                
+                // Set severity based on highest MITRE technique severity
+                var highestSeverity = mitreTechniques
+                    .Select(t => t.Severity)
+                    .OrderByDescending(s => s == "High" ? 3 : s == "Medium" ? 2 : 1)
+                    .FirstOrDefault();
+                
+                ecsFields.SiemSeverity = highestSeverity switch
+                {
+                    "High" => 3,
+                    "Medium" => 2,
+                    _ => 1
+                };
+
+                // Store MITRE metadata
+                if (ecsFields.Metadata == null)
+                    ecsFields.Metadata = new Dictionary<string, object>();
+                
+                ecsFields.Metadata["mitre_techniques"] = mitreTechniques.Select(t => new
+                {
+                    t.TechniqueId,
+                    t.TechniqueName,
+                    t.Tactic,
+                    t.Severity
+                }).ToList();
+            }
 
             return Task.FromResult<ECSLogFields?>(ecsFields);
         }

@@ -204,36 +204,42 @@ public class LogRepository : ILogRepository
             ReceivedAt = model.ReceivedAt,
             RawMessage = model.Message,
             Source = model.Source,
+            Level = model.Level ?? "Information",
             Category = model.Category,
             EventId = model.EventId,
+            MachineName = model.MachineName ?? string.Empty,
+            IPAddress = model.IPAddress ?? string.Empty,
             RawProperties = model.Properties,
-            IsNormalized = false, // Will be set when normalized
+            IsNormalized = false,
             Processed = model.Processed,
             ProcessedAt = model.ProcessedAt
         };
-
-        // Parse normalized fields from Properties if available
-        // In production, you'd have a separate NormalizedLogs table
 
         return entry;
     }
 
     private Models.LogEntryModels MapToModel(LogEntry entry)
     {
+        // Ensure all DateTime values are UTC (PostgreSQL requirement)
+        DateTime EnsureUtc(DateTime dt) => dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
+        
         return new Models.LogEntryModels
         {
             Id = entry.Id,
             AgentId = entry.AgentId,
-            Timestamp = entry.Timestamp,
-            ReceivedAt = entry.ReceivedAt,
-            Message = entry.RawMessage,
-            Source = entry.Source,
+            Timestamp = EnsureUtc(entry.Timestamp),
+            ReceivedAt = EnsureUtc(entry.ReceivedAt),
+            Level = !string.IsNullOrEmpty(entry.Level) ? entry.Level : "Information",
+            Message = !string.IsNullOrEmpty(entry.RawMessage) ? entry.RawMessage : "(no message)",
+            Source = !string.IsNullOrEmpty(entry.Source) ? entry.Source : "Unknown",
             Category = entry.Category,
             EventId = entry.EventId ?? 0,
+            MachineName = entry.MachineName ?? string.Empty,
+            IPAddress = entry.IPAddress ?? string.Empty,
             Properties = entry.RawProperties,
             Processed = entry.Processed,
-            ProcessedAt = entry.ProcessedAt,
-            CreatedAt = entry.ReceivedAt
+            ProcessedAt = entry.ProcessedAt.HasValue ? EnsureUtc(entry.ProcessedAt.Value) : null,
+            CreatedAt = EnsureUtc(entry.ReceivedAt)
         };
     }
 
@@ -241,6 +247,18 @@ public class LogRepository : ILogRepository
     {
         model.Processed = entry.Processed;
         model.ProcessedAt = entry.ProcessedAt;
-        // Add normalized fields to Properties JSON in production
+
+        // Write enriched properties (MITRE, IPs, etc.) back to the Properties JSON column
+        // This is what the frontend reads via LogEntryDto.Properties
+        if (!string.IsNullOrEmpty(entry.RawProperties))
+        {
+            model.Properties = entry.RawProperties;
+        }
+
+        // Update IsNormalized flag
+        if (entry.IsNormalized)
+        {
+            model.Processed = true;
+        }
     }
 }

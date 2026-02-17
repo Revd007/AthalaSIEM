@@ -111,12 +111,14 @@ For enterprise deployments, use command-line parameters:
 # Basic silent installation
 msiexec /i "AthalaSIEM-UniversalAgent-1.0.0-x64.msi" /quiet
 
-# Silent installation with configuration
+# Silent installation with configuration (IP:port format like other SIEM tools)
 msiexec /i "AthalaSIEM-UniversalAgent-1.0.0-x64.msi" /quiet ^
-  BACKENDURL="http://siem.company.com:9595" ^
-  TOKEN="your-deployment-token" ^
-  NAME="WebServer01-Agent" ^
-  AUTOSTART="1"
+  BACKENDURL="192.168.1.100:9595" ^
+  GRPCURL="192.168.1.100:50051" ^
+  DEPLOYMENTTOKEN="your-deployment-token" ^
+  AGENTNAME="WebServer01-Agent" ^
+  USEHTTPS="0" ^
+  USEGRPC="1"
 
 # Silent installation with logging
 msiexec /i "AthalaSIEM-UniversalAgent-1.0.0-x64.msi" /quiet /l*v install.log
@@ -146,7 +148,7 @@ msiexec /i "AthalaSIEM-UniversalAgent-1.0.0-x64.msi" /quiet /l*v install.log
 
 3. **Installation Program**:
    ```cmd
-   msiexec /i "AthalaSIEM-UniversalAgent-1.0.0-x64.msi" /quiet BACKENDURL="http://siem.company.com:9595"
+   msiexec /i "AthalaSIEM-UniversalAgent-1.0.0-x64.msi" /quiet BACKENDURL="192.168.1.100:9595" GRPCURL="192.168.1.100:50051"
    ```
 
 4. **Uninstall Program**:
@@ -158,15 +160,14 @@ msiexec /i "AthalaSIEM-UniversalAgent-1.0.0-x64.msi" /quiet /l*v install.log
 
 | Parameter | Description | Default | Example |
 |-----------|-------------|---------|---------|
-| `BACKENDURL` | SIEM backend URL | None | `http://siem.company.com:9595` |
-| `TOKEN` | Deployment token | None | `abc123def456` |
-| `NAME` | Agent name | `[ComputerName]-Universal` | `WebServer01-Agent` |
-| `AUTOSTART` | Auto-start service | `1` | `1` (yes) or `0` (no) |
-| `USE_HTTPS` | Use HTTPS for backend | `0` | `1` (yes) or `0` (no) |
-| `ENABLE_FIM` | Enable File Integrity Monitoring | `1` | `1` (yes) or `0` (no) |
-| `ENABLE_REGISTRY_MONITORING` | Enable Registry monitoring | `1` | `1` (yes) or `0` (no) |
-| `ENABLE_EVENT_CORRELATION` | Enable event correlation | `1` | `1` (yes) or `0` (no) |
-| `DESKTOP_SHORTCUT` | Create desktop shortcut | `0` | `1` (yes) or `0` (no) |
+| `BACKENDURL` | SIEM backend address (IP:port format, like other SIEM tools) | `[ComputerName]:9595` | `192.168.1.100:9595` or `siem.company.com:9595` |
+| `GRPCURL` | gRPC backend address (IP:port format) | `[BACKENDIP]:50051` | `192.168.1.100:50051` |
+| `BACKENDPORT` | Backend HTTP/REST port | `9595` | `9595` |
+| `GRPCPORT` | Backend gRPC port | `50051` | `50051` |
+| `DEPLOYMENTTOKEN` | Deployment token for agent registration | None | `abc123def456` |
+| `AGENTNAME` | Agent name | `[ComputerName]-Agent` | `WebServer01-Agent` |
+| `USEHTTPS` | Use HTTPS for backend communication | `0` | `1` (yes) or `0` (no) |
+| `USEGRPC` | Use gRPC for data plane (falls back to HTTP) | `1` | `1` (yes) or `0` (no) |
 
 ## Installation Components
 

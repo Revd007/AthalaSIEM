@@ -85,6 +85,23 @@ namespace Backend.Controllers
             
             return Ok(alert);
         }
+
+        /// <summary>
+        /// Deletes an alert
+        /// </summary>
+        /// <param name="id">The alert ID</param>
+        [HttpDelete("{id}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> DeleteAlert(string id)
+        {
+            var deleted = await _alertService.DeleteAlertAsync(id);
+            if (!deleted)
+            {
+                return NotFound(new { Error = $"Alert with ID {id} not found" });
+            }
+            return NoContent();
+        }
         
         /// <summary>
         /// Gets alerts by severity

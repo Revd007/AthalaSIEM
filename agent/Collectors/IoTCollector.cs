@@ -138,6 +138,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         public async Task StopAsync()
         {
+            await Task.CompletedTask;
             if (!_isRunning) return;
 
             try
@@ -295,6 +296,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task StartNetworkListeners()
         {
+            await Task.CompletedTask;
             try
             {
                 // Start UDP listener for IoT devices
@@ -523,6 +525,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task ProcessIoTMessage(string message, string sourceEndpoint, string protocol)
         {
+            await Task.CompletedTask;
             try
             {
                 var logEntry = ParseIoTMessage(message, sourceEndpoint, protocol);
@@ -539,6 +542,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task CollectModbusLogs()
         {
+            await Task.CompletedTask;
             try
             {
                 // Simulate Modbus device communication
@@ -561,6 +565,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task CollectMqttLogs()
         {
+            await Task.CompletedTask;
             try
             {
                 // Simulate MQTT broker logs
@@ -583,6 +588,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task CollectOpcUaLogs()
         {
+            await Task.CompletedTask;
             try
             {
                 // Simulate OPC-UA server logs
@@ -605,6 +611,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task CollectScadaLogs()
         {
+            await Task.CompletedTask;
             try
             {
                 // Simulate SCADA system logs
@@ -627,6 +634,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task CollectSensorLogs()
         {
+            await Task.CompletedTask;
             try
             {
                 // Simulate sensor data collection

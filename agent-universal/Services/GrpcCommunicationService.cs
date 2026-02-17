@@ -69,10 +69,63 @@ namespace AthalaSIEM.UniversalAgent.Services
 
             // Setup timers
             _heartbeatIntervalSeconds = _configuration.GetValue<int>("Agent:HeartbeatIntervalSeconds", 30);
+            _batchIntervalSeconds = _configuration.GetValue<int>("Agent:BatchIntervalSeconds", 30);
             _heartbeatTimer = new Timer(SendHeartbeat, null, TimeSpan.FromSeconds(_heartbeatIntervalSeconds), TimeSpan.FromSeconds(_heartbeatIntervalSeconds));
             _batchTimer = new Timer(ProcessLogBatch, null, 
                 TimeSpan.FromSeconds(_batchIntervalSeconds), 
                 TimeSpan.FromSeconds(_batchIntervalSeconds));
+        }
+
+        private void LoadConfiguration()
+        {
+            var managerIP = _configuration["SiemManager:ManagerIP"];
+            if (string.IsNullOrEmpty(managerIP))
+            {
+                _logger.LogError("SiemManager:ManagerIP is REQUIRED and not configured!");
+                throw new InvalidOperationException("SiemManager:ManagerIP configuration is required.");
+            }
+            
+            var managerPort = _configuration.GetValue<int>("SiemManager:ManagerPort");
+            if (managerPort == 0)
+            {
+                _logger.LogError("SiemManager:ManagerPort is REQUIRED and not configured!");
+                throw new InvalidOperationException("SiemManager:ManagerPort configuration is required.");
+            }
+
+            var useHTTPS = _configuration.GetValue<bool>("SiemManager:UseHTTPS", false);
+            var protocol = useHTTPS ? "https" : "http";
+            
+            // Support both IP:port format (common in SIEM tools) and full URL format
+            var managerUrlConfig = _configuration["Agent:ManagerUrl"] ?? $"{managerIP}:{managerPort}";
+            _serverUrl = EnsureUrlFormat(managerUrlConfig, protocol);
+            
+            var grpcPort = _configuration.GetValue<int>("SiemManager:GrpcPort", 50051);
+            var grpcUrlConfig = _configuration["Agent:GrpcUrl"] ?? $"{managerIP}:{grpcPort}";
+            _grpcUrl = EnsureUrlFormat(grpcUrlConfig, protocol);
+            
+            _agentId = _configuration["Agent:Id"] ?? Environment.MachineName;
+            _apiKey = _configuration["Agent:ApiKey"] ?? "";
+            _batchSize = _configuration.GetValue<int>("Agent:BatchSize", 100);
+            _batchIntervalSeconds = _configuration.GetValue<int>("Agent:BatchIntervalSeconds", 30);
+            
+            _logger.LogInformation("gRPC Configuration - Server: {ServerUrl}, gRPC: {GrpcUrl}, Batch: {BatchSize}, Interval: {Interval}s", 
+                _serverUrl, _grpcUrl, _batchSize, _batchIntervalSeconds);
+        }
+
+        private string EnsureUrlFormat(string address, string protocol)
+        {
+            if (string.IsNullOrEmpty(address))
+                return address;
+
+            // If already contains protocol (http:// or https://), return as-is
+            if (address.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
+                address.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                return address;
+            }
+
+            // If it's just IP:port or hostname:port, add protocol
+            return $"{protocol}://{address}";
         }
 
         public async Task<bool> InitializeAsync()
@@ -283,39 +336,6 @@ namespace AthalaSIEM.UniversalAgent.Services
             };
         }
 
-        private void LoadConfiguration()
-        {
-            var managerIP = _configuration["SiemManager:ManagerIP"];
-            if (string.IsNullOrEmpty(managerIP))
-            {
-                _logger.LogError("SiemManager:ManagerIP is REQUIRED and not configured!");
-                throw new InvalidOperationException("SiemManager:ManagerIP configuration is required.");
-            }
-            
-            var managerPort = _configuration.GetValue<int>("SiemManager:ManagerPort");
-            if (managerPort == 0)
-            {
-                _logger.LogError("SiemManager:ManagerPort is REQUIRED and not configured!");
-                throw new InvalidOperationException("SiemManager:ManagerPort configuration is required.");
-            }
-
-            var useHTTPS = _configuration.GetValue<bool>("SiemManager:UseHTTPS", false);
-            var protocol = useHTTPS ? "https" : "http";
-            
-            _serverUrl = $"{protocol}://{managerIP}:{managerPort}";
-            
-            // gRPC uses same host but typically same port (HTTP/2) or dedicated port
-            var grpcPort = _configuration.GetValue<int>("SiemManager:GrpcPort", managerPort);
-            _grpcUrl = $"{protocol}://{managerIP}:{grpcPort}";
-            
-            _agentId = _configuration["Agent:Id"] ?? Environment.MachineName;
-            _apiKey = _configuration["Agent:ApiKey"] ?? "";
-            _batchSize = _configuration.GetValue<int>("Agent:BatchSize", 100);
-            _batchIntervalSeconds = _configuration.GetValue<int>("Agent:BatchIntervalSeconds", 30);
-            
-            _logger.LogInformation("gRPC Configuration - Server: {ServerUrl}, gRPC: {GrpcUrl}, Batch: {BatchSize}, Interval: {Interval}s", 
-                _serverUrl, _grpcUrl, _batchSize, _batchIntervalSeconds);
-        }
 
         private async void SendHeartbeat(object? state)
         {

@@ -20,7 +20,7 @@ public class SyslogCollector : ICollector
     private TcpListener? _tcpListener;
     private Task? _udpTask;
     private Task? _tcpTask;
-    private readonly CancellationTokenSource _cancellationTokenSource = new();
+    private readonly CancellationTokenSource _cts = new();
 
     public SyslogCollector(
         ILogger<SyslogCollector> logger,
@@ -46,38 +46,53 @@ public class SyslogCollector : ICollector
         try
         {
             _udpListener = new UdpClient(_port);
-            _udpTask = Task.Run(() => ListenUdpAsync(_cancellationTokenSource.Token), cancellationToken);
+            _udpTask = Task.Run(() => ListenUdpAsync(_cts.Token));
 
             _tcpListener = new TcpListener(IPAddress.Any, _port);
             _tcpListener.Start();
-            _tcpTask = Task.Run(() => ListenTcpAsync(_cancellationTokenSource.Token), cancellationToken);
+            _tcpTask = Task.Run(() => ListenTcpAsync(_cts.Token));
 
             _logger.LogInformation("Started Syslog collector on port {Port}", _port);
         }
+        catch (SocketException ex) when (ex.SocketErrorCode == SocketError.AddressAlreadyInUse)
+        {
+            _logger.LogWarning("Syslog port {Port} already in use. Syslog collector disabled.", _port);
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to start Syslog collector");
+            _logger.LogError(ex, "Failed to start Syslog collector on port {Port}", _port);
         }
 
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _cancellationTokenSource.Cancel();
+        _cts.Cancel();
+
+        // Close sockets first - this unblocks any pending ReceiveAsync/AcceptTcpClientAsync
         _udpListener?.Close();
         _tcpListener?.Stop();
-        return Task.CompletedTask;
+
+        // Wait for tasks to complete
+        var tasks = new List<Task>();
+        if (_udpTask != null) tasks.Add(_udpTask);
+        if (_tcpTask != null) tasks.Add(_tcpTask);
+
+        if (tasks.Count > 0)
+        {
+            await Task.WhenAny(Task.WhenAll(tasks), Task.Delay(5000, CancellationToken.None));
+        }
     }
 
-    private async Task ListenUdpAsync(CancellationToken cancellationToken)
+    private async Task ListenUdpAsync(CancellationToken ct)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        while (!ct.IsCancellationRequested)
         {
             try
             {
-                var result = await _udpListener!.ReceiveAsync();
-                var message = System.Text.Encoding.UTF8.GetString(result.Buffer);
+                // .NET 8 overload with CancellationToken
+                var result = await _udpListener!.ReceiveAsync(ct);
 
                 var rawEvent = new RawEvent
                 {
@@ -95,41 +110,76 @@ public class SyslogCollector : ICollector
 
                 EventCollected?.Invoke(this, rawEvent);
             }
-            catch (Exception ex)
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (ObjectDisposedException)
+            {
+                // Socket closed during shutdown
+                break;
+            }
+            catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted
+                                           || ex.SocketErrorCode == SocketError.Interrupted)
+            {
+                // SocketError 995 (OperationAborted) - socket was closed during pending I/O. Normal on shutdown.
+                break;
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 _logger.LogError(ex, "Error receiving UDP syslog message");
-                await Task.Delay(1000, cancellationToken);
+                await SafeDelay(1000, ct);
             }
         }
+
+        _logger.LogDebug("UDP syslog listener stopped");
     }
 
-    private async Task ListenTcpAsync(CancellationToken cancellationToken)
+    private async Task ListenTcpAsync(CancellationToken ct)
     {
-        while (!cancellationToken.IsCancellationRequested)
+        while (!ct.IsCancellationRequested)
         {
             try
             {
-                var client = await _tcpListener!.AcceptTcpClientAsync();
-                _ = Task.Run(() => HandleTcpClientAsync(client, cancellationToken), cancellationToken);
+                // .NET 8 overload with CancellationToken
+                var client = await _tcpListener!.AcceptTcpClientAsync(ct);
+                _ = Task.Run(() => HandleTcpClientAsync(client, ct));
             }
-            catch (Exception ex)
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (ObjectDisposedException)
+            {
+                break;
+            }
+            catch (SocketException ex) when (ex.SocketErrorCode == SocketError.OperationAborted
+                                           || ex.SocketErrorCode == SocketError.Interrupted)
+            {
+                break;
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 _logger.LogError(ex, "Error accepting TCP syslog connection");
-                await Task.Delay(1000, cancellationToken);
+                await SafeDelay(1000, ct);
             }
         }
+
+        _logger.LogDebug("TCP syslog listener stopped");
     }
 
-    private async Task HandleTcpClientAsync(TcpClient client, CancellationToken cancellationToken)
+    private async Task HandleTcpClientAsync(TcpClient client, CancellationToken ct)
     {
+        var remoteEp = string.Empty;
         try
         {
+            remoteEp = client.Client.RemoteEndPoint?.ToString() ?? string.Empty;
             using var stream = client.GetStream();
             using var reader = new StreamReader(stream);
 
-            while (!cancellationToken.IsCancellationRequested && client.Connected)
+            while (!ct.IsCancellationRequested && client.Connected)
             {
-                var message = await reader.ReadLineAsync();
+                var message = await reader.ReadLineAsync(ct);
                 if (string.IsNullOrEmpty(message))
                     break;
 
@@ -139,10 +189,10 @@ public class SyslogCollector : ICollector
                     Timestamp = DateTime.UtcNow,
                     CollectorName = Name,
                     SourceType = SourceType,
-                    RawData = System.Text.Encoding.UTF8.GetBytes(message),
+                    RawData = Encoding.UTF8.GetBytes(message),
                     Metadata = new Dictionary<string, string>
                     {
-                        ["remote_endpoint"] = client.Client.RemoteEndPoint?.ToString() ?? string.Empty,
+                        ["remote_endpoint"] = remoteEp,
                         ["protocol"] = "TCP"
                     }
                 };
@@ -150,13 +200,23 @@ public class SyslogCollector : ICollector
                 EventCollected?.Invoke(this, rawEvent);
             }
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
         {
-            _logger.LogError(ex, "Error handling TCP syslog client");
+            // Normal shutdown
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogError(ex, "Error handling TCP syslog client from {Endpoint}", remoteEp);
         }
         finally
         {
             client.Close();
         }
+    }
+
+    private static async Task SafeDelay(int ms, CancellationToken ct)
+    {
+        try { await Task.Delay(ms, ct); }
+        catch (OperationCanceledException) { }
     }
 }

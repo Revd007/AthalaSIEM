@@ -121,6 +121,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         public async Task StopAsync()
         {
+            await Task.CompletedTask;
             if (!_isRunning) return;
 
             try
@@ -159,6 +160,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         public async Task<int> CollectLogsAsync(CancellationToken cancellationToken)
         {
+            await Task.CompletedTask;
             if (_isPaused || !_isRunning)
                 return 0;
 
@@ -207,6 +209,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task StartUdpListener()
         {
+            await Task.CompletedTask;
             try
             {
                 var endpoint = new IPEndPoint(IPAddress.Parse(_bindAddress), _udpPort);
@@ -247,6 +250,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task StartTcpListener()
         {
+            await Task.CompletedTask;
             try
             {
                 _tcpListener = new TcpListener(IPAddress.Parse(_bindAddress), _tcpPort);
@@ -335,6 +339,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task ProcessSyslogMessage(string message, EndPoint? remoteEndPoint, string protocol)
         {
+            await Task.CompletedTask;
             try
             {
                 var parsedMessage = ParseSyslogMessage(message, remoteEndPoint?.ToString() ?? "unknown", protocol);

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Backend.Services;
@@ -86,22 +87,37 @@ namespace Backend.Services.Background
 
         private async Task CreateAlertForOfflineAgent(AgentModels agent)
         {
-            using (var scope = _scopeFactory.CreateScope())
-            {
-                var alertService = scope.ServiceProvider.GetRequiredService<IAlertService>();
-                var alert = new AlertDto
-                {
-                    AgentId = agent.Id,
-                    Title = $"Agent {agent.Hostname} is offline",
-                    Description = $"Agent has not reported in for {_offlineThreshold.TotalMinutes} minutes",
-                    Severity = AlertSeverityModels.High.ToString(),
-                    Status = AlertStatusModels.New.ToString(),
-                    Source = "AgentMonitoring",
-                    Timestamp = DateTime.UtcNow
-                };
+            using var scope = _scopeFactory.CreateScope();
+            var alertService = scope.ServiceProvider.GetRequiredService<IAlertService>();
 
-                await alertService.CreateAlertAsync(alert);
+            // Deduplicate: jangan buat alert baru jika sudah ada alert "Agent X is offline" untuk agent ini dalam 6 jam terakhir
+            var recentQuery = new AlertQueryDto
+            {
+                AgentId = agent.Id,
+                Source = "AgentMonitoring",
+                StartTime = DateTime.UtcNow.AddHours(-6),
+                EndTime = DateTime.UtcNow,
+                Limit = 5
+            };
+            var existing = await alertService.SearchAlertsAsync(recentQuery);
+            if (existing.Items.Any(a => a.Title != null && a.Title.Contains("is offline", StringComparison.OrdinalIgnoreCase)))
+            {
+                _logger.LogDebug("Skipping duplicate offline alert for agent {AgentId} ({Hostname})", agent.Id, agent.Hostname);
+                return;
             }
+
+            var alert = new AlertDto
+            {
+                AgentId = agent.Id,
+                Title = $"Agent {agent.Hostname} is offline",
+                Description = $"Agent has not reported in for {_offlineThreshold.TotalMinutes} minutes",
+                Severity = AlertSeverityModels.High.ToString(),
+                Status = AlertStatusModels.New.ToString(),
+                Source = "AgentMonitoring",
+                Timestamp = DateTime.UtcNow
+            };
+
+            await alertService.CreateAlertAsync(alert);
         }
     }
 } 

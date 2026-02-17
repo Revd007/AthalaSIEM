@@ -118,6 +118,20 @@ export function useAssignAlert() {
   });
 }
 
+export function useDeleteAlert() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (alertId: string) => {
+      await api.delete(`/api/alerts/${alertId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] });
+      queryClient.invalidateQueries({ queryKey: ['alerts-paginated'] });
+    }
+  });
+}
+
 export function useAlertDetails(alertId: string) {
   return useQuery({
     queryKey: ['alert', alertId],

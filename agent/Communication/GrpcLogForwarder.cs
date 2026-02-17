@@ -65,27 +65,25 @@ namespace AthalaSIEM.Agent.Communication
         }
         
         /// <summary>
-        /// Configures the secure channel for gRPC communication
+        /// Logs gRPC channel configuration (insecure or TLS). Channel is created by DI with ChannelCredentials.Insecure when UseInsecureGrpcChannel is true.
         /// </summary>
         private void ConfigureSecureChannel()
         {
             try
             {
-                // Log TLS configuration
+                if (_settings.UseInsecureGrpcChannel)
+                {
+                    _logger.LogInformation("gRPC using insecure channel (no TLS). Backend: {BackendGrpcUrl}", _settings.BackendGrpcUrl ?? _settings.BackendApiUrl);
+                    return;
+                }
+
                 if (_settings.UseMutualTls)
                 {
                     _logger.LogInformation("Using mutual TLS for secure communication");
-                    
-                    // Verify certificate paths exist
                     if (!File.Exists(_settings.ClientCertificatePath))
-                    {
                         _logger.LogWarning("Client certificate not found at {Path}", _settings.ClientCertificatePath);
-                    }
-                    
                     if (!File.Exists(_settings.ServerCaCertificatePath))
-                    {
                         _logger.LogWarning("Server CA certificate not found at {Path}", _settings.ServerCaCertificatePath);
-                    }
                 }
                 else
                 {
@@ -94,7 +92,7 @@ namespace AthalaSIEM.Agent.Communication
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error configuring secure gRPC channel");
+                _logger.LogError(ex, "Error configuring gRPC channel");
             }
         }
         
@@ -590,10 +588,10 @@ namespace AthalaSIEM.Agent.Communication
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error sending log batch");
-                
-                // Return logs to the queue for retry
-                // This is a simplified approach; a more sophisticated approach would involve
-                // storing logs on disk for guaranteed delivery
+                if (ex is RpcException rpcEx && rpcEx.Status.Detail != null &&
+                    rpcEx.Status.Detail.Contains("HTTP_1_1_REQUIRED", StringComparison.OrdinalIgnoreCase))
+                    _logger.LogWarning(
+                        "Backend or proxy is rejecting HTTP/2. gRPC requires HTTP/2: ensure the backend URL supports HTTP/2 and no proxy is forcing HTTP/1.1.");
             }
             finally
             {

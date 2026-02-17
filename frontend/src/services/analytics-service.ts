@@ -98,10 +98,45 @@ export interface PredictiveAnalytics {
   riskFactors: RiskFactor[]
 }
 
+/** Hourly event bucket returned by GET /api/analytics/events-over-time */
+export interface EventsOverTimePoint {
+  time: string
+  total: number
+  errors: number
+  warnings: number
+  normal: number
+}
+
+/** Summary counters returned by GET /api/analytics/dashboard-summary */
+export interface DashboardSummary {
+  totalLogs24h: number
+  totalLogs1h: number
+  criticalCount: number
+  totalAlerts: number
+  onlineAgents: number
+  totalAgents: number
+  eventsPerSecond: number
+}
+
 // API functions
 export const analyticsService = {
   async getEventsDistribution(): Promise<EventDistribution[]> {
     const response = await api.get<EventDistribution[]>('/api/analytics/events-distribution')
+    return response.data
+  },
+
+  async getSeverityDistribution(): Promise<SeverityDistribution[]> {
+    const response = await api.get<SeverityDistribution[]>('/api/analytics/severity-distribution')
+    return response.data
+  },
+
+  async getEventsOverTime(hours = 24): Promise<EventsOverTimePoint[]> {
+    const response = await api.get<EventsOverTimePoint[]>(`/api/analytics/events-over-time?hours=${hours}`)
+    return response.data
+  },
+
+  async getDashboardSummary(): Promise<DashboardSummary> {
+    const response = await api.get<DashboardSummary>('/api/analytics/dashboard-summary')
     return response.data
   },
 
@@ -136,7 +171,35 @@ export function useEventsDistribution() {
   return useQuery({
     queryKey: ['events-distribution'],
     queryFn: () => analyticsService.getEventsDistribution(),
-    staleTime: 60000,
+    staleTime: 30000,
+    refetchInterval: 30000,
+  })
+}
+
+export function useSeverityDistribution() {
+  return useQuery({
+    queryKey: ['severity-distribution'],
+    queryFn: () => analyticsService.getSeverityDistribution(),
+    staleTime: 30000,
+    refetchInterval: 30000,
+  })
+}
+
+export function useEventsOverTime(hours = 24) {
+  return useQuery({
+    queryKey: ['events-over-time', hours],
+    queryFn: () => analyticsService.getEventsOverTime(hours),
+    staleTime: 15000,
+    refetchInterval: 15000,
+  })
+}
+
+export function useDashboardSummary() {
+  return useQuery({
+    queryKey: ['dashboard-summary'],
+    queryFn: () => analyticsService.getDashboardSummary(),
+    staleTime: 10000,
+    refetchInterval: 10000,
   })
 }
 

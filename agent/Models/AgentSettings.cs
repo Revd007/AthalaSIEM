@@ -22,7 +22,7 @@ namespace AthalaSIEM.Agent.Models
         /// <summary>
         /// Backend gRPC URL
         /// </summary>
-        public string BackendGrpcUrl { get; set; } = "http://localhost:9595";
+        public string BackendGrpcUrl { get; set; } = "http://localhost:50051";
 
         /// <summary>
         /// Backend URL (for backward compatibility)
@@ -77,6 +77,16 @@ namespace AthalaSIEM.Agent.Models
         /// Whether to use mutual TLS for communication
         /// </summary>
         public bool UseMutualTls { get; set; } = false;
+
+        /// <summary>
+        /// When true, gRPC uses an insecure channel (no TLS). Use for development or trusted networks only.
+        /// </summary>
+        public bool UseInsecureGrpcChannel { get; set; } = true;
+
+        /// <summary>
+        /// Deployment token for initial registration (e.g. from MSI installer). Used automatically on first run if agent is not yet registered.
+        /// </summary>
+        public string? DeploymentToken { get; set; }
 
         /// <summary>
         /// Path to the client certificate file

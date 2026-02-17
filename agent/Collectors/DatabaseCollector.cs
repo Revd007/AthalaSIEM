@@ -114,6 +114,7 @@ namespace AthalaSIEM.Agent.Collectors
         /// </summary>
         public async Task StartAsync()
         {
+            await Task.CompletedTask;
             if (_isRunning) return;
 
             try
@@ -144,6 +145,7 @@ namespace AthalaSIEM.Agent.Collectors
         /// </summary>
         public async Task StopAsync()
         {
+            await Task.CompletedTask;
             if (!_isRunning) return;
 
             try
@@ -442,6 +444,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task CollectSqlServerAccessEventsAsync(SqlConnection conn, DatabaseConnection connection)
         {
+            await Task.CompletedTask;
             // Implementation for collecting access events from SQL Server audit logs
             // This would typically require SQL Server Audit to be configured
             _logger.LogDebug("Collecting SQL Server access events for {DatabaseName}", connection.DatabaseName);
@@ -449,6 +452,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task CollectSqlServerSchemaEventsAsync(SqlConnection conn, DatabaseConnection connection)
         {
+            await Task.CompletedTask;
             // Implementation for collecting schema change events
             // This would typically use DDL triggers or event notifications
             _logger.LogDebug("Collecting SQL Server schema events for {DatabaseName}", connection.DatabaseName);
@@ -520,6 +524,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task CollectMySqlGeneralLogAsync(MySqlConnection conn, DatabaseConnection connection)
         {
+            await Task.CompletedTask;
             // Implementation for MySQL general log monitoring
             _logger.LogDebug("Collecting MySQL general log for {DatabaseName}", connection.DatabaseName);
         }
@@ -676,7 +681,7 @@ namespace AthalaSIEM.Agent.Collectors
                             ["operation"] = doc.GetValue("op", ""),
                             ["namespace"] = doc.GetValue("ns", ""),
                             ["duration_ms"] = doc.GetValue("millis", 0),
-                            ["command"] = doc.GetValue("command", "").ToString(),
+                            ["command"] = doc.GetValue("command", "")?.ToString() ?? "",
                             ["user"] = doc.GetValue("user", ""),
                             ["client"] = doc.GetValue("client", "")
                         }
@@ -699,6 +704,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task CollectMongoDbOperationsAsync(IMongoDatabase database, DatabaseConnection connection)
         {
+            await Task.CompletedTask;
             // Implementation for MongoDB current operations monitoring
             _logger.LogDebug("Collecting MongoDB operations for {DatabaseName}", connection.DatabaseName);
         }

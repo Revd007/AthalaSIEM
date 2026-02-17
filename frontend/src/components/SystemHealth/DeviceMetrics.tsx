@@ -122,6 +122,9 @@ export function DeviceMetrics({ deviceId }: DeviceMetricsProps) {
   
   // Get latest metrics from time series if available
   const latestMetrics = metricsData && metricsData.length > 0 ? metricsData[metricsData.length - 1] : null;
+  
+  // Use agent metrics if time series not available
+  const hasMetrics = cpuUsagePercent > 0 || memoryUsagePercent > 0 || diskUsagePercent > 0 || latestMetrics;
 
   const isOnline = agent.status === 'Online' || agent.status === 'Active';
   const statusColor = isOnline ? 'bg-green-500' : 'bg-gray-400';
@@ -216,7 +219,11 @@ export function DeviceMetrics({ deviceId }: DeviceMetricsProps) {
             title="CPU Usage"
             value={`${cpuUsagePercent.toFixed(1)}%`}
             icon={Cpu}
-            secondaryValue={latestMetrics?.cpuUsage ? `Current: ${latestMetrics.cpuUsage.toFixed(1)}%` : 'No recent data'}
+            secondaryValue={latestMetrics?.cpuUsage 
+              ? `Current: ${latestMetrics.cpuUsage.toFixed(1)}%` 
+              : cpuUsagePercent > 0 
+                ? 'From last heartbeat' 
+                : 'No recent data'}
             progress={cpuUsagePercent}
           />
           
@@ -224,7 +231,11 @@ export function DeviceMetrics({ deviceId }: DeviceMetricsProps) {
             title="Memory Usage"
             value={`${memoryUsagePercent.toFixed(1)}%`}
             icon={CircuitBoard}
-            secondaryValue={latestMetrics?.memoryUsage ? `Current: ${latestMetrics.memoryUsage.toFixed(1)}%` : 'No recent data'}
+            secondaryValue={latestMetrics?.memoryUsage 
+              ? `Current: ${latestMetrics.memoryUsage.toFixed(1)}%` 
+              : memoryUsagePercent > 0 
+                ? 'From last heartbeat' 
+                : 'No recent data'}
             progress={memoryUsagePercent}
           />
           
@@ -232,7 +243,11 @@ export function DeviceMetrics({ deviceId }: DeviceMetricsProps) {
             title="Disk Usage"
             value={`${diskUsagePercent.toFixed(1)}%`}
             icon={HardDrive}
-            secondaryValue={latestMetrics?.diskUsage ? `Current: ${latestMetrics.diskUsage.toFixed(1)}%` : 'No recent data'}
+            secondaryValue={latestMetrics?.diskUsage 
+              ? `Current: ${latestMetrics.diskUsage.toFixed(1)}%` 
+              : diskUsagePercent > 0 
+                ? 'From last heartbeat' 
+                : 'No recent data'}
             progress={diskUsagePercent}
           />
           

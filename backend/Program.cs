@@ -102,6 +102,9 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+// Add SignalR for real-time dashboard push
+builder.Services.AddSignalR();
+
 // Add gRPC services
 builder.Services.AddGrpc(options =>
 {
@@ -183,6 +186,20 @@ builder.Services.AddCors(options =>
         
         var logger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("CORS");
         logger.LogInformation("🌐 CORS AllowFrontend policy configured with origins: {Origins}", string.Join(", ", allowedOrigins));
+    });
+    
+    // AllowAll policy for SignalR and gRPC (uses same origins as configured)
+    options.AddPolicy("AllowAll", corsBuilder =>
+    {
+        corsBuilder
+            .WithOrigins(allowedOrigins)
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials()
+            .SetPreflightMaxAge(TimeSpan.FromHours(1));
+        
+        var logger = LoggerFactory.Create(b => b.AddConsole()).CreateLogger("CORS");
+        logger.LogInformation("🌐 CORS AllowAll policy configured with origins: {Origins}", string.Join(", ", allowedOrigins));
     });
 });
 
@@ -290,30 +307,42 @@ builder.Services.AddAuthorization(options =>
               .RequireClaim("permission", "agent:read"));
 });
 
-// Configure Kestrel - port MUST come from configuration
+// Configure Kestrel - ports from configuration; gRPC on dedicated HTTP/2 endpoint to avoid HTTP_1_1_REQUIRED
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
-    // Get URL from configuration - REQUIRED, no hardcoded defaults
+    // HTTP/REST endpoint (Swagger, REST API)
     var configuredUrl = builder.Configuration["Kestrel:Endpoints:Http:Url"];
     if (string.IsNullOrEmpty(configuredUrl))
     {
         throw new InvalidOperationException("Kestrel:Endpoints:Http:Url must be configured in appsettings.json. No hardcoded defaults for security.");
     }
-    
     if (!Uri.TryCreate(configuredUrl, UriKind.Absolute, out var uri))
     {
         throw new InvalidOperationException($"Invalid Kestrel URL configuration: {configuredUrl}");
     }
-    
     var httpPort = uri.Port;
-
     serverOptions.ListenAnyIP(httpPort, listenOptions =>
     {
         listenOptions.Protocols = HttpProtocols.Http1AndHttp2;
         listenOptions.UseConnectionLogging();
     });
-    
-    Console.WriteLine($"🚀 Backend server listening on port: {httpPort}");
+    Console.WriteLine($"🚀 Backend HTTP/REST listening on port: {httpPort}");
+
+    // gRPC endpoint: HTTP/2 only on dedicated port (avoids HTTP_1_1_REQUIRED when agent uses insecure channel)
+    var grpcUrl = builder.Configuration["GrpcServer:Url"] ?? builder.Configuration["Kestrel:Endpoints:gRPC:Url"];
+    if (!string.IsNullOrEmpty(grpcUrl) && Uri.TryCreate(grpcUrl, UriKind.Absolute, out var grpcUri))
+    {
+        var grpcPort = grpcUri.Port;
+        if (grpcPort != httpPort)
+        {
+            serverOptions.ListenAnyIP(grpcPort, listenOptions =>
+            {
+                listenOptions.Protocols = HttpProtocols.Http2;
+                listenOptions.UseConnectionLogging();
+            });
+            Console.WriteLine($"🔧 gRPC (HTTP/2) listening on port: {grpcPort} — use this URL in agent BackendGrpcUrl");
+        }
+    }
     Console.WriteLine($"💡 Override via environment: ATHALA_Kestrel__Endpoints__Http__Url=http://0.0.0.0:YOUR_PORT");
 });
 
@@ -353,6 +382,9 @@ builder.Services.AddScoped<ILogArchivingService, LogArchivingService>();
 
 // Register new infrastructure services
 // Use Enhanced ECS Normalizer (ensures timestamp, source_ip, event_type, severity)
+// Register enhanced log parsing services
+builder.Services.AddSingleton<Backend.Services.WindowsEventLogParser>();
+builder.Services.AddSingleton<Backend.Services.MitreAttackMapper>();
 builder.Services.AddScoped<Backend.Infrastructure.Normalizers.ILogNormalizer, Backend.Infrastructure.Normalizers.EnhancedECSLogNormalizer>();
 builder.Services.AddScoped<Backend.Infrastructure.Detection.RuleEngine.IRuleParser, Backend.Infrastructure.Detection.RuleEngine.YamlRuleParser>();
 builder.Services.AddScoped<Backend.Infrastructure.Detection.RuleEngine.IRuleExecutor, Backend.Infrastructure.Detection.RuleEngine.PatternMatchRuleExecutor>();
@@ -375,6 +407,7 @@ builder.Services.AddHostedService<LogArchivingService>();
 builder.Services.AddSingleton<Backend.Workers.LogNormalizationWorker>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<Backend.Workers.LogNormalizationWorker>());
 builder.Services.AddHostedService<Backend.Workers.DetectionWorker>();
+builder.Services.AddHostedService<Backend.Workers.DashboardAggregatorWorker>();
 
 var app = builder.Build();
 
@@ -484,6 +517,9 @@ app.Use(async (context, next) =>
 
 // Map controllers
 app.MapControllers();
+
+// Map SignalR hub for real-time dashboard events
+app.MapHub<Backend.Hubs.SiemHub>("/hubs/siem").RequireCors("AllowAll");
 
 // Map gRPC services
 app.MapGrpcService<Backend.Services.SiemService>().RequireCors("AllowAll");

@@ -181,15 +181,24 @@ namespace AthalaSIEM.Agent.Security
         }
         
         /// <summary>
-        /// Computes a hash of the input data using SHA-256
+        /// Computes a hash of the input data using SHA-256.
+        /// Returns the standard SHA-256 hash of empty input when data is null or empty,
+        /// so callers (e.g. LogNormalizer) do not crash on empty log content.
         /// </summary>
         /// <param name="data">The data to hash</param>
         /// <returns>The hash value as a hexadecimal string</returns>
         public string ComputeHash(byte[] data)
         {
             if (data == null || data.Length == 0)
-                throw new ArgumentException("Data cannot be null or empty", nameof(data));
-            
+            {
+                // Standard SHA-256 of empty input (e.g. empty log body) - avoid crashing pipeline
+                using (var sha256 = SHA256.Create())
+                {
+                    byte[] hash = sha256.ComputeHash(Array.Empty<byte>());
+                    return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+                }
+            }
+
             using (var sha256 = SHA256.Create())
             {
                 byte[] hash = sha256.ComputeHash(data);

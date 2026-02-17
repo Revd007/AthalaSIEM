@@ -32,30 +32,12 @@ public static class PipelineServiceRegistration
         services.AddSingleton<IParser, WindowsEventLogParser>();
         services.AddSingleton<IParser, SyslogParser>();
 
-        // Register normalizer - gets agent ID from identity service when available
+        // Register normalizer - agent ID is resolved lazily per event to avoid "Cannot get agent ID" at startup
         services.AddSingleton<INormalizer>(sp =>
         {
             var logger = sp.GetRequiredService<ILogger<AthalaEcsNormalizer>>();
             var identityService = sp.GetService<IAgentIdentityService>();
-            
-            string agentId;
-            if (identityService != null)
-            {
-                try
-                {
-                    agentId = identityService.GetAgentIdAsync().GetAwaiter().GetResult() ?? Guid.NewGuid().ToString();
-                }
-                catch
-                {
-                    agentId = Guid.NewGuid().ToString();
-                }
-            }
-            else
-            {
-                agentId = Guid.NewGuid().ToString();
-            }
-            
-            return new AthalaEcsNormalizer(logger, agentId, agentName, hostName);
+            return new AthalaEcsNormalizer(logger, agentName, hostName, identityService);
         });
 
         // Register buffer

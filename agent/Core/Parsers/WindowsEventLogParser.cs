@@ -68,11 +68,33 @@ public class WindowsEventLogParser : BaseParser
                     dataIndex++;
                 }
             }
+
+            // Extract human-readable message from EventData/Message node if present
+            var messageNode = xml.Root?.Element(ns + "EventData")?.Element(ns + "Message");
+            if (messageNode != null && !string.IsNullOrEmpty(messageNode.Value))
+            {
+                structuredData["message"] = messageNode.Value;
+            }
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to parse Windows Event Log XML for event {EventId}", rawEvent.Id);
             structuredData["raw_message"] = text;
+        }
+
+        // CRITICAL: Extract human-readable message from metadata if parser didn't find it in XML
+        // The Core collector stores FormatDescription() result in metadata["message"]
+        if (!structuredData.ContainsKey("message") && rawEvent.Metadata.TryGetValue("message", out var metadataMessage))
+        {
+            structuredData["message"] = metadataMessage;
+        }
+
+        // Fallback: if still no message, create a descriptive one
+        if (!structuredData.ContainsKey("message") || string.IsNullOrEmpty(structuredData["message"]?.ToString()))
+        {
+            var eventId = structuredData.GetValueOrDefault("event_id")?.ToString() ?? "Unknown";
+            var task = structuredData.GetValueOrDefault("task")?.ToString() ?? "Event";
+            structuredData["message"] = $"Event ID {eventId}: {task}";
         }
 
         return new ParsedEvent

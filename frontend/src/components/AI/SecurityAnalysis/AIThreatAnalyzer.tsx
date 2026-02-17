@@ -54,63 +54,81 @@ export function AIThreatAnalyzer() {
     refetchInterval: 60000,
   });
 
-  // Generate threat distribution from alerts
+  // Generate threat distribution from BOTH alerts AND logs (enriched with MITRE data)
   const threatData = useMemo(() => {
-    if (!alertsData?.items) {
-      return {
-        byType: [
-          { name: 'Unknown', value: 100 }
-        ],
-        byTactic: []
-      };
-    }
-
-    const alerts = alertsData.items;
     const typeCount: Record<string, number> = {};
     const tacticCount: Record<string, number> = {};
 
-    alerts.forEach(alert => {
-      // Categorize by message content
-      const message = alert.message?.toLowerCase() || '';
-      let type = 'Other';
-      if (message.includes('malware') || message.includes('virus')) type = 'Malware';
-      else if (message.includes('apt') || message.includes('persistent')) type = 'APT';
-      else if (message.includes('zero day') || message.includes('0day')) type = 'Zero Day';
-      else if (message.includes('insider') || message.includes('internal')) type = 'Insider';
-      else if (message.includes('login') || message.includes('auth')) type = 'Credential Attack';
-      else if (message.includes('network') || message.includes('ddos')) type = 'Network Attack';
-      
-      typeCount[type] = (typeCount[type] || 0) + 1;
+    // 1. Process alerts
+    if (alertsData?.items) {
+      alertsData.items.forEach(alert => {
+        const message = alert.message?.toLowerCase() || '';
+        let type = 'Other';
+        if (message.includes('malware') || message.includes('virus')) type = 'Malware';
+        else if (message.includes('apt') || message.includes('persistent')) type = 'APT';
+        else if (message.includes('login') || message.includes('auth') || message.includes('failed')) type = 'Credential Attack';
+        else if (message.includes('network') || message.includes('ddos') || message.includes('firewall')) type = 'Network Attack';
+        else if (message.includes('offline') || message.includes('agent')) type = 'Agent Alert';
+        
+        typeCount[type] = (typeCount[type] || 0) + 1;
+      });
+    }
 
-      // Categorize by MITRE tactic
-      let tactic = 'Unknown';
-      if (message.includes('initial access') || message.includes('phishing')) tactic = 'Initial Access';
-      else if (message.includes('execution') || message.includes('script')) tactic = 'Execution';
-      else if (message.includes('persistence') || message.includes('startup')) tactic = 'Persistence';
-      else if (message.includes('privilege') || message.includes('escalation')) tactic = 'Privilege Escalation';
-      else if (message.includes('evasion') || message.includes('defense')) tactic = 'Defense Evasion';
-      else if (message.includes('credential') || message.includes('password')) tactic = 'Credential Access';
-      else if (message.includes('lateral') || message.includes('movement')) tactic = 'Lateral Movement';
-      else if (message.includes('exfil') || message.includes('data')) tactic = 'Exfiltration';
+    // 2. Process logs with MITRE enrichment from backend normalizer
+    if (logsData?.items) {
+      logsData.items.forEach((log: any) => {
+        const props = log.properties || {};
+        const mitreTechniques = props.mitre_techniques || [];
+        
+        if (mitreTechniques.length > 0) {
+          mitreTechniques.forEach((technique: any) => {
+            const tactic = technique.tactic || technique.Tactic || 'Unknown';
+            // Split comma-separated tactics
+            tactic.split(',').map((t: string) => t.trim()).forEach((t: string) => {
+              if (t && t !== 'Unknown') {
+                tacticCount[t] = (tacticCount[t] || 0) + 1;
+              }
+            });
+            
+            const techniqueName = technique.techniqueName || technique.TechniqueName || '';
+            if (techniqueName) {
+              typeCount[techniqueName] = (typeCount[techniqueName] || 0) + 1;
+            }
+          });
+        }
 
-      if (tactic !== 'Unknown') {
-        tacticCount[tactic] = (tacticCount[tactic] || 0) + 1;
-      }
-    });
+        // Also use Event ID-based heuristics for logs without MITRE data
+        const eventId = log.eventId;
+        if (eventId && mitreTechniques.length === 0) {
+          if (eventId === 4625) { typeCount['Brute Force'] = (typeCount['Brute Force'] || 0) + 1; tacticCount['Credential Access'] = (tacticCount['Credential Access'] || 0) + 1; }
+          else if (eventId === 4624) { typeCount['Logon Activity'] = (typeCount['Logon Activity'] || 0) + 1; }
+          else if (eventId === 4688) { typeCount['Process Creation'] = (typeCount['Process Creation'] || 0) + 1; tacticCount['Execution'] = (tacticCount['Execution'] || 0) + 1; }
+          else if (eventId === 5156 || eventId === 5157) { typeCount['Network Connection'] = (typeCount['Network Connection'] || 0) + 1; }
+          else if (eventId === 4720 || eventId === 4722) { typeCount['Account Management'] = (typeCount['Account Management'] || 0) + 1; tacticCount['Persistence'] = (tacticCount['Persistence'] || 0) + 1; }
+        }
+      });
+    }
+
+    if (Object.keys(typeCount).length === 0) {
+      return { byType: [{ name: 'Unknown', value: 100 }], byTactic: [] };
+    }
 
     const total = Object.values(typeCount).reduce((a, b) => a + b, 0) || 1;
-    const byType = Object.entries(typeCount).map(([name, count]) => ({
-      name,
-      value: Math.round((count / total) * 100)
-    })).slice(0, 4);
+    const byType = Object.entries(typeCount)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 6)
+      .map(([name, count]) => ({
+        name,
+        value: Math.round((count / total) * 100)
+      }));
 
     const byTactic = Object.entries(tacticCount)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
-      .slice(0, 5);
+      .slice(0, 8);
 
     return { byType, byTactic };
-  }, [alertsData]);
+  }, [alertsData, logsData]);
 
   // Convert alerts to threat events
   const threats: ThreatEvent[] = useMemo(() => {

@@ -295,8 +295,8 @@ export const endpoints = {
     details: (id: string) => `/api/logs/${id}`
   },
   dashboard: {
-    overview: '/api/dashboard',
-    metrics: '/api/dashboard/metrics'
+    overview: '/api/dashboard/overview',
+    metrics: '/api/dashboard/metrics/realtime'
   },
   normalization: {
     statistics: '/api/normalization/statistics',

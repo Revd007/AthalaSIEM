@@ -4,7 +4,7 @@
   <em>Cross-Platform Log Collection Agent for AthalaSIEM</em>
 </p>
 
-## 📋 Overview
+##  Overview
 
 The AthalaSIEM Agent is a high-performance .NET 8 application designed to collect security logs and events from various sources and forward them to the AthalaSIEM Backend. It provides real-time log collection, intelligent parsing, and secure communication with the central SIEM system.
 
@@ -18,7 +18,7 @@ The AthalaSIEM Agent is a high-performance .NET 8 application designed to collec
 - 🛠️ **Modular Design**: Pluggable collectors for different log sources
 - 📈 **Intelligent Parsing**: Smart log parsing and normalization
 - 🔔 **Health Monitoring**: Built-in health checks and monitoring capabilities
-- 📋 **Configuration Management**: Centralized configuration from the backend
+-  **Configuration Management**: Centralized configuration from the backend
 - 🔄 **Automatic Recovery**: Resilient design with automatic reconnection and retry logic
 
 ## 🏗️ Architecture
@@ -58,10 +58,10 @@ The AthalaSIEM Agent is a high-performance .NET 8 application designed to collec
 
 | Component | Status | Build | Tests | Production Ready |
 |-----------|--------|-------|-------|------------------|
-| Core Agent | ✅ Complete | ✅ 0 Errors | ✅ Passing | ✅ Ready |
-| Log Collectors | ✅ Complete | ✅ 0 Errors | ✅ Passing | ✅ Ready |
-| Communication | ✅ Complete | ✅ 0 Errors | ✅ Passing | ✅ Ready |
-| Configuration | ✅ Complete | ✅ 0 Errors | ✅ Passing | ✅ Ready |
+| Core Agent |  Complete |  0 Errors |  Passing |  Ready |
+| Log Collectors |  Complete |  0 Errors |  Passing |  Ready |
+| Communication |  Complete |  0 Errors |  Passing |  Ready |
+| Configuration |  Complete |  0 Errors |  Passing |  Ready |
 
 ## 🚀 Quick Start
 

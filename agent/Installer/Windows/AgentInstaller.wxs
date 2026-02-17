@@ -206,54 +206,40 @@
       <ComponentGroupRef Id="StartMenuShortcuts" />
     </Feature>
 
-    <!-- PowerShell custom action to update appsettings.json -->
+    <!-- PowerShell custom action: update Agent section. Return=ignore so install completes even if config update fails. -->
     <CustomAction Id="UpdateConfigPS"
                   Execute="deferred"
                   Impersonate="no"
-                  Return="check"
+                  Return="ignore"
                   Directory="INSTALLFOLDER"
-                  ExeCommand="powershell.exe -ExecutionPolicy Bypass -Command &quot;
-                    $configPath = '[INSTALLFOLDER]appsettings.json';
-                    if (Test-Path $configPath) {
-                      $config = Get-Content $configPath | ConvertFrom-Json;
+                  ExeCommand="powershell.exe -ExecutionPolicy Bypass -NoProfile -Command &quot;
+                    try {
+                      $configPath = '[INSTALLFOLDER]appsettings.json';
+                      if (-not (Test-Path $configPath)) { exit 0; }
+                      $json = Get-Content $configPath -Raw -Encoding UTF8;
+                      if ([string]::IsNullOrWhiteSpace($json)) { exit 0; }
+                      $config = $json | ConvertFrom-Json;
                       $serverUrl = '[SERVER_URL]';
                       $useSSL = '[USE_SSL]';
                       $agentName = '[AGENT_NAME]';
                       $token = '[DEPLOYMENT_TOKEN]';
-                      
-                      # Build the correct backend API URL based on SSL setting
-                      if ($useSSL -eq '1') {
-                        # Use HTTPS protocol
-                        if ($serverUrl -notmatch '^https://') {
-                          $serverUrl = $serverUrl -replace '^http://', 'https://';
-                          if ($serverUrl -notmatch '^https://') {
-                            $serverUrl = 'https://' + $serverUrl;
-                          }
-                        }
-                      } else {
-                        # Use HTTP protocol  
-                        if ($serverUrl -notmatch '^http://') {
-                          $serverUrl = $serverUrl -replace '^https://', 'http://';
-                          if ($serverUrl -notmatch '^http://') {
-                            $serverUrl = 'http://' + $serverUrl;
-                          }
-                        }
-                      }
-                      
-                      # Set the backend API URL
-                      $config.BackendApiUrl = $serverUrl;
-                      
-                      # Update agent name
-                      $config.Agent.Name = $agentName;
-                      
-                      # Update registration key if provided
-                      if ($token -and $token -ne '') {
-                        $config.Agent.RegistrationKey = $token;
-                      }
-                      
-                      # Save the updated configuration
-                      $config | ConvertTo-Json -Depth 10 | Set-Content $configPath;
-                    }
+                      if ([string]::IsNullOrWhiteSpace($serverUrl)) { exit 0; }
+                      if ($serverUrl -notmatch '^https?://') { $serverUrl = 'http://' + $serverUrl; }
+                      if ($useSSL -eq '1' -and $serverUrl -notmatch '^https://') { $serverUrl = $serverUrl -replace '^http://', 'https://'; }
+                      if ($useSSL -ne '1' -and $serverUrl -notmatch '^http://') { $serverUrl = $serverUrl -replace '^https://', 'http://'; }
+                      try { $uri = [System.Uri]$serverUrl; } catch { exit 0; }
+                      $grpcPort = if ($uri.Port -eq 9595) { 50051 } else { $uri.Port };
+                      $grpcUrl = $uri.Scheme + '://' + $uri.Host + ':' + [string]$grpcPort;
+                      if (-not $config.PSObject.Properties['Agent']) { $config | Add-Member -MemberType NoteProperty -Name Agent -Value (New-Object PSObject) -Force; }
+                      $agent = $config.Agent;
+                      if (-not $agent) { $agent = New-Object PSObject; $config.Agent = $agent; }
+                      $agent | Add-Member -MemberType NoteProperty -Name BackendApiUrl -Value $serverUrl -Force;
+                      $agent | Add-Member -MemberType NoteProperty -Name BackendGrpcUrl -Value $grpcUrl -Force;
+                      $agent | Add-Member -MemberType NoteProperty -Name AgentName -Value $agentName -Force;
+                      if ($token -and $token.Trim() -ne '') { $agent | Add-Member -MemberType NoteProperty -Name DeploymentToken -Value $token.Trim() -Force; }
+                      $config | ConvertTo-Json -Depth 15 -Compress:$false | Set-Content $configPath -Encoding UTF8 -Force;
+                    } catch { }
+                    exit 0;
                   &quot;" />
 
     <!-- Install sequence -->

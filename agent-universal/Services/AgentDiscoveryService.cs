@@ -79,7 +79,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                 }
             }
 
-            _logger.LogInformation("✅ Discovery completed. Found {Count} SIEM servers: {Servers}", 
+            _logger.LogInformation(" Discovery completed. Found {Count} SIEM servers: {Servers}", 
                 _discoveredServers.Count, string.Join(", ", _discoveredServers));
 
             return _discoveredServers.ToList();
@@ -113,7 +113,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                             if (await ValidateSIEMServerAsync(serverUrl))
                             {
                                 _discoveredServers.Add(serverUrl);
-                                _logger.LogInformation("✅ Found SIEM server via DNS: {ServerUrl}", serverUrl);
+                                _logger.LogInformation(" Found SIEM server via DNS: {ServerUrl}", serverUrl);
                             }
                         }
                     }
@@ -168,7 +168,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                 if (await ValidateSIEMServerAsync(server))
                 {
                     _discoveredServers.Add(server);
-                    _logger.LogInformation("✅ Manual config found SIEM server: {Server}", server);
+                    _logger.LogInformation(" Manual config found SIEM server: {Server}", server);
                 }
             }
         }
@@ -190,7 +190,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                     if (await ValidateSIEMServerAsync(serverUrl))
                     {
                         _discoveredServers.Add(serverUrl);
-                        _logger.LogInformation("✅ Environment discovery found SIEM server: {Server} (from {EnvVar})", 
+                        _logger.LogInformation(" Environment discovery found SIEM server: {Server} (from {EnvVar})", 
                             serverUrl, envVar);
                     }
                 }
@@ -269,7 +269,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                     Hostname = Environment.MachineName,
                     IpAddress = GetLocalIPAddress(),
                     Platform = Environment.OSVersion.Platform.ToString(),
-                    OsVersion = Environment.OSVersion.VersionString,
+                    OsVersion = GetWindowsVersion() ?? Environment.OSVersion.VersionString,
                     Version = "1.0.0",
                     Capabilities = GetAgentCapabilities()
                 };
@@ -290,12 +290,12 @@ namespace AthalaSIEM.UniversalAgent.Services
                     if (registrationResponse?.IsValid() == true)
                     {
                         _selectedServer = serverUrl;
-                        _logger.LogInformation("✅ Agent registered successfully with server: {Server}", serverUrl);
+                        _logger.LogInformation(" Agent registered successfully with server: {Server}", serverUrl);
                         return registrationResponse;
                     }
                 }
                 
-                _logger.LogWarning("❌ Agent registration failed with server: {Server} - {StatusCode}", 
+                _logger.LogWarning("Agent registration failed with server: {Server} - {StatusCode}", 
                     serverUrl, response.StatusCode);
                 return null;
             }
@@ -361,7 +361,7 @@ namespace AthalaSIEM.UniversalAgent.Services
                             {
                                 _discoveredServers.Add(serverUrl);
                             }
-                            _logger.LogInformation("✅ Broadcast discovery found SIEM server: {Server}", serverUrl);
+                            _logger.LogInformation(" Broadcast discovery found SIEM server: {Server}", serverUrl);
                         }
                     }
                     catch
@@ -410,6 +410,80 @@ namespace AthalaSIEM.UniversalAgent.Services
             }
             
             return capabilities;
+        }
+
+        /// <summary>
+        /// Get Windows version string (e.g., "Windows 10", "Windows 11", "Windows Server 2019")
+        /// </summary>
+        private string? GetWindowsVersion()
+        {
+            try
+            {
+                if (!System.OperatingSystem.IsWindows())
+                {
+                    return null;
+                }
+
+                // Use RuntimeInformation.OSDescription for better Windows version detection
+                var osDescription = RuntimeInformation.OSDescription;
+                
+                // Parse OS description to get version
+                if (osDescription.Contains("Microsoft Windows"))
+                {
+                    // Try to get more specific version from registry
+                    try
+                    {
+                        using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+                        if (key != null)
+                        {
+                            var productName = key.GetValue("ProductName")?.ToString() ?? "";
+                            var releaseId = key.GetValue("ReleaseId")?.ToString() ?? "";
+                            var displayVersion = key.GetValue("DisplayVersion")?.ToString() ?? "";
+                            
+                            if (!string.IsNullOrEmpty(productName))
+                            {
+                                // Map common product names
+                                if (productName.Contains("Windows 10"))
+                                {
+                                    return !string.IsNullOrEmpty(displayVersion) 
+                                        ? $"Windows 10 {displayVersion}" 
+                                        : !string.IsNullOrEmpty(releaseId)
+                                        ? $"Windows 10 Version {releaseId}"
+                                        : "Windows 10";
+                                }
+                                else if (productName.Contains("Windows 11"))
+                                {
+                                    return !string.IsNullOrEmpty(displayVersion)
+                                        ? $"Windows 11 {displayVersion}"
+                                        : "Windows 11";
+                                }
+                                else if (productName.Contains("Windows Server"))
+                                {
+                                    // Extract year from product name (e.g., "Windows Server 2019", "Windows Server 2022")
+                                    return productName.Replace("Microsoft ", "");
+                                }
+                                else
+                                {
+                                    return productName.Replace("Microsoft ", "");
+                                }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Fallback to OSDescription if registry access fails
+                    }
+                    
+                    // Fallback: Use OSDescription
+                    return osDescription.Replace("Microsoft ", "");
+                }
+                
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         /// <summary>

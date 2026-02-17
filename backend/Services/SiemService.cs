@@ -5,7 +5,9 @@ using System.Threading.Tasks;
 using AthalaSIEM.Agent;
 using Backend.Data.Repositories;
 using Backend.Models;
+using Backend.Hubs;
 using Grpc.Core;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using MediatR;
 using Backend.Application.Commands;
@@ -28,6 +30,7 @@ namespace Backend.Services
         private readonly IAgentRepository _agentRepository;
         private readonly Backend.Domain.Interfaces.ILogRepository _logRepository;
         private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
+        private readonly IHubContext<SiemHub> _hubContext;
 
         public SiemService(
             ILogger<SiemService> logger,
@@ -37,7 +40,8 @@ namespace Backend.Services
             IMediator mediator,
             IAgentRepository agentRepository,
             ILogRepository logRepository,
-            Microsoft.Extensions.Configuration.IConfiguration configuration)
+            Microsoft.Extensions.Configuration.IConfiguration configuration,
+            IHubContext<SiemHub> hubContext)
         {
             _logger = logger;
             _legacyAgentRepository = legacyAgentRepository;
@@ -47,15 +51,73 @@ namespace Backend.Services
             _agentRepository = agentRepository;
             _logRepository = logRepository;
             _configuration = configuration;
+            _hubContext = hubContext;
         }
 
         public override async Task<RegisterAgentResponse> RegisterAgent(RegisterAgentRequest request, ServerCallContext context)
         {
             try
             {
-                _logger.LogInformation("Agent registration request received from {Hostname}", request.Hostname);
-                
-                // Use CQRS command for registration
+                _logger.LogInformation(
+                    "Agent registration request received from {Hostname} (OS={OS}, Version={Version}, Type={Type})",
+                    request.Hostname, request.OperatingSystem, request.AgentVersion, request.AgentType);
+
+                // Check if an agent with this hostname already exists (re-registration after -CleanIdentity)
+                var existingAgents = await _legacyAgentRepository.GetAllAsync();
+                var existingAgent = existingAgents.FirstOrDefault(a =>
+                    string.Equals(a.Hostname, request.Hostname, StringComparison.OrdinalIgnoreCase));
+
+                if (existingAgent != null)
+                {
+                    _logger.LogInformation(
+                        "Agent with hostname {Hostname} already exists (ID={AgentId}). Updating existing registration.",
+                        request.Hostname, existingAgent.Id);
+
+                    // Update existing agent instead of creating a new one
+                    existingAgent.IPAddress = request.IpAddress;
+                    existingAgent.OperatingSystem = request.OperatingSystem;
+                    existingAgent.Version = request.AgentVersion;
+                    existingAgent.AgentVersion = request.AgentVersion;
+                    existingAgent.Type = request.AgentType == "Windows" ? AgentType.Windows :
+                                         request.AgentType == "Linux" ? AgentType.Linux : AgentType.Custom;
+                    existingAgent.LastConnected = DateTime.UtcNow;
+                    existingAgent.LastHeartbeat = DateTime.UtcNow;
+                    existingAgent.Status = Backend.Models.AgentStatus.Online;
+                    existingAgent.UpdatedAt = DateTime.UtcNow;
+
+                    // Rotate API key on re-registration for security
+                    existingAgent.ApiKey = GenerateApiKey();
+
+                    await _legacyAgentRepository.UpdateAsync(existingAgent);
+
+                    // Also update domain entity
+                    var domainAgent = await _agentRepository.GetByIdAsync(existingAgent.Id);
+                    if (domainAgent != null)
+                    {
+                        domainAgent.IpAddress = request.IpAddress;
+                        domainAgent.OperatingSystem = request.OperatingSystem;
+                        domainAgent.AgentVersion = request.AgentVersion;
+                        domainAgent.ApiKey = existingAgent.ApiKey;
+                        domainAgent.Status = Domain.Entities.AgentStatus.Online;
+                        domainAgent.LastHeartbeat = DateTime.UtcNow;
+                        domainAgent.UpdatedAt = DateTime.UtcNow;
+                        await _agentRepository.UpdateAsync(domainAgent);
+                    }
+
+                    var grpcUrlReReg = _configuration["GrpcServer:Url"] ?? "http://localhost:50051";
+                    _logger.LogInformation("Agent {AgentId} re-registered successfully", existingAgent.Id);
+
+                    return new RegisterAgentResponse
+                    {
+                        Success = true,
+                        AgentId = existingAgent.Id,
+                        ApiKey = existingAgent.ApiKey,
+                        Message = "Agent re-registered successfully",
+                        GrpcEndpoint = grpcUrlReReg
+                    };
+                }
+
+                // New agent: use CQRS command which writes to the domain repository (-> AgentModels table)
                 var command = new RegisterAgentCommand
                 {
                     Name = request.Hostname,
@@ -65,41 +127,40 @@ namespace Backend.Services
                     AgentVersion = request.AgentVersion,
                     Metadata = request.Metadata?.ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value)
                 };
-                
+
                 var result = await _mediator.Send(command);
-                
+
                 if (!result.Success)
                 {
+                    _logger.LogError("CQRS registration failed: {Error}", result.ErrorMessage);
                     return new RegisterAgentResponse
                     {
                         Success = false,
                         Message = result.ErrorMessage ?? "Registration failed"
                     };
                 }
-                
-                // Also register in legacy repository for backward compatibility
-                var legacyAgent = new AgentModels
+
+                // The CQRS handler already wrote AgentModels to the database via Infrastructure.AgentRepository.
+                // Update the legacy-specific fields (Type, Version, Status, LastConnected) that the CQRS
+                // path doesn't set, by loading the ALREADY TRACKED entity and modifying it in place.
+                var tracked = await _legacyAgentRepository.GetByIdAsync(result.AgentId);
+                if (tracked != null)
                 {
-                    Id = result.AgentId,
-                    ApiKey = result.ApiKey,
-                    Hostname = request.Hostname,
-                    IPAddress = request.IpAddress,
-                    OperatingSystem = request.OperatingSystem,
-                    Version = request.AgentVersion,
-                    Type = request.AgentType == "Windows" ? AgentType.Windows : 
-                           request.AgentType == "Linux" ? AgentType.Linux : AgentType.Custom,
-                    LastConnected = DateTime.UtcNow,
-                    Status = Backend.Models.AgentStatus.Active,
-                    CreatedAt = DateTime.UtcNow
-                };
-                
-                await _legacyAgentRepository.AddAgentAsync(legacyAgent);
-                
-                _logger.LogInformation("Agent {AgentId} registered successfully", result.AgentId);
-                
-                // Get gRPC endpoint from configuration
-                var grpcUrl = _configuration["GrpcServer:Url"] ?? "http://localhost:9595";
-                
+                    tracked.Version = request.AgentVersion;
+                    tracked.AgentVersion = request.AgentVersion;
+                    tracked.Type = request.AgentType == "Windows" ? AgentType.Windows :
+                                   request.AgentType == "Linux" ? AgentType.Linux : AgentType.Custom;
+                    tracked.LastConnected = DateTime.UtcNow;
+                    tracked.LastHeartbeat = DateTime.UtcNow;
+                    tracked.Status = Backend.Models.AgentStatus.Online;
+                    tracked.Name = request.Hostname;
+                    await _legacyAgentRepository.UpdateAsync(tracked);
+                }
+
+                _logger.LogInformation("Agent {AgentId} registered successfully (new)", result.AgentId);
+
+                var grpcUrl = _configuration["GrpcServer:Url"] ?? "http://localhost:50051";
+
                 return new RegisterAgentResponse
                 {
                     Success = true,
@@ -111,13 +172,21 @@ namespace Backend.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during agent registration");
+                _logger.LogError(ex, "Error during agent registration from {Hostname}", request.Hostname);
                 return new RegisterAgentResponse
                 {
                     Success = false,
                     Message = "Registration failed: " + ex.Message
                 };
             }
+        }
+
+        private static string GenerateApiKey()
+        {
+            using var rng = System.Security.Cryptography.RandomNumberGenerator.Create();
+            var bytes = new byte[32];
+            rng.GetBytes(bytes);
+            return Convert.ToBase64String(bytes).Replace("+", "-").Replace("/", "_").TrimEnd('=');
         }
 
         public override async Task<ValidateApiKeyResponse> ValidateApiKey(ValidateApiKeyRequest request, ServerCallContext context)
@@ -242,26 +311,54 @@ namespace Backend.Services
                 var acceptedCount = 0;
                 var rejectedCount = 0;
                 
+                // Extract hostname that applies to all logs in this batch
+                var agentHostname = agent.Hostname ?? string.Empty;
+
                 foreach (var log in request.Logs)
                 {
                     try
                     {
-                        // Create domain log entry
+                        // Extract metadata fields sent by the agent
+                        var metadata = log.Metadata;
+                        var machineName = metadata?.GetValueOrDefault("machine_name") ?? agentHostname;
+                        var logName = metadata?.GetValueOrDefault("log_name") ?? string.Empty;
+                        var eventIdStr = metadata?.GetValueOrDefault("event_id") ?? string.Empty;
+                        long.TryParse(eventIdStr, out var eventId);
+
+                        // Create domain log entry with ALL fields properly mapped
+                        // Ensure all DateTime values are UTC (PostgreSQL requirement)
+                        DateTime timestamp;
+                        if (DateTime.TryParse(log.Timestamp, out var ts))
+                        {
+                            // Convert to UTC if not already UTC
+                            timestamp = ts.Kind == DateTimeKind.Utc ? ts : ts.ToUniversalTime();
+                        }
+                        else
+                        {
+                            timestamp = DateTime.UtcNow;
+                        }
+
                         var logEntry = new Backend.Domain.Entities.LogEntry
                         {
                             Id = log.Id ?? Guid.NewGuid().ToString(),
                             AgentId = request.AgentId,
-                            Timestamp = DateTime.TryParse(log.Timestamp, out var ts) ? ts : DateTime.UtcNow,
+                            Timestamp = timestamp,
                             ReceivedAt = DateTime.UtcNow,
-                            RawMessage = log.Message,
-                            Source = log.SourceType ?? log.Source,
-                            Category = log.SourceType,
-                            RawProperties = log.Metadata != null ? System.Text.Json.JsonSerializer.Serialize(log.Metadata) : null,
+                            Level = !string.IsNullOrEmpty(log.LogLevel) ? log.LogLevel : "Information",
+                            RawMessage = !string.IsNullOrEmpty(log.Message) ? log.Message : "(no message)",
+                            Source = !string.IsNullOrEmpty(log.SourceType) ? log.SourceType : log.Source,
+                            Category = !string.IsNullOrEmpty(logName) ? logName : log.SourceType,
+                            EventId = eventId > 0 ? eventId : null,
+                            MachineName = machineName,
+                            IPAddress = metadata?.GetValueOrDefault("source_ip") ?? string.Empty,
+                            RawProperties = metadata != null && metadata.Count > 0 
+                                ? System.Text.Json.JsonSerializer.Serialize(metadata) 
+                                : null,
                             Processed = false,
                             IsNormalized = false
                         };
                         
-                        // Store raw log entry
+                        // Store raw log entry (MapToModel now carries Level, MachineName, IPAddress)
                         await _logRepository.AddAsync(logEntry);
                         
                         // Publish ingestion event to trigger normalization and detection
@@ -295,6 +392,33 @@ namespace Backend.Services
                 _logger.LogInformation("Processed log batch from agent {AgentId}: {Accepted} accepted, {Rejected} rejected", 
                     request.AgentId, acceptedCount, rejectedCount);
                 
+                // Feed the real-time dashboard aggregator with ingestion metadata
+                if (acceptedCount > 0)
+                {
+                    try
+                    {
+                        // Feed in-memory counters for the DashboardAggregatorWorker
+                        var firstLog = request.Logs.FirstOrDefault();
+                        Backend.Workers.DashboardAggregatorWorker.RecordIngestion(
+                            request.AgentId,
+                            acceptedCount,
+                            firstLog?.SourceType ?? "Unknown",
+                            firstLog?.LogLevel ?? "Information");
+
+                        // Also push a lightweight notification so the frontend can trigger a query refresh
+                        await _hubContext.Clients.All.SendAsync("ReceiveLogBatch", new
+                        {
+                            agentId = request.AgentId,
+                            count = acceptedCount,
+                            timestamp = DateTime.UtcNow.ToString("o")
+                        });
+                    }
+                    catch (Exception hubEx)
+                    {
+                        _logger.LogDebug(hubEx, "Non-critical: SignalR broadcast failed");
+                    }
+                }
+
                 return new LogBatchResponse
                 {
                     Success = true,
@@ -319,8 +443,8 @@ namespace Backend.Services
             try
             {
                 _logger.LogDebug("Heartbeat received from agent {AgentId}", request.AgentId);
-                
-                // Use CQRS command for heartbeat
+
+                // Use CQRS command for heartbeat (updates domain Agent entity)
                 var command = new SendHeartbeatCommand
                 {
                     AgentId = request.AgentId,
@@ -336,9 +460,9 @@ namespace Backend.Services
                         ["logs_forwarded"] = request.LogsForwarded
                     }
                 };
-                
+
                 var result = await _mediator.Send(command);
-                
+
                 if (!result.Success)
                 {
                     return new HeartbeatResponse
@@ -347,9 +471,29 @@ namespace Backend.Services
                         Message = result.ErrorMessage ?? "Heartbeat processing failed"
                     };
                 }
-                
+
+                // Also update legacy model so the dashboard (which reads AgentModels) shows correct status
+                try
+                {
+                    var legacyAgent = await _legacyAgentRepository.GetByIdAsync(request.AgentId);
+                    if (legacyAgent != null)
+                    {
+                        legacyAgent.LastConnected = DateTime.UtcNow;
+                        legacyAgent.LastHeartbeat = DateTime.UtcNow;
+                        legacyAgent.Status = Backend.Models.AgentStatus.Online;
+                        legacyAgent.CpuUsage = request.CpuUsage;
+                        legacyAgent.MemoryUsage = request.MemoryUsage;
+                        legacyAgent.UpdatedAt = DateTime.UtcNow;
+                        await _legacyAgentRepository.UpdateAsync(legacyAgent);
+                    }
+                }
+                catch (Exception legacyEx)
+                {
+                    _logger.LogWarning(legacyEx, "Failed to update legacy agent model for heartbeat (non-critical)");
+                }
+
                 _logger.LogDebug("Heartbeat processed for agent {AgentId}", request.AgentId);
-                
+
                 return new HeartbeatResponse
                 {
                     Success = true,

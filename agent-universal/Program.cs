@@ -97,6 +97,8 @@ namespace AthalaSIEM.UniversalAgent
                     services.AddSingleton<BackendCommunicationService>();
                     services.AddHttpClient<BackendCommunicationService>();
                     
+                    // Ensure both communication services are registered for dependency injection
+                    
                     // Register Enterprise Services - NO HARDCODED VALUES
                     services.AddSingleton<AgentDiscoveryService>();
                     services.AddHttpClient<AgentDiscoveryService>();

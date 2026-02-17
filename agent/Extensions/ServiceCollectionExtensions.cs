@@ -3,6 +3,7 @@ using AthalaSIEM.Agent.Communication;
 using AthalaSIEM.Agent.Models;
 using AthalaSIEM.Agent.Security;
 using AthalaSIEM.Agent.Services;
+using Grpc.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -34,14 +35,18 @@ namespace AthalaSIEM.Agent.Extensions
                 };
             });
 
-            // Register gRPC client
+            // Register gRPC client (insecure channel for dev / trusted networks)
             services.AddGrpcClient<SiemService.SiemServiceClient>((sp, options) =>
             {
                 var settings = sp.GetRequiredService<AgentSettings>();
-                options.Address = new Uri(settings.BackendUrl);
+                var baseUrl = settings.BackendGrpcUrl ?? settings.BackendUrl ?? "http://localhost:50051";
+                if (settings.UseInsecureGrpcChannel && baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                    baseUrl = "http://" + baseUrl.Substring(8);
+                options.Address = new Uri(baseUrl);
             }).ConfigureChannel(options =>
             {
-                options.UnsafeUseInsecureChannelCallCredentials = true; // For development only
+                options.Credentials = ChannelCredentials.Insecure;
+                options.UnsafeUseInsecureChannelCallCredentials = true;
             });
 
             // Register core services

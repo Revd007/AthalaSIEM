@@ -30,7 +30,9 @@ namespace AthalaSIEM.Agent.Collectors
         private bool _enableKubernetesLogs = true;
         private bool _enableContainerEvents = true;
         private string _dockerSocketPath = "/var/run/docker.sock";
+#pragma warning disable CS0414 // Field assigned but never used - reserved for future kubeconfig path
         private string _kubernetesConfigPath = "";
+#pragma warning restore CS0414
         private string _logDirectory = "/var/log/containers";
         private int _collectionInterval = 30;
         private List<string> _excludeContainers = new();
@@ -75,6 +77,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         public async Task StartAsync()
         {
+            await Task.CompletedTask;
             if (_isRunning) return;
 
             try
@@ -113,6 +116,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         public async Task StopAsync()
         {
+            await Task.CompletedTask;
             if (!_isRunning) return;
 
             try
@@ -381,6 +385,7 @@ namespace AthalaSIEM.Agent.Collectors
 
         private async Task ProcessContainerLogOutput(string containerName, string logOutput, string stream)
         {
+            await Task.CompletedTask;
             if (string.IsNullOrEmpty(logOutput)) return;
 
             var lines = logOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries);
@@ -711,7 +716,7 @@ namespace AthalaSIEM.Agent.Collectors
                         object_name = objectName,
                         raw_event = eventElement.ToString()
                     }),
-                    Tags = new List<string> { "kubernetes", "event", namespace_, objectKind?.ToLower() ?? "", reason?.ToLower() ?? "" },
+                    Tags = new List<string> { "kubernetes", "event", namespace_ ?? "", objectKind?.ToLower() ?? "", reason?.ToLower() ?? "" },
                     Severity = type == "Warning" ? "Medium" : "Low"
                 };
             }
