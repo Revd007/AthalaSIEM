@@ -207,7 +207,7 @@ ENABLE_GPU: Whether to use GPU for ML operations
    API_VERSION=v1
    LOG_LEVEL=INFO
    ALLOWED_HOSTS=["*"]
-   CORS_ORIGINS=["http://localhost:3000"]
+   CORS_ORIGINS=["http://localhost:7654"]
    ENVIRONMENT=development
    DEBUG=true
    ```

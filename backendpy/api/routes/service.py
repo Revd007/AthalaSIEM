@@ -4,7 +4,7 @@ from auth.dependencies.auth_handler import AuthHandler
 from database.models import User
 from ai_engine.donquixote_service import DonquixoteService
 from utils.service_manager import ServiceManager
-from config import settings
+from app_config import settings
 
 router = APIRouter(prefix="/api/service", tags=["Service Management"])
 auth_handler = AuthHandler(secret_key=settings.SECRET_KEY)

@@ -409,6 +409,14 @@ builder.Services.AddHostedService(provider => provider.GetRequiredService<Backen
 builder.Services.AddHostedService<Backend.Workers.DetectionWorker>();
 builder.Services.AddHostedService<Backend.Workers.DashboardAggregatorWorker>();
 
+// HttpClient for proxying AI/Threat Hunting requests to Python backend
+var pythonBackendUrl = builder.Configuration["PythonBackend:Url"] ?? "http://localhost:9797";
+builder.Services.AddHttpClient("PythonBackend", client =>
+{
+    client.BaseAddress = new Uri(pythonBackendUrl.TrimEnd('/'));
+    client.Timeout = TimeSpan.FromSeconds(60);
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline
@@ -471,6 +479,65 @@ app.Use(async (context, next) =>
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Proxy AI Analysis and Threat Hunting to Python backend (port 9797)
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? "";
+    var proxyPrefixes = new[] { "/api/ai-analysis", "/api/detection-rules", "/api/threatintelligence", "/api/threat-hunting", "/api/playbooks" };
+    var shouldProxy = proxyPrefixes.Any(prefix => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+    if (!shouldProxy)
+    {
+        await next();
+        return;
+    }
+    context.Request.EnableBuffering();
+    var factory = context.RequestServices.GetRequiredService<IHttpClientFactory>();
+    var client = factory.CreateClient("PythonBackend");
+    var uri = path + context.Request.QueryString;
+    var request = new HttpRequestMessage(new HttpMethod(context.Request.Method), uri);
+    foreach (var header in context.Request.Headers)
+    {
+        if (header.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)) continue;
+        if (header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)) continue;
+        if (header.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase))
+        {
+            if (request.Content == null && (context.Request.ContentLength ?? 0) > 0)
+            {
+                var body = await new StreamReader(context.Request.Body).ReadToEndAsync(context.RequestAborted);
+                context.Request.Body.Position = 0;
+                var mediaType = header.Value.ToString() ?? "application/octet-stream";
+                request.Content = new StringContent(body, System.Text.Encoding.UTF8, mediaType);
+            }
+            continue;
+        }
+        request.Headers.TryAddWithoutValidation(header.Key, header.Value.ToArray());
+    }
+    if (request.Content == null && (context.Request.ContentLength ?? 0) > 0 && (context.Request.Method == "POST" || context.Request.Method == "PUT" || context.Request.Method == "PATCH"))
+    {
+        var body = await new StreamReader(context.Request.Body).ReadToEndAsync(context.RequestAborted);
+        request.Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json");
+    }
+    try
+    {
+        var response = await client.SendAsync(request, context.RequestAborted);
+        context.Response.StatusCode = (int)response.StatusCode;
+        foreach (var header in response.Headers)
+            context.Response.Headers[header.Key] = header.Value.ToArray();
+        if (response.Content.Headers != null)
+            foreach (var header in response.Content.Headers)
+                if (!string.Equals(header.Key, "Transfer-Encoding", StringComparison.OrdinalIgnoreCase))
+                    context.Response.Headers[header.Key] = header.Value.ToArray();
+        await response.Content.CopyToAsync(context.Response.Body, context.RequestAborted);
+    }
+    catch (Exception ex)
+    {
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        logger.LogWarning(ex, "Python backend proxy failed for {Path}", path);
+        context.Response.StatusCode = 502;
+        await context.Response.WriteAsJsonAsync(new { message = "Python AI backend unavailable", detail = ex.Message });
+    }
+});
 
 // Add request logging middleware to debug authentication issues
 // This must be AFTER UseAuthentication and UseAuthorization

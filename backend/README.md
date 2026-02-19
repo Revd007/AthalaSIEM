@@ -75,7 +75,7 @@ The AthalaSIEM Backend is a production-grade ASP.NET Core 8.0 application that p
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Frontend (Next.js)                        │
-│                    Port: 3000/7654                           │
+│                    Port: 7654                                │
 └──────────────────────┬──────────────────────────────────────┘
                        │ REST API (HTTP/HTTPS)
                        ▼
@@ -303,7 +303,6 @@ sudo systemctl start athala-backend
   },
   "Cors": {
     "AllowedOrigins": [
-      "http://localhost:3000",
       "http://localhost:7654",
       "https://your-frontend-domain.com"
     ]
@@ -337,7 +336,7 @@ export Jwt__ExpireMinutes=60
 export Kestrel__Endpoints__Http__Url="http://0.0.0.0:9595"
 
 # CORS
-export Cors__AllowedOrigins__0="http://localhost:3000"
+export Cors__AllowedOrigins__0="http://localhost:7654"
 export Cors__AllowedOrigins__1="https://your-domain.com"
 ```
 

@@ -16,7 +16,7 @@ from auth.schemas.auth import LoginRequest, LoginResponse, RegisterRequest
 from auth.utils.password import verify_password
 from auth.utils.security import create_jwt
 from sqlalchemy.sql import func
-from config import settings  # Import settings
+from app_config import settings  # Import settings
 
 router = APIRouter()
 auth_handler = AuthHandler(secret_key=settings.SECRET_KEY)

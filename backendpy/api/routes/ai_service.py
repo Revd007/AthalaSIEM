@@ -4,7 +4,7 @@ from auth.dependencies.auth_handler import AuthHandler
 from database.models.user import User
 from ai_engine.types import AIServiceInterface
 from ai_engine.donquixote_service import DonquixoteService
-from config import settings
+from app_config import settings
 from datetime import datetime
 
 router = APIRouter(prefix="/api/ai", tags=["AI Service"])
