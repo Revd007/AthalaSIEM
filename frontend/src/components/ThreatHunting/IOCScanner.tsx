@@ -2,25 +2,28 @@
 
 import { useState } from 'react'
 import { DashboardCard } from '@/components/ui/DashboardCard'
-import { Search, Upload, AlertTriangle, Shield, RefreshCw } from 'lucide-react'
-import { useQuery, useMutation } from '@tanstack/react-query'
-import { api } from '@/lib/api'
+import { Search, Upload, AlertTriangle, RefreshCw } from 'lucide-react'
+import { useMutation } from '@tanstack/react-query'
+import { aiApi } from '@/lib/ai-api'
 import { Skeleton } from '@/components/ui/skeleton'
 
 interface IOC {
   type: 'ip' | 'domain' | 'hash' | 'url' | 'email'
   value: string
-  description?: string
 }
 
 interface ScanResult {
   ioc: IOC
-  matches: {
-    source: string
-    timestamp: string
-    details: string
-    severity: 'critical' | 'high' | 'medium' | 'low'
-  }[]
+  matchesFound: number
+  results: Array<{ type: string; value: string; sourceFeed: string; confidence: number }>
+}
+
+function detectIocType(value: string): IOC['type'] {
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(value)) return 'ip'
+  if (/^[a-f0-9]{32,64}$/i.test(value)) return 'hash'
+  if (/@/.test(value)) return 'email'
+  if (/^https?:\/\//.test(value)) return 'url'
+  return 'domain'
 }
 
 export function IOCScanner() {
@@ -29,51 +32,29 @@ export function IOCScanner() {
   const [realTimeMonitoring, setRealTimeMonitoring] = useState(false)
   const [crossReference, setCrossReference] = useState(true)
 
-  // Fetch threat intelligence for IOC checking
   const scanMutation = useMutation({
-    mutationFn: async (iocs: string[]) => {
-      // Use threat intelligence API to check IOCs
+    mutationFn: async (iocs: string[]): Promise<ScanResult[]> => {
       const results: ScanResult[] = []
-      
-      for (const ioc of iocs) {
-        const trimmed = ioc.trim()
+      for (const raw of iocs) {
+        const trimmed = raw.trim()
         if (!trimmed) continue
-
         try {
-          // Check against threat intelligence
-          const response = await api.get<any>(`/api/threatintelligence/correlations?timeWindowHours=168&minimumOccurrences=1`)
-          
-          // Detect IOC type
-          const type: IOC['type'] = 
-            /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(trimmed) ? 'ip' :
-            /^[a-f0-9]{32,64}$/i.test(trimmed) ? 'hash' :
-            /@/.test(trimmed) ? 'email' :
-            /^https?:\/\//.test(trimmed) ? 'url' : 'domain'
-
-          // Create scan result
-          const correlations = response.data || []
-          if (correlations.length > 0 || Math.random() > 0.5) {
-            results.push({
-              ioc: { type, value: trimmed },
-              matches: [{
-                source: crossReference ? 'Threat Intelligence Feed' : 'Local Logs',
-                timestamp: new Date().toISOString(),
-                details: `IOC ${trimmed} found in security data`,
-                severity: Math.random() > 0.7 ? 'critical' : Math.random() > 0.5 ? 'high' : 'medium'
-              }]
-            })
-          }
-        } catch {
-          // Add as no-match result
+          const res = await aiApi.scanIoc({ value: trimmed })
           results.push({
-            ioc: { type: 'domain', value: trimmed },
-            matches: []
+            ioc: { type: detectIocType(trimmed), value: trimmed },
+            matchesFound: res.matchesFound ?? 0,
+            results: res.results ?? [],
+          })
+        } catch {
+          results.push({
+            ioc: { type: detectIocType(trimmed), value: trimmed },
+            matchesFound: 0,
+            results: [],
           })
         }
       }
-      
       return results
-    }
+    },
   })
 
   const handleScan = () => {
@@ -84,7 +65,7 @@ export function IOCScanner() {
   }
 
   const results = scanMutation.data || []
-  const totalMatches = results.filter(r => r.matches.length > 0).length
+  const totalMatches = results.reduce((sum, r) => sum + r.matchesFound, 0)
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -242,18 +223,12 @@ export function IOCScanner() {
                           {result.ioc.type}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                          {result.matches.length}
+                          {result.matchesFound}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {result.matches.length > 0 ? (
-                            <span className={`px-2 py-1 text-xs rounded-full ${
-                              result.matches[0].severity === 'critical' 
-                                ? 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200'
-                                : result.matches[0].severity === 'high'
-                                ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200'
-                                : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-200'
-                            }`}>
-                              {result.matches[0].severity}
+                          {result.matchesFound > 0 ? (
+                            <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200">
+                              match
                             </span>
                           ) : (
                             <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200">

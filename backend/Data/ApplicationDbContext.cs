@@ -206,6 +206,11 @@ namespace Backend.Data
         public DbSet<CollectorConfigurationModels> CollectorConfigurations { get; set; } = null!;
 
         /// <summary>
+        /// Gets or sets the system settings (key-value per category).
+        /// </summary>
+        public DbSet<SystemSetting> SystemSettings { get; set; } = null!;
+
+        /// <summary>
         /// Configures the model
         /// </summary>
         /// <param name="modelBuilder">The model builder</param>
@@ -223,6 +228,14 @@ namespace Backend.Data
                 entity.Property(e => e.PasswordHash).IsRequired();
                 entity.HasIndex(e => e.Email).IsUnique();
                 entity.HasIndex(e => e.Username).IsUnique();
+            });
+
+            // System settings table (category + key unique)
+            modelBuilder.Entity<SystemSetting>(entity =>
+            {
+                entity.ToTable("system_settings");
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => new { e.Category, e.Key }).IsUnique();
             });
 
             // Agents table

@@ -6,7 +6,7 @@ import { useDashboardSummary } from '@/services/analytics-service'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export function MetricsGrid() {
-  const { data: summary, isLoading } = useDashboardSummary()
+  const { data: summary, isLoading, isError } = useDashboardSummary()
 
   const eps = summary?.eventsPerSecond ?? 0
   const criticalAlerts = summary?.criticalCount ?? 0
@@ -66,6 +66,16 @@ export function MetricsGrid() {
         {[1, 2, 3, 4, 5, 6].map(i => (
           <Skeleton key={i} className="h-28 w-full rounded-lg" />
         ))}
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="col-span-full bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm text-center text-gray-500 dark:text-gray-400">
+          Failed to load dashboard metrics
+        </div>
       </div>
     )
   }

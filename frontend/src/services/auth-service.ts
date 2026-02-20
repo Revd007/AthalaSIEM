@@ -146,19 +146,19 @@ export const authService = {
 
   async logout() {
     const token = localStorage.getItem('token');
-    if (!token) return;
 
     try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
+      if (token) {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+        });
+      }
     } finally {
-      // Clear both localStorage and cookie
       localStorage.removeItem('token');
       localStorage.removeItem('refreshToken');
       document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';

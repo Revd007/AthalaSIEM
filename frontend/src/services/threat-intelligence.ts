@@ -30,36 +30,36 @@ interface ThreatIntelligenceData {
 export const threatIntelligenceService = {
   async getThreatIntelligence(): Promise<ThreatIntelligenceData> {
     try {
-      // Try to fetch from backend threat intelligence endpoint
-      const { data } = await api.get('/api/threatintelligence/summary');
-      
-      // Map backend response to frontend format
-      if (data && Array.isArray(data)) {
-        const feeds: ThreatFeed[] = data.map((summary: any, index: number) => ({
-          id: summary.collectorType || `feed-${index}`,
-          name: summary.collectorType || 'Unknown Feed',
+      const { data } = await api.get<{
+        feeds?: Array<{ name: string; indicators: number; matches: number }>;
+        totalIndicators?: number;
+        totalMatches?: number;
+      }>('/api/threatintelligence/summary');
+
+      if (data?.feeds && Array.isArray(data.feeds)) {
+        const feeds: ThreatFeed[] = data.feeds.map((f, index) => ({
+          id: `feed-${index}-${f.name}`,
+          name: f.name,
           provider: 'System',
           type: 'ip' as const,
           lastUpdate: new Date().toISOString(),
           status: 'active' as const,
-          indicators: summary.totalThreats || 0,
-          matches: summary.matchedThreats || 0
+          indicators: f.indicators ?? 0,
+          matches: f.matches ?? 0,
         }));
-
         return {
           feeds,
           indicators: [],
-          totalIndicators: feeds.reduce((sum, f) => sum + f.indicators, 0),
-          totalMatches: feeds.reduce((sum, f) => sum + f.matches, 0)
+          totalIndicators: data.totalIndicators ?? feeds.reduce((s, f) => s + f.indicators, 0),
+          totalMatches: data.totalMatches ?? 0,
         };
       }
 
-      // Return empty data if no backend response
       return {
         feeds: [],
         indicators: [],
         totalIndicators: 0,
-        totalMatches: 0
+        totalMatches: 0,
       };
     } catch (error) {
       console.error('Error fetching threat intelligence:', error);
@@ -67,7 +67,7 @@ export const threatIntelligenceService = {
         feeds: [],
         indicators: [],
         totalIndicators: 0,
-        totalMatches: 0
+        totalMatches: 0,
       };
     }
   },

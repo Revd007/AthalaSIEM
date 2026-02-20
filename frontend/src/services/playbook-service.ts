@@ -1,42 +1,65 @@
-import { axiosInstance } from '../lib/axios';
-import { PlaybookTemplate } from '../components/automation/playbook-editor';
+import { api } from '@/lib/api'
+import type { PlaybookDefinition, PlaybookExecution } from '@/types/api'
 
-interface PlaybookRun {
-  id: string;
-  alert_id: string;
-  playbook_id: string;
-  status: 'running' | 'completed' | 'failed' | 'cancelled';
-  start_time: string;
-  end_time?: string;
-  results: any;
+/** Playbook list item from Python backend */
+export interface PlaybookListItem {
+  id: string
+  name: string
+  description: string
+  author: string
+  category: string
+  status: string
+  steps: unknown[]
+  lastModified: string | null
 }
 
 export const playbookService = {
-  async getTemplates(): Promise<PlaybookTemplate[]> {
-    const response = await axiosInstance.get('/playbooks/templates');
-    return response.data;
+  async list(): Promise<PlaybookListItem[]> {
+    try {
+      const { data } = await api.get<PlaybookListItem[]>('/api/playbooks')
+      return Array.isArray(data) ? data : []
+    } catch {
+      return []
+    }
   },
 
-  async getTemplate(id: string): Promise<PlaybookTemplate> {
-    const response = await axiosInstance.get(`/playbooks/templates/${id}`);
-    return response.data;
+  async get(id: string): Promise<PlaybookListItem | null> {
+    try {
+      const { data } = await api.get<PlaybookListItem>(`/api/playbooks/${id}`)
+      return data ?? null
+    } catch {
+      return null
+    }
   },
 
-  async createTemplate(template: Partial<PlaybookTemplate>): Promise<PlaybookTemplate> {
-    const response = await axiosInstance.post('/playbooks/templates', template);
-    return response.data;
+  async create(body: { name: string; description?: string; category?: string; steps?: unknown[] }): Promise<PlaybookDefinition | null> {
+    try {
+      const { data } = await api.post<PlaybookDefinition>('/api/playbooks', body)
+      return data ?? null
+    } catch {
+      return null
+    }
   },
 
-  async updateTemplate(id: string, template: Partial<PlaybookTemplate>): Promise<PlaybookTemplate> {
-    const response = await axiosInstance.put(`/playbooks/templates/${id}`, template);
-    return response.data;
+  async update(id: string, body: { name?: string; description?: string; category?: string; steps?: unknown[] }): Promise<PlaybookDefinition | null> {
+    try {
+      const { data } = await api.put<PlaybookDefinition>(`/api/playbooks/${id}`, body)
+      return data ?? null
+    } catch {
+      return null
+    }
   },
 
-  async deleteTemplate(id: string): Promise<void> {
-    await axiosInstance.delete(`/playbooks/templates/${id}`);
+  async delete(id: string): Promise<void> {
+    await api.delete(`/api/playbooks/${id}`)
   },
 
-  async executePlaybook(templateId: string, context: any): Promise<void> {
-    await axiosInstance.post(`/playbooks/execute/${templateId}`, { context });
-  }
-};
+  async run(id: string): Promise<PlaybookExecution | null> {
+    try {
+      const { data } = await api.post<PlaybookExecution>(`/api/playbooks/${id}/run`)
+      return data ?? null
+    } catch {
+      return null
+    }
+  },
+}

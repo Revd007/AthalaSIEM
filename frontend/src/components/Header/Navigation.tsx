@@ -6,13 +6,16 @@ import { usePathname } from 'next/navigation'
 import { 
   Home, 
   Shield,
+  ShieldAlert,
   Target,
-  Brain, 
+  Brain,
+  Bug,
   Activity,
   PlayCircle,
   AlertTriangle,
   Users,
   FileCheck,
+  FileSearch,
   Network,
   Menu,
   X,
@@ -36,6 +39,7 @@ const categories = [
   {
     name: 'Incident & Response',
     items: [
+      { name: 'Counter-Defense', href: '/dashboard/counter-defense', icon: ShieldAlert },
       { name: 'Predictive Analytics', href: '/dashboard/predictive', icon: Activity },
       { name: 'Automated Playbooks', href: '/dashboard/playbooks', icon: PlayCircle },
       { name: 'Active Incidents', href: '/dashboard/incidents', icon: AlertTriangle }
@@ -44,6 +48,8 @@ const categories = [
   {
     name: 'System & Compliance',
     items: [
+      { name: 'File Integrity (FIM)', href: '/dashboard/fim', icon: FileSearch },
+      { name: 'Penetration Testing', href: '/dashboard/pentest', icon: Bug },
       { name: 'Team Collaboration', href: '/dashboard/collaboration', icon: Users },
       { name: 'Compliance', href: '/dashboard/compliance', icon: FileCheck },
       { name: 'System Health', href: '/dashboard/health', icon: Network }

@@ -3,7 +3,7 @@ Background worker: poll log_entries, run ML inference, write to ai_predictions a
 """
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -32,7 +32,7 @@ async def _get_unprocessed_log_ids(session: AsyncSession) -> set[str]:
 
 
 async def _fetch_recent_logs(session: AsyncSession, exclude_ids: set[str], limit: int) -> list[LogEntry]:
-    since = datetime.utcnow() - timedelta(hours=LOOKBACK_HOURS)
+    since = datetime.now(timezone.utc) - timedelta(hours=LOOKBACK_HOURS)
     q = select(LogEntry).where(LogEntry.Timestamp >= since).order_by(LogEntry.Timestamp.desc()).limit(limit)
     result = await session.execute(q)
     rows = result.scalars().all()

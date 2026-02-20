@@ -8,10 +8,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 const COLORS = ['#ef4444', '#f59e0b', '#3b82f6', '#10b981', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316']
 
 export function SecurityEvents() {
-  const { data: categoryData, isLoading: catLoading } = useEventsDistribution()
-  const { data: severityData, isLoading: sevLoading } = useSeverityDistribution()
+  const { data: categoryData, isLoading: catLoading, isError: catError } = useEventsDistribution()
+  const { data: severityData, isLoading: sevLoading, isError: sevError } = useSeverityDistribution()
 
   const isLoading = catLoading || sevLoading
+  const isError = catError || sevError
 
   // Prefer category distribution; fall back to severity if only one category exists
   const distributionData = React.useMemo(() => {
@@ -27,6 +28,17 @@ export function SecurityEvents() {
       <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
         <h2 className="text-lg font-semibold mb-4">Security Events Distribution</h2>
         <Skeleton className="h-80 w-full" />
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
+        <h2 className="text-lg font-semibold mb-4">Security Events Distribution</h2>
+        <div className="h-80 flex items-center justify-center text-gray-500 dark:text-gray-400">
+          Failed to load distribution data
+        </div>
       </div>
     )
   }

@@ -1,23 +1,16 @@
 'use client'
 
 import { Inter } from 'next/font/google'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import { queryClient, persistOptions } from '@/lib/query-client'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from 'sonner'
 import { useEffect } from 'react'
+import { AuthProvider } from '@/contexts/AuthContext'
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60,
-      refetchOnWindowFocus: false,
-    },
-  },
-})
 
 export default function RootLayout({
   children,
@@ -41,18 +34,20 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <QueryClientProvider client={queryClient}>
-          <ThemeProvider 
-            attribute="class" 
-            defaultTheme="system" 
-            enableSystem 
-            disableTransitionOnChange
-          >
-            {children}
-            <Toaster richColors closeButton position="top-right" />
-          </ThemeProvider>
+        <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+          <AuthProvider>
+            <ThemeProvider 
+              attribute="class" 
+              defaultTheme="system" 
+              enableSystem 
+              disableTransitionOnChange
+            >
+              {children}
+              <Toaster richColors closeButton position="top-right" />
+            </ThemeProvider>
+          </AuthProvider>
           <ReactQueryDevtools initialIsOpen={false} />
-        </QueryClientProvider>
+        </PersistQueryClientProvider>
       </body>
     </html>
   )

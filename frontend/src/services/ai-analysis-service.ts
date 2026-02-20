@@ -1,58 +1,132 @@
-import { api } from '../lib/api';
-import type { 
-  AIAnalysisResult, 
-  AIServiceStatus,
-  KnowledgeGraphData,
-  SystemMetrics 
-} from '../types/ai-service';
+import { api } from '@/lib/api'
+import type {
+  AIAnalysisOverview,
+  AIAnomaly,
+  AIPrediction,
+  PlaybookExecution,
+} from '@/types/api'
 
 export const aiAnalysisService = {
-  // Get AI service status
-  async getStatus() {
-    const response = await api.get<AIServiceStatus>('/api/ai/status');
-    return response.data;
+  /** Dashboard stats from Python backend */
+  async getOverview(): Promise<AIAnalysisOverview> {
+    const { data } = await api.get<AIAnalysisOverview>('/api/ai-analysis/overview')
+    return data ?? {
+      activeThreats: 0,
+      avgConfidence: 0,
+      detectionRate24h: 0,
+      responseTime: '-',
+      mitreCoveragePercent: 0,
+      insightsTrend: [],
+      latestInsights: [],
+    }
   },
 
-  // Analyze specific event
-  async analyzeEvent(eventData: any) {
-    const response = await api.post<AIAnalysisResult>('/api/ai/analyze/event', eventData);
-    return response.data;
+  /** Anomaly detection data (counts + hourly + list) */
+  async getAnomalies(): Promise<{
+    total: number
+    highSeverity: number
+    detectedToday: number
+    hourly: Array<{ time: string; count: number }>
+    anomalies: AIAnomaly[]
+  }> {
+    const { data } = await api.get<{
+      total: number
+      highSeverity: number
+      detectedToday: number
+      hourly: Array<{ time: string; count: number }>
+      anomalies: AIAnomaly[]
+    }>('/api/ai-analysis/anomalies')
+    return (
+      data ?? {
+        total: 0,
+        highSeverity: 0,
+        detectedToday: 0,
+        hourly: [],
+        anomalies: [],
+      }
+    )
   },
 
-  // Get knowledge graph
-  async getKnowledgeGraph() {
-    const response = await api.get<KnowledgeGraphData>('/api/ai/knowledge-graph');
-    return response.data;
+  /** User/behavior analysis */
+  async getBehavior(): Promise<{
+    topBehaviors: Array<{ name: string; count: number }>
+    riskScore: number
+    anomalies: unknown[]
+  }> {
+    const { data } = await api.get<{
+      topBehaviors: Array<{ name: string; count: number }>
+      riskScore: number
+      anomalies: unknown[]
+    }>('/api/ai-analysis/behavior')
+    return (
+      data ?? {
+        topBehaviors: [],
+        riskScore: 0,
+        anomalies: [],
+      }
+    )
   },
 
-  // Get system metrics
-  async getSystemMetrics() {
-    const response = await api.get<SystemMetrics>('/api/ai/system-metrics');
-    return response.data;
+  /** Predictive analysis */
+  async getPredictive(): Promise<{
+    predictions: AIPrediction[]
+    hourly: Array<{ time: string; count: number }>
+    topClasses: Array<{ class: string; count: number }>
+  }> {
+    const { data } = await api.get<{
+      predictions: AIPrediction[]
+      hourly: Array<{ time: string; count: number }>
+      topClasses: Array<{ class: string; count: number }>
+    }>('/api/ai-analysis/predictive')
+    return (
+      data ?? {
+        predictions: [],
+        hourly: [],
+        topClasses: [],
+      }
+    )
   },
 
-  // Analyze threats
-  async analyzeThreat(eventData: any) {
-    const response = await api.post('/api/ai/analyze/threat', eventData);
-    return response.data;
+  /** Automated response / playbook executions */
+  async getAutomatedResponse(): Promise<{
+    total: number
+    success: number
+    failed: number
+    executions: PlaybookExecution[]
+  }> {
+    const { data } = await api.get<{
+      total: number
+      success: number
+      failed: number
+      executions: PlaybookExecution[]
+    }>('/api/ai-analysis/automated-response')
+    return (
+      data ?? {
+        total: 0,
+        success: 0,
+        failed: 0,
+        executions: [],
+      }
+    )
   },
 
-  // Detect anomalies
-  async detectAnomalies(eventData: any) {
-    const response = await api.post('/api/ai/analyze/anomaly', eventData);
-    return response.data;
+  /** OSINT correlation */
+  async getOsint(): Promise<{
+    correlated: number
+    sources: string[]
+    lastUpdated: string | null
+  }> {
+    const { data } = await api.get<{
+      correlated: number
+      sources: string[]
+      lastUpdated: string | null
+    }>('/api/ai-analysis/osint')
+    return (
+      data ?? {
+        correlated: 0,
+        sources: [],
+        lastUpdated: null,
+      }
+    )
   },
-
-  // Analyze behavior
-  async analyzeBehavior(eventData: any) {
-    const response = await api.post('/api/ai/analyze/behavior', eventData);
-    return response.data;
-  },
-
-  // Get AI insights
-  async getInsights(eventData: any) {
-    const params = new URLSearchParams(eventData);
-    const response = await api.get(`/api/ai/insights?${params}`);
-    return response.data;
-  }
-}; 
+}

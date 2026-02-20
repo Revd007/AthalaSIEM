@@ -1,19 +1,11 @@
-import { QueryClient } from '@tanstack/react-query'
 import type { ApiResponse } from '../types/api'
 import { env } from '../config/env'
+import { queryClient } from './query-client'
+
+export { queryClient }
 
 // Use environment configuration for base URL
 const baseURL = env.NEXT_PUBLIC_API_URL
-
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 3,
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-      staleTime: 5 * 60 * 1000, // 5 minutes
-    },
-  },
-})
 
 interface RequestOptions extends RequestInit {
   responseType?: 'json' | 'blob';
@@ -190,8 +182,12 @@ const makeRequest = async <T>(url: string, options: RequestOptions = {}): Promis
     if (!response.ok) {
       const contentType = response.headers.get('content-type');
       if (contentType?.includes('application/json')) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Request failed with status ${response.status}`);
+        const errorData = await response.json() as { message?: string };
+        const msg = errorData?.message ?? '';
+        if ((response.status === 502 || response.status === 503) && msg.includes('Python AI backend unavailable')) {
+          return { data: null as T } as ApiResponse<T>;
+        }
+        throw new Error(msg || `Request failed with status ${response.status}`);
       }
       throw new Error(`Request failed with status ${response.status}`);
     }
